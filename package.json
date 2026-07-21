@@ -1,0 +1,33 @@
+{
+  "name": "bobarr-v2",
+  "private": true,
+  "type": "module",
+  "module": "index.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "start": "bun run dist/index.js",
+    "build": "bun build src/index.ts --outdir dist --target bun --env disable",
+    "test": "bun test",
+    "dev": "bun run --watch src/index.ts",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "oxfmt": "^0.41.0",
+    "oxlint": "^1.73.0",
+    "oxlint-tsgolint": "^0.24.0",
+    "typescript": "^7.0.2"
+  },
+  "lint-staged": {
+    "*": "oxfmt --no-error-on-unmatched-pattern",
+    "*.{js,jsx,ts,tsx,mjs,cjs}": "oxlint --fix"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 80,
+  "sortImports": {
+    "newlinesBetween": true,
+    "sortSideEffects": true,
+    "customGroups": [
+      {
+        "groupName": "internal-alias",
+        "elementNamePattern": ["~", "~/**"]
+      }
+    ],
+    "groups": [
+      "type-import",
+      "value-builtin",
+      "value-external",
+      "internal-alias",
+      "value-internal",
+      ["value-sibling", "value-index"],
+      { "newlinesBetween": false },
+      "value-parent",
+      "unknown"
+    ]
+  },
+  "ignorePatterns": ["node_modules", "dist"],
+  "overrides": [
+    {
+      "files": ["**/*.json", "**/*.jsonc"],
+      "options": { "trailingComma": "none" }
+    }
+  ]
+}

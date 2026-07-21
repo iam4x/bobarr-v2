@@ -1,0 +1,45 @@
+# Node modules and dependencies
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+.pnpm-debug.log
+
+# Build artifacts
+dist/
+build/
+*.tsbuildinfo
+
+# Git & GitHub files
+.git/
+.github/
+.gitignore
+.gitattributes
+
+# Docker files (not needed in context)
+Dockerfile
+.dockerignore
+docker-compose*
+
+# Development/testing files
+*.test.*
+*.spec.*
+__tests__/
+coverage/
+.nyc_output/
+jest.config.*
+*.env*
+.env*
+!.env.example
+
+# Editor and IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Documentation
+*.md
+docs/
+LICENSE
