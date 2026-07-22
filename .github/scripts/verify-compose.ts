@@ -94,12 +94,22 @@ assert(
   "Bobarr's HTTP port must use the configured bind address",
 );
 const jackettPort = onlyPort(jackett, "Jackett");
+const expectedJackettBindAddress =
+  process.env["JACKETT_BIND_ADDRESS"] ?? "0.0.0.0";
 assert(
-  jackettPort.target === 9117 && jackettPort.host_ip === "127.0.0.1",
-  "Jackett's setup UI must bind to loopback only",
+  jackettPort.target === 9117 &&
+    jackettPort.host_ip === expectedJackettBindAddress,
+  "Jackett's setup UI must use the configured bind address",
 );
 assertNoPublishedPorts(flaresolverr, "FlareSolverr");
-assertLoopbackPort(transmission, 9091, "Transmission");
+const expectedTransmissionBindAddress =
+  process.env["TRANSMISSION_BIND_ADDRESS"] ?? "0.0.0.0";
+assertConfiguredPort(
+  transmission,
+  9091,
+  expectedTransmissionBindAddress,
+  "Transmission",
+);
 assert(
   Boolean(transmission.environment?.["USER"]) &&
     Boolean(transmission.environment?.["PASS"]),
@@ -140,7 +150,12 @@ const vpnTransmission = service(vpn, "transmission");
 
 assertTaggedDigest(vpnGluetun, "qmcgaw/gluetun:v3.40.0@sha256:", "Gluetun");
 assertNoNewPrivileges(vpnGluetun, "Gluetun");
-assertLoopbackPort(vpnGluetun, 9091, "VPN Transmission diagnostics");
+assertConfiguredPort(
+  vpnGluetun,
+  9091,
+  expectedTransmissionBindAddress,
+  "VPN Transmission diagnostics",
+);
 assertNoPublishedPorts(vpnTransmission, "VPN Transmission");
 assert(
   vpnTransmission.network_mode === "service:gluetun",
@@ -286,15 +301,16 @@ function onlyPort(value: ComposeService, name: string): ComposePort {
   return value.ports[0] as ComposePort;
 }
 
-function assertLoopbackPort(
+function assertConfiguredPort(
   value: ComposeService,
   target: number,
+  bindAddress: string,
   name: string,
 ): void {
   const port = onlyPort(value, name);
   assert(
-    port.target === target && port.host_ip === "127.0.0.1",
-    `${name} must publish container port ${target} on host loopback only`,
+    port.target === target && port.host_ip === bindAddress,
+    `${name} must publish container port ${target} on ${bindAddress}`,
   );
 }
 

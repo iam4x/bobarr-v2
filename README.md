@@ -39,8 +39,9 @@ On Linux, also set `PUID` and `PGID` to the owner of the directories above
 then verify the services from Settings. Jackett's setup UI is published on host
 port 9117 by default. Configure indexers and FlareSolverr there. Set
 `JACKETT_BIND_ADDRESS=127.0.0.1` to restrict it to local access. Transmission's
-authenticated Web UI is available for local diagnostics only on
-<http://127.0.0.1:9091>; Bobarr remains the normal control surface. The
+authenticated Web UI is published on host port 9091. Set
+`TRANSMISSION_BIND_ADDRESS=127.0.0.1` to restrict it to local access; Bobarr
+remains the normal control surface. The
 Compose default permits its session cookie over direct HTTP access, including a
 private Tailscale address. Set `BOBARR_COOKIE_SECURE=true` when serving Bobarr
 over HTTPS.

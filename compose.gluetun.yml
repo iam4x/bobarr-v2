@@ -24,7 +24,7 @@ services:
       FIREWALL_INPUT_PORTS: 9091
       TZ: ${TZ:-Etc/UTC}
     ports:
-      - 127.0.0.1:${TRANSMISSION_WEB_PORT:-9091}:9091
+      - ${TRANSMISSION_BIND_ADDRESS:-0.0.0.0}:${TRANSMISSION_WEB_PORT:-9091}:9091
     networks:
       - backend
 

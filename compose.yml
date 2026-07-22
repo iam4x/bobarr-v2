@@ -111,13 +111,13 @@ services:
       USER: ${TRANSMISSION_USERNAME:-bobarr}
       PASS: ${TRANSMISSION_PASSWORD:?Set TRANSMISSION_PASSWORD in .env}
       PEERPORT: ${TRANSMISSION_PEER_PORT:-51413}
-      WHITELIST: 127.0.0.1,172.*.*.*,10.*.*.*,192.168.*.*
+      WHITELIST: 127.0.0.1,172.*.*.*,10.*.*.*,100.*.*.*,192.168.*.*
       HOST_WHITELIST: transmission,gluetun
     volumes:
       - ${TRANSMISSION_CONFIG_PATH:-./config/transmission}:/config
       - ${BOBARR_MEDIA_PATH:-./media}:/media
     ports:
-      - 127.0.0.1:${TRANSMISSION_WEB_PORT:-9091}:9091
+      - ${TRANSMISSION_BIND_ADDRESS:-0.0.0.0}:${TRANSMISSION_WEB_PORT:-9091}:9091
     healthcheck:
       test:
         - CMD-SHELL

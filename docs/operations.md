@@ -111,10 +111,11 @@ IP. Set it to `true` whenever clients reach Bobarr over HTTPS. After changing
 this setting, recreate the Bobarr container and sign in again so the browser
 receives a new session cookie.
 
-Only publish Bobarr beyond the host. The provided stack binds Transmission's
-authenticated Web UI/RPC to `127.0.0.1:9091` for local diagnostics and Jackett's
-setup UI to loopback; FlareSolverr has no host port. Never change either
-diagnostic binding to `0.0.0.0` or route it through the public reverse proxy.
+The provided stack publishes Bobarr, Transmission's authenticated Web UI/RPC,
+and Jackett's setup UI on their configured host ports. Restrict either
+diagnostic service to local access by setting its bind address to `127.0.0.1`.
+FlareSolverr has no host port. Do not route the diagnostic services through a
+public reverse proxy.
 
 ## Offline administrator reset
 
@@ -159,10 +160,10 @@ image health check. If the tunnel later drops, Gluetun's firewall keeps the
 namespace fail-closed even though Docker does not automatically stop an already
 running dependent container.
 
-The overlay resets Transmission's inherited host port and publishes loopback
-9091 on Gluetun instead. This is required because a container using
+The overlay resets Transmission's inherited host port and publishes 9091 on
+Gluetun instead. This is required because a container using
 `network_mode: service:gluetun` cannot publish its own ports. Keep custom port
-mappings on Gluetun and preserve the loopback host address.
+mappings on Gluetun and preserve the configured host bind address.
 
 Simulate a tunnel loss during commissioning and confirm peer traffic stops
 while Bobarr reports Transmission as degraded. Restore the tunnel and confirm
@@ -171,8 +172,8 @@ download reconciliation resumes without creating a duplicate torrent.
 ## Deployment verification
 
 CI runs `.github/scripts/verify-compose.ts` against the base and merged VPN
-models. The check requires Transmission diagnostics and Jackett's UI to bind to
-loopback, rejects any FlareSolverr host port, and checks unpinned service images,
+models. The check validates the configured Transmission and Jackett bind
+addresses, rejects any FlareSolverr host port, and checks unpinned service images,
 divergent media mounts, root application users, and an overlay that leaves
 Transmission on a direct network. In the VPN model, Gluetun owns the loopback
 9091 publication because Transmission shares its network namespace. The weekly
@@ -192,9 +193,9 @@ For each new host, also perform a live commissioning check:
 
 1. Wait for `docker compose ps` to report every service healthy.
 2. Confirm `/health/ready` succeeds through Bobarr's published port.
-3. Confirm the authenticated Transmission UI on 9091 is reachable only through
-   loopback. Confirm Jackett on 9117 is reachable only through its configured
-   `JACKETT_BIND_ADDRESS`, and port 8191 is unreachable from the host.
+3. Confirm the authenticated Transmission UI on 9091 and Jackett on 9117 are
+   reachable through their configured bind addresses, and port 8191 is
+   unreachable from the host.
 4. Restart Bobarr and Transmission, then confirm the same download is adopted
    by label/infohash rather than duplicated.
 5. Organize a small test file and confirm its source and library copy have the
