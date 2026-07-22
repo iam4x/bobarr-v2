@@ -25,6 +25,13 @@ export function normalizedSearchTerm(value: string): string {
   return normalized.length >= 2 ? normalized : "";
 }
 
+export function currentSearchData<T>(
+  query: string,
+  data: T | undefined,
+): T | undefined {
+  return normalizedSearchTerm(query) ? data : undefined;
+}
+
 export function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") ?? "";
@@ -32,6 +39,8 @@ export function SearchPage() {
   const [draft, setDraft] = useState(query);
   const [selected, setSelected] = useState<CatalogItem | null>(null);
   const cacheKey = query.toLocaleLowerCase();
+  const hasQuery = Boolean(normalizedSearchTerm(query));
+  const hasDraft = Boolean(normalizedSearchTerm(draft));
 
   const searchQuery = useQuery({
     queryKey: ["catalog", "search", cacheKey, kind],
@@ -43,13 +52,14 @@ export function SearchPage() {
         },
         signal,
       }),
-    enabled: query.trim().length >= 2,
+    enabled: hasQuery,
     staleTime: Number.POSITIVE_INFINITY,
     gcTime: Number.POSITIVE_INFINITY,
     placeholderData: (previousData, previousQuery) =>
       previousQuery?.queryKey[3] === kind ? previousData : undefined,
   });
-  const result = searchQuery.data ? catalogPage(searchQuery.data) : undefined;
+  const currentData = currentSearchData(draft, searchQuery.data);
+  const result = currentData ? catalogPage(currentData) : undefined;
 
   useEffect(() => {
     setDraft((current) =>
@@ -151,7 +161,7 @@ export function SearchPage() {
         />
       </form>
 
-      {!query ? (
+      {!hasDraft ? (
         <div className="search-prompt">
           <span className="search-prompt__orb">
             <Search size={29} />
@@ -163,8 +173,8 @@ export function SearchPage() {
           </p>
         </div>
       ) : null}
-      {searchQuery.isLoading ? <SkeletonGrid /> : null}
-      {searchQuery.isError ? (
+      {hasDraft && searchQuery.isLoading ? <SkeletonGrid /> : null}
+      {hasDraft && searchQuery.isError ? (
         <ErrorState
           error={searchQuery.error}
           onRetry={() => void searchQuery.refetch()}

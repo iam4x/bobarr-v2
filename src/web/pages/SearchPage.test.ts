@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { normalizedSearchTerm, SEARCH_DEBOUNCE_MS } from "./SearchPage";
+import {
+  currentSearchData,
+  normalizedSearchTerm,
+  SEARCH_DEBOUNCE_MS,
+} from "./SearchPage";
 
 describe("search-as-you-type", () => {
   test("waits for a meaningful normalized TMDB term", () => {
@@ -8,5 +12,13 @@ describe("search-as-you-type", () => {
     expect(normalizedSearchTerm(" a ")).toBe("");
     expect(normalizedSearchTerm("  Alien  ")).toBe("Alien");
     expect(SEARCH_DEBOUNCE_MS).toBeGreaterThanOrEqual(250);
+  });
+
+  test("hides cached results when the query is cleared", () => {
+    const cached = { items: [{ id: "cached-result" }] };
+
+    expect(currentSearchData("Alien", cached)).toBe(cached);
+    expect(currentSearchData("", cached)).toBeUndefined();
+    expect(currentSearchData(" ", cached)).toBeUndefined();
   });
 });
