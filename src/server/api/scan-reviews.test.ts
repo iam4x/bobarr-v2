@@ -108,17 +108,6 @@ describe("library scan review API", () => {
       page: { total: 1 },
     });
 
-    const invalidChoice = await jsonRequest(
-      fixture.runtime,
-      `/api/v1/library/scan-reviews/${review.id}/resolve`,
-      { tmdbId: 999 },
-      session,
-    );
-    expect(invalidChoice.status).toBe(400);
-    expect(
-      ApiErrorEnvelopeSchema.parse(await invalidChoice.json()).error.code,
-    ).toBe("bad_request");
-
     const resolved = await jsonRequest(
       fixture.runtime,
       `/api/v1/library/scan-reviews/${review.id}/resolve`,
@@ -157,6 +146,35 @@ describe("library scan review API", () => {
       id: review.id,
       status: "resolved",
       mediaItemId: resolvedBody.mediaItemId,
+    });
+  });
+
+  test("resolves a manually searched TMDB title not recorded by the scanner", async () => {
+    const fixture = await createFixture();
+    const review = fixture.runtime.repositories.scanReviews.upsert({
+      kind: "movie",
+      title: "Le Parrain, 2nde partie",
+      year: 1974,
+      rootPath: fixture.moviesRoot,
+      files: [{ path: fixture.movieFile, sizeBytes: 5 }],
+      candidates: [],
+    });
+    const session = await setup(fixture.runtime);
+
+    const response = await jsonRequest(
+      fixture.runtime,
+      `/api/v1/library/scan-reviews/${review.id}/resolve`,
+      { tmdbId: 605 },
+      session,
+    );
+
+    expect(response.status).toBe(200);
+    const resolved = (await response.json()) as { mediaItemId: string };
+    expect(
+      fixture.runtime.repositories.media.get(resolved.mediaItemId),
+    ).toMatchObject({
+      tmdbId: 605,
+      status: "available",
     });
   });
 

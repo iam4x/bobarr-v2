@@ -39,17 +39,6 @@ export function createScanReviewService(
       if (review.status === "dismissed") {
         throw conflict("Dismissed scan reviews cannot be resolved");
       }
-      const candidate = review.candidates.find(
-        (item) => item.tmdbId === tmdbId && item.kind === review.kind,
-      );
-      if (candidate === undefined) {
-        throw new AppError({
-          code: "bad_request",
-          message: "Choose one of the recorded TMDB candidates",
-          status: 400,
-        });
-      }
-
       signal?.throwIfAborted();
       const settings = options.repositories.settings.ensureDefaults().settings;
       const configuredRoot =

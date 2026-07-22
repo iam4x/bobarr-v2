@@ -1,11 +1,156 @@
-import type { ScanReview } from "../types";
+import type { CatalogItem, ScanReview, ScanReviewCandidate } from "../types";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, FolderSearch, X } from "lucide-react";
+import { AlertTriangle, Check, FolderSearch, Search, X } from "lucide-react";
+import { type FormEvent, useRef, useState } from "react";
 
 import { Badge, Button } from "./ui";
 import { api } from "../api/client";
 import { imageUrl } from "../lib/format";
+
+function ScanReviewCandidateRow({
+  candidate,
+  busyTmdbId,
+  disabled,
+  onResolve,
+}: {
+  candidate: ScanReviewCandidate;
+  busyTmdbId?: number;
+  disabled: boolean;
+  onResolve: (tmdbId: number) => void;
+}) {
+  const poster = imageUrl(candidate.posterPath, "w342");
+  return (
+    <div className="scan-review-candidate">
+      <div className="scan-review-candidate__poster">
+        {poster ? <img src={poster} alt="" loading="lazy" /> : null}
+      </div>
+      <div className="scan-review-candidate__copy">
+        <strong>{candidate.title}</strong>
+        <span>{candidate.year ?? "Year unknown"}</span>
+        <p>{candidate.overview || "No description available."}</p>
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        busy={busyTmdbId === candidate.tmdbId}
+        disabled={disabled}
+        onClick={() => onResolve(candidate.tmdbId)}
+      >
+        <Check size={15} /> Import this title
+      </Button>
+    </div>
+  );
+}
+
+function ManualTmdbSearch({
+  review,
+  busyTmdbId,
+  dismissing,
+  onResolve,
+}: {
+  review: ScanReview;
+  busyTmdbId?: number;
+  dismissing: boolean;
+  onResolve: (tmdbId: number) => void;
+}) {
+  const [draft, setDraft] = useState(review.title);
+  const [results, setResults] = useState<ScanReviewCandidate[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState<string>();
+  const requestId = useRef(0);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const query = draft.trim();
+    if (query.length < 2) {
+      setError("Enter at least 2 characters to search TMDB.");
+      return;
+    }
+    const currentRequest = ++requestId.current;
+    setSearching(true);
+    setError(undefined);
+    try {
+      const response = await api.get("catalogSearch", {
+        query: { query, kind: review.kind },
+      });
+      if (currentRequest !== requestId.current) return;
+      setResults(response.items.map(toScanReviewCandidate));
+    } catch (caught) {
+      if (currentRequest !== requestId.current) return;
+      setError(
+        caught instanceof Error ? caught.message : "TMDB search failed.",
+      );
+    } finally {
+      if (currentRequest === requestId.current) setSearching(false);
+    }
+  }
+
+  return (
+    <section className="scan-review-manual" aria-label="Manual TMDB search">
+      <div className="scan-review-manual__heading">
+        <strong>Search TMDB manually</strong>
+        <span>Try another title, spelling, or the original movie name.</span>
+      </div>
+      <form
+        className="scan-review-manual__form"
+        role="search"
+        onSubmit={submit}
+      >
+        <label className="scan-review-manual__input">
+          <Search size={17} aria-hidden="true" />
+          <span className="sr-only">TMDB title</span>
+          <input
+            type="search"
+            value={draft}
+            placeholder="Search TMDB by title…"
+            onChange={(event) => setDraft(event.target.value)}
+          />
+        </label>
+        <Button type="submit" size="sm" busy={searching} disabled={searching}>
+          Search
+        </Button>
+      </form>
+      {error ? (
+        <div className="notice notice--error" role="alert">
+          {error}
+        </div>
+      ) : null}
+      {results?.length === 0 ? (
+        <div className="notice" role="status">
+          No TMDB titles found. Try a different search.
+        </div>
+      ) : null}
+      {results?.length ? (
+        <div
+          className="scan-review-candidates"
+          aria-label="TMDB search results"
+        >
+          {results.map((candidate) => (
+            <ScanReviewCandidateRow
+              key={candidate.tmdbId}
+              candidate={candidate}
+              busyTmdbId={busyTmdbId}
+              disabled={busyTmdbId !== undefined || dismissing}
+              onResolve={onResolve}
+            />
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function toScanReviewCandidate(item: CatalogItem): ScanReviewCandidate {
+  return {
+    tmdbId: item.tmdbId,
+    kind: item.kind,
+    title: item.title,
+    year: item.year ?? null,
+    posterPath: item.posterPath ?? null,
+    overview: item.overview,
+  };
+}
 
 export function ScanReviewCard({
   review,
@@ -44,37 +189,23 @@ export function ScanReviewCard({
       </p>
       {review.candidates.length > 0 ? (
         <div className="scan-review-candidates" aria-label="TMDB candidates">
-          {review.candidates.map((candidate) => {
-            const poster = imageUrl(candidate.posterPath, "w342");
-            return (
-              <div className="scan-review-candidate" key={candidate.tmdbId}>
-                <div className="scan-review-candidate__poster">
-                  {poster ? <img src={poster} alt="" loading="lazy" /> : null}
-                </div>
-                <div className="scan-review-candidate__copy">
-                  <strong>{candidate.title}</strong>
-                  <span>{candidate.year ?? "Year unknown"}</span>
-                  <p>{candidate.overview || "No description available."}</p>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  busy={busyTmdbId === candidate.tmdbId}
-                  disabled={busyTmdbId !== undefined || dismissing}
-                  onClick={() => onResolve(candidate.tmdbId)}
-                >
-                  <Check size={15} /> Import this title
-                </Button>
-              </div>
-            );
-          })}
+          {review.candidates.map((candidate) => (
+            <ScanReviewCandidateRow
+              key={candidate.tmdbId}
+              candidate={candidate}
+              busyTmdbId={busyTmdbId}
+              disabled={busyTmdbId !== undefined || dismissing}
+              onResolve={onResolve}
+            />
+          ))}
         </div>
-      ) : (
-        <div className="notice" role="status">
-          No TMDB candidates were found. Rename the folder and scan again, or
-          dismiss this review.
-        </div>
-      )}
+      ) : null}
+      <ManualTmdbSearch
+        review={review}
+        busyTmdbId={busyTmdbId}
+        dismissing={dismissing}
+        onResolve={onResolve}
+      />
       {error ? (
         <div className="notice notice--error" role="alert">
           {error}
