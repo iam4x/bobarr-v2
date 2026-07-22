@@ -44,9 +44,17 @@ export function createIntegrationResolver(
   let omdbCache: { signature: string; client: OmdbClient } | undefined;
 
   async function tmdb(): Promise<TmdbClient> {
-    const accessToken = nonEmpty(options.environment["TMDB_ACCESS_TOKEN"]);
+    const configuredAccessToken = nonEmpty(
+      options.environment["TMDB_ACCESS_TOKEN"],
+    );
+    const legacyApiKey = isTmdbV3ApiKey(configuredAccessToken)
+      ? configuredAccessToken
+      : undefined;
+    const accessToken =
+      legacyApiKey === undefined ? configuredAccessToken : undefined;
     const apiKey =
       nonEmpty(options.environment["TMDB_API_KEY"]) ??
+      legacyApiKey ??
       (await options.secrets.get("tmdb.apiKey"));
     if (accessToken === undefined && apiKey === undefined) {
       throw new IntegrationConfigurationError("tmdb", "TMDB is not configured");
@@ -241,4 +249,8 @@ function integrationLabel(key: IntegrationKey): string {
 function nonEmpty(value: string | undefined): string | undefined {
   const normalized = value?.trim();
   return normalized === "" ? undefined : normalized;
+}
+
+function isTmdbV3ApiKey(value: string | undefined): value is string {
+  return value !== undefined && /^[a-f\d]{32}$/i.test(value);
 }

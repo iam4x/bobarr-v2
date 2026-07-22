@@ -56,6 +56,21 @@ describe("integration diagnostics", () => {
     ).toMatchObject({ configured: true, healthy: true });
   });
 
+  test("accepts a v3 TMDB API key from the legacy access-token variable", async () => {
+    const fixture = await createFixture(true, {
+      tmdbApiKeyInAccessToken: true,
+    });
+
+    expect(await fixture.runtime.integrations.test("tmdb")).toMatchObject({
+      configured: true,
+      healthy: true,
+    });
+    expect(fixture.services.tmdbApiKey).toBe(
+      "0123456789abcdef0123456789abcdef",
+    );
+    expect(fixture.services.tmdbAuthorization).toBeNull();
+  });
+
   test("refreshes cached status after configuration changes and connection tests", async () => {
     const fixture = await createFixture(true);
     const session = await setup(fixture.runtime);
@@ -163,6 +178,8 @@ describe("integration diagnostics", () => {
 class FakeDiagnosticServices {
   jackettHealthy = true;
   jackettCalls = 0;
+  tmdbApiKey: string | null = null;
+  tmdbAuthorization: string | null = null;
 
   readonly fetch = async (
     input: RequestInfo | URL,
@@ -170,6 +187,8 @@ class FakeDiagnosticServices {
   ): Promise<Response> => {
     const url = requestUrl(input);
     if (url.hostname === "tmdb.test") {
+      this.tmdbApiKey = url.searchParams.get("api_key");
+      this.tmdbAuthorization = new Headers(init?.headers).get("authorization");
       return Response.json({
         page: 1,
         total_pages: 0,
@@ -217,7 +236,10 @@ class FakeDiagnosticServices {
 
 async function createFixture(
   configureRequired: boolean,
-  options: { jackettUrlFromEnvironment?: boolean } = {},
+  options: {
+    jackettUrlFromEnvironment?: boolean;
+    tmdbApiKeyInAccessToken?: boolean;
+  } = {},
 ): Promise<{
   runtime: BackendRuntime;
   services: FakeDiagnosticServices;
@@ -241,10 +263,14 @@ async function createFixture(
   };
   if (configureRequired) {
     Object.assign(environment, {
-      TMDB_API_KEY: "tmdb-key",
       BOBARR_TMDB_URL: "http://tmdb.test/3/",
       BOBARR_JACKETT_API_KEY: "jackett-key",
     });
+    if (options.tmdbApiKeyInAccessToken === true) {
+      environment["TMDB_ACCESS_TOKEN"] = "0123456789abcdef0123456789abcdef";
+    } else {
+      environment["TMDB_API_KEY"] = "tmdb-key";
+    }
     if (options.jackettUrlFromEnvironment !== false) {
       environment["BOBARR_JACKETT_URL"] = "http://jackett.test";
     }
