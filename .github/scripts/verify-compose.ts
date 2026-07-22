@@ -6,6 +6,7 @@ export {};
 
 type ComposePort = {
   host_ip?: string;
+  protocol?: string;
   target?: number;
   published?: string;
 };
@@ -109,6 +110,30 @@ assertConfiguredPort(
   9091,
   expectedTransmissionBindAddress,
   "Transmission",
+);
+const expectedTransmissionPeerBindAddress =
+  process.env["TRANSMISSION_PEER_BIND_ADDRESS"] ?? "0.0.0.0";
+const expectedTransmissionPeerPort = Number(
+  process.env["TRANSMISSION_PEER_PORT"] ?? "51413",
+);
+assertConfiguredPort(
+  transmission,
+  expectedTransmissionPeerPort,
+  expectedTransmissionPeerBindAddress,
+  "Transmission peer TCP",
+  "tcp",
+);
+assertConfiguredPort(
+  transmission,
+  expectedTransmissionPeerPort,
+  expectedTransmissionPeerBindAddress,
+  "Transmission peer UDP",
+  "udp",
+);
+assert(
+  transmission.environment?.["PEERPORT"] ===
+    String(expectedTransmissionPeerPort),
+  "Transmission must listen on the published peer port",
 );
 assert(
   Boolean(transmission.environment?.["USER"]) &&
@@ -313,11 +338,15 @@ function assertConfiguredPort(
   target: number,
   bindAddress: string,
   name: string,
+  protocol = "tcp",
 ): void {
-  const port = onlyPort(value, name);
+  const port = value.ports?.find(
+    (candidate) =>
+      candidate.target === target && (candidate.protocol ?? "tcp") === protocol,
+  );
   assert(
-    port.target === target && port.host_ip === bindAddress,
-    `${name} must publish container port ${target} on ${bindAddress}`,
+    port?.host_ip === bindAddress && port.published === String(target),
+    `${name} must publish ${target}/${protocol} on ${bindAddress}`,
   );
 }
 

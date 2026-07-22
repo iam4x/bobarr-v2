@@ -119,6 +119,29 @@ diagnostic service to local access by setting its bind address to `127.0.0.1`.
 FlareSolverr has no host port. Do not route the diagnostic services through a
 public reverse proxy.
 
+## Transmission peer port
+
+The base stack publishes `TRANSMISSION_PEER_PORT` (51413 by default) over both
+TCP and UDP on `TRANSMISSION_PEER_BIND_ADDRESS`. Keep the peer bind address at
+`0.0.0.0` unless the Docker host has a specific externally reachable interface.
+This setting is intentionally independent of `TRANSMISSION_BIND_ADDRESS`, so
+the authenticated Web UI can remain restricted to localhost.
+
+Publishing the Docker port is only the first NAT layer. Give the Docker host a
+stable LAN address, forward the same TCP and UDP port from the internet router
+to that address, and permit it through the host firewall. The router's external
+and internal port numbers must match `TRANSMISSION_PEER_PORT`. Test the port
+while Transmission is running. If the router's WAN address differs from the
+public address reported by an external service, the connection may use CGNAT;
+request a public address from the ISP or use a VPN provider that supports
+inbound port forwarding.
+
+The Gluetun overlay removes these host peer-port mappings because inbound VPN
+traffic enters through the tunnel, not the router. Seeding through Gluetun
+requires a VPN provider with port-forwarding support and provider-specific
+configuration that keeps Transmission's listening port synchronized with the
+assigned VPN port. Do not expose a fixed host peer port as a substitute.
+
 ## Offline administrator reset
 
 Stop Bobarr, then pass a new password through standard input inside a one-off
@@ -174,8 +197,9 @@ download reconciliation resumes without creating a duplicate torrent.
 ## Deployment verification
 
 CI runs `.github/scripts/verify-compose.ts` against the base and merged VPN
-models. The check validates the configured Transmission and Jackett bind
-addresses, their LinuxServer PUID/PGID privilege mapping, rejects any FlareSolverr host port, and checks unpinned service images,
+models. The check validates Transmission's TCP/UDP peer publication, the
+configured Transmission and Jackett bind addresses, their LinuxServer PUID/PGID
+privilege mapping, rejects any FlareSolverr host port, and checks unpinned service images,
 divergent media mounts, root application users, and an overlay that leaves
 Transmission on a direct network. In the VPN model, Gluetun owns the loopback
 9091 publication because Transmission shares its network namespace. The weekly

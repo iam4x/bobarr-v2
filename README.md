@@ -41,7 +41,10 @@ port 9117 by default. Configure indexers and FlareSolverr there. Set
 `JACKETT_BIND_ADDRESS=127.0.0.1` to restrict it to local access. Transmission's
 authenticated Web UI is published on host port 9091. Set
 `TRANSMISSION_BIND_ADDRESS=127.0.0.1` to restrict it to local access; Bobarr
-remains the normal control surface. The
+remains the normal control surface. Transmission's peer port is published over
+both TCP and UDP on port 51413 by default. Forward both protocols from the
+internet router to the Docker host and allow them through the host firewall so
+remote peers can initiate connections. The
 Compose default permits its session cookie over direct HTTP access, including a
 private Tailscale address. Set `BOBARR_COOKIE_SECURE=true` when serving Bobarr
 over HTTPS.
@@ -78,9 +81,9 @@ The REST API is rooted at `/api/v1`, OpenAPI is published at
 ## Deployment
 
 The base [Compose stack](./compose.yml) runs Bobarr, Jackett, FlareSolverr, and
-Transmission on one private application network. Only Bobarr is publicly
-bound; Jackett and Transmission's authenticated diagnostic UI are loopback-only,
-and FlareSolverr has no host port.
+Transmission on one private application network. Bobarr, Jackett, and
+Transmission's authenticated diagnostic UI use configurable host bindings;
+Transmission also publishes its peer port, while FlareSolverr has no host port.
 
 To route only Transmission through a VPN, configure the VPN variables and apply
 the Gluetun overlay:
