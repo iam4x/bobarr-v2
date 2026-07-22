@@ -57,6 +57,7 @@ import {
 } from "../lib/format";
 
 type LibraryFilter = "all" | "available" | "missing" | "active" | "failed";
+type ManualReleaseAction = "search" | "replace";
 const LIBRARY_PAGE_SIZE = 50;
 
 export function LibrarySummary({
@@ -166,6 +167,18 @@ export function canManuallySearchLibraryItem(
     item.monitorPolicy !== "none" &&
     isPositiveSafeInteger(item.tmdbId)
   );
+}
+
+export function libraryManualReleaseAction(
+  item: LibraryItem | null,
+): ManualReleaseAction | null {
+  if (
+    item?.acquisitionState === "available" &&
+    isPositiveSafeInteger(item.tmdbId)
+  ) {
+    return "replace";
+  }
+  return canManuallySearchLibraryItem(item) ? "search" : null;
 }
 
 export function LibraryCard({
@@ -622,14 +635,6 @@ function ManageLibraryDialog({
       api.post("retryLibraryItem", { params: { id: itemId() } }),
     onSuccess: refresh,
   });
-  const replaceMutation = useMutation({
-    mutationFn: () =>
-      api.post("replaceLibraryItem", {
-        params: { id: itemId() },
-        body: {},
-      }),
-    onSuccess: refresh,
-  });
   const removeMutation = useMutation({
     mutationFn: () =>
       api.delete("removeLibraryItem", {
@@ -638,10 +643,13 @@ function ManageLibraryDialog({
       }),
     onSuccess: refresh,
   });
-  const canManualSearch = canManuallySearchLibraryItem(item);
+  const manualReleaseAction = libraryManualReleaseAction(item);
   let dialogTitle = `Manage ${item?.title ?? "title"}`;
   if (manualSearchOpen) {
-    dialogTitle = `Find a release for ${item?.title ?? "title"}`;
+    dialogTitle =
+      manualReleaseAction === "replace"
+        ? `Choose a replacement for ${item?.title ?? "title"}`
+        : `Find a release for ${item?.title ?? "title"}`;
   }
   if (confirmRemove) dialogTitle = "Remove from library?";
 
@@ -816,13 +824,9 @@ function ManageLibraryDialog({
               </label>
             </section>
           ) : null}
-          {updateMutation.isError ||
-          retryMutation.isError ||
-          replaceMutation.isError ? (
+          {updateMutation.isError || retryMutation.isError ? (
             <div className="notice notice--error">
-              {updateMutation.error?.message ??
-                retryMutation.error?.message ??
-                replaceMutation.error?.message}
+              {updateMutation.error?.message ?? retryMutation.error?.message}
             </div>
           ) : null}
           <Button
@@ -845,7 +849,7 @@ function ManageLibraryDialog({
           >
             <RefreshCw size={16} /> Retry automatic search
           </Button>
-          {canManualSearch ? (
+          {manualReleaseAction === "search" ? (
             <Button
               type="button"
               variant="secondary"
@@ -854,12 +858,11 @@ function ManageLibraryDialog({
               <Search size={16} /> Search releases manually…
             </Button>
           ) : null}
-          {item?.acquisitionState === "available" ? (
+          {manualReleaseAction === "replace" ? (
             <Button
               type="button"
               variant="secondary"
-              busy={replaceMutation.isPending}
-              onClick={() => replaceMutation.mutate()}
+              onClick={() => setManualSearchOpen(true)}
             >
               <RefreshCw size={16} /> Replace release
             </Button>

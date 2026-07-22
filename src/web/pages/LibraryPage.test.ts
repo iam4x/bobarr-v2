@@ -8,6 +8,7 @@ import {
   canManuallySearchLibraryItem,
   LibraryCard,
   LibrarySummary,
+  libraryManualReleaseAction,
   libraryReleaseTarget,
 } from "./LibraryPage";
 
@@ -159,6 +160,23 @@ describe("library manual release targets", () => {
     expect(canManuallySearchLibraryItem({ ...movie, tmdbId: null })).toBe(
       false,
     );
+  });
+
+  test("opens the release picker instead of automatically replacing available media", () => {
+    expect(
+      libraryManualReleaseAction({
+        ...movie,
+        acquisitionState: "available",
+      }),
+    ).toBe("replace");
+    expect(libraryManualReleaseAction(movie)).toBe("search");
+    expect(
+      libraryManualReleaseAction({
+        ...movie,
+        tmdbId: null,
+        acquisitionState: "available",
+      }),
+    ).toBeNull();
   });
 
   test("maps a movie to a movie search", () => {
