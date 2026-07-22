@@ -8,6 +8,7 @@ import {
 } from "./common";
 import {
   AcquisitionStateSchema,
+  DownloadStateSchema,
   MediaKindSchema,
   MonitorPolicySchema,
 } from "./media";
@@ -35,6 +36,41 @@ export const LibraryItemSchema = z
     updatedAt: IsoDateTimeSchema,
   })
   .openapi("LibraryItem");
+
+export const LibraryCardItemSchema = LibraryItemSchema.extend({
+  rating: z
+    .object({
+      source: z.literal("tmdb"),
+      value: z.number().min(0).max(10),
+      votes: z.number().int().nonnegative().nullable(),
+    })
+    .nullable(),
+  storage: z.object({
+    libraryPath: z.string().min(1).nullable(),
+    downloadPath: z.string().min(1).nullable(),
+    fileCount: z.number().int().nonnegative(),
+    totalBytes: z.number().int().nonnegative(),
+    quality: z.string().min(1).nullable(),
+  }),
+  activeDownload: z
+    .object({
+      id: EntityIdSchema,
+      state: DownloadStateSchema,
+      progress: z.number().min(0).max(100),
+      downloadedBytes: z.number().int().nonnegative(),
+      totalBytes: z.number().int().nonnegative(),
+      downloadRate: z.number().int().nonnegative(),
+      etaSeconds: z.number().int().nonnegative().nullable(),
+    })
+    .nullable(),
+  episodeProgress: z
+    .object({
+      available: z.number().int().nonnegative(),
+      total: z.number().int().nonnegative(),
+    })
+    .nullable(),
+  nextAirDate: IsoDateTimeSchema.nullable(),
+}).openapi("LibraryCardItem");
 
 export const CreateLibraryItemRequestSchema = z
   .object({
@@ -89,7 +125,7 @@ export const LibraryQuerySchema = PaginationQuerySchema.extend({
 
 export const LibraryListResponseSchema = z
   .object({
-    items: z.array(LibraryItemSchema),
+    items: z.array(LibraryCardItemSchema),
     page: PageInfoSchema,
     summary: z.object({
       total: z.number().int().nonnegative(),
@@ -108,6 +144,7 @@ export const DeleteLibraryItemResponseSchema = z
 export type { AcquisitionState, MediaKind, MonitorPolicy } from "./media";
 export type LibraryStatus = z.infer<typeof LibraryStatusSchema>;
 export type LibraryItem = z.infer<typeof LibraryItemSchema>;
+export type LibraryCardItem = z.infer<typeof LibraryCardItemSchema>;
 export type CreateLibraryItemRequest = z.infer<
   typeof CreateLibraryItemRequestSchema
 >;

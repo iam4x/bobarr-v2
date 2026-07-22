@@ -8,12 +8,17 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
+  ArrowDown,
+  CalendarClock,
   Check,
+  CircleAlert,
   Film,
+  FolderOpen,
   Play,
   RefreshCw,
   ScanSearch,
   Search,
+  Star,
   Trash2,
   Tv,
 } from "lucide-react";
@@ -40,7 +45,16 @@ import {
   SelectField,
   SkeletonGrid,
 } from "../components/ui";
-import { formatDate, imageUrl, initials, mediaYear } from "../lib/format";
+import {
+  formatBytes,
+  formatDate,
+  formatEta,
+  formatRate,
+  imageUrl,
+  initials,
+  mediaYear,
+  toPercent,
+} from "../lib/format";
 
 type LibraryFilter = "all" | "available" | "missing" | "active" | "failed";
 const LIBRARY_PAGE_SIZE = 50;
@@ -101,6 +115,20 @@ function isPositiveSafeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
+function compactVoteCount(votes: number): string {
+  if (votes >= 1_000_000) {
+    return `${(votes / 1_000_000).toFixed(votes >= 10_000_000 ? 0 : 1)}m`;
+  }
+  if (votes >= 1_000) {
+    return `${(votes / 1_000).toFixed(votes >= 10_000 ? 0 : 1)}k`;
+  }
+  return String(votes);
+}
+
+function downloadStateLabel(state: string): string {
+  return `${state.slice(0, 1).toUpperCase()}${state.slice(1)}`;
+}
+
 export function libraryReleaseTarget(
   item: LibraryItem,
   seasonNumber?: number,
@@ -148,11 +176,42 @@ export function LibraryCard({
   onManage: (item: LibraryItem) => void;
 }) {
   const poster = imageUrl(item.posterPath, "w342");
-  const episodePercent = item.episodeProgress?.total
-    ? Math.round(
-        (item.episodeProgress.available / item.episodeProgress.total) * 100,
-      )
+  const rating =
+    item.rating ??
+    (item.voteAverage !== undefined && item.voteAverage !== null
+      ? { source: "tmdb" as const, value: item.voteAverage, votes: null }
+      : null);
+  const activeDownload = item.activeDownload ?? null;
+  const storage = item.storage;
+  const episodeProgress = item.episodeProgress;
+  const nextAirDate = item.nextAirDate;
+  const episodePercent = episodeProgress?.total
+    ? Math.round((episodeProgress.available / episodeProgress.total) * 100)
     : undefined;
+  const downloadPercent = activeDownload
+    ? toPercent(activeDownload.progress)
+    : undefined;
+  const activeDownloadPath = storage?.downloadPath;
+  const locationPath = activeDownload
+    ? (activeDownloadPath ?? storage?.libraryPath)
+    : (storage?.libraryPath ?? storage?.downloadPath);
+  let locationLabel = "Download folder";
+  if (activeDownload && activeDownloadPath) locationLabel = "Downloading to";
+  else if (storage?.libraryPath) locationLabel = "In library";
+  const storageDetails = [
+    storage?.quality ?? undefined,
+    storage && storage.fileCount > 0
+      ? `${storage.fileCount} ${storage.fileCount === 1 ? "file" : "files"}`
+      : undefined,
+    storage && storage.totalBytes > 0
+      ? formatBytes(storage.totalBytes)
+      : undefined,
+  ].filter((detail): detail is string => Boolean(detail));
+  const visibleGenres = item.genres?.slice(0, 2) ?? [];
+  const remainingGenres = Math.max(0, (item.genres?.length ?? 0) - 2);
+  const cardTitle = locationPath
+    ? `${item.title} · ${locationLabel}: ${locationPath}`
+    : `Open ${item.title} details`;
   return (
     <article className="library-card">
       <div className="library-card__poster">
@@ -170,25 +229,121 @@ export function LibraryCard({
               {mediaYear(item)} · {item.kind === "movie" ? "Movie" : "Series"}
             </p>
           </div>
+          {rating && rating.value > 0 ? (
+            <span
+              className="library-card__rating"
+              aria-label={`${rating.source.toUpperCase()} rating ${rating.value.toFixed(1)} out of 10${
+                rating.votes === null
+                  ? ""
+                  : `, ${rating.votes.toLocaleString()} votes`
+              }`}
+            >
+              <Star size={13} fill="currentColor" aria-hidden="true" />
+              <strong>{rating.value.toFixed(1)}</strong>
+              {rating.votes !== null ? (
+                <small>{compactVoteCount(rating.votes)}</small>
+              ) : null}
+            </span>
+          ) : null}
         </div>
-        <Badge tone={acquisitionTone(item.acquisitionState)}>
-          {item.acquisitionState}
-        </Badge>
-        {episodePercent !== undefined ? (
-          <div className="library-card__progress">
-            <div>
-              <span>{item.episodeProgress?.available} available</span>
-              <span>{item.episodeProgress?.total} episodes</span>
+        <div className="library-card__labels">
+          <Badge tone={acquisitionTone(item.acquisitionState)}>
+            {item.acquisitionState}
+          </Badge>
+          {visibleGenres.length > 0 ? (
+            <span className="library-card__genres" aria-label="Genres">
+              {visibleGenres.map((genre) => (
+                <span key={genre.id}>{genre.name}</span>
+              ))}
+              {remainingGenres > 0 ? <span>+{remainingGenres}</span> : null}
+            </span>
+          ) : null}
+        </div>
+
+        {activeDownload && downloadPercent !== undefined ? (
+          <div className="library-card__download">
+            <div className="library-card__progress-heading">
+              <span>
+                <ArrowDown size={13} aria-hidden="true" />
+                {downloadStateLabel(activeDownload.state)}
+              </span>
+              <strong>{downloadPercent}%</strong>
             </div>
             <ProgressBar
-              value={episodePercent}
-              label={`${item.title} episode availability`}
+              value={downloadPercent}
+              label={`${item.title} download progress`}
             />
+            <div className="library-card__download-stats">
+              {activeDownload.totalBytes > 0 ? (
+                <span>
+                  {formatBytes(activeDownload.downloadedBytes)} of{" "}
+                  {formatBytes(activeDownload.totalBytes)}
+                </span>
+              ) : null}
+              {activeDownload.downloadRate > 0 ? (
+                <span>{formatRate(activeDownload.downloadRate)}</span>
+              ) : null}
+              {activeDownload.etaSeconds !== null ? (
+                <span>ETA {formatEta(activeDownload.etaSeconds)}</span>
+              ) : null}
+            </div>
           </div>
         ) : null}
-        {item.nextAirDate ? (
+
+        {episodePercent !== undefined ? (
+          <div
+            className={`library-card__availability${
+              activeDownload ? " library-card__availability--compact" : ""
+            }`}
+          >
+            <div>
+              <span>
+                {episodeProgress?.available} of {episodeProgress?.total}{" "}
+                episodes ready
+              </span>
+              <strong>{episodePercent}%</strong>
+            </div>
+            {!activeDownload ? (
+              <ProgressBar
+                value={episodePercent}
+                label={`${item.title} episode availability`}
+              />
+            ) : null}
+          </div>
+        ) : null}
+
+        {locationPath ? (
+          <div className="library-card__location" title={locationPath}>
+            <FolderOpen size={14} aria-hidden="true" />
+            <span>
+              <small>{locationLabel}</small>
+              <strong>{locationPath}</strong>
+            </span>
+          </div>
+        ) : null}
+        {storageDetails.length > 0 ? (
+          <p className="library-card__storage-meta">
+            {storageDetails.join(" · ")}
+          </p>
+        ) : null}
+
+        {nextAirDate ? (
           <p className="library-card__date">
-            Next episode {formatDate(item.nextAirDate)}
+            <CalendarClock size={13} aria-hidden="true" />
+            Next episode {formatDate(nextAirDate)}
+          </p>
+        ) : null}
+
+        {!activeDownload && item.acquisitionState === "missing" ? (
+          <p className="library-card__helper">
+            <Search size={13} aria-hidden="true" />
+            No file yet · Open to find a release
+          </p>
+        ) : null}
+        {!activeDownload && item.acquisitionState === "failed" ? (
+          <p className="library-card__helper library-card__helper--danger">
+            <CircleAlert size={13} aria-hidden="true" />
+            Acquisition needs attention · Open to retry
           </p>
         ) : null}
       </div>
@@ -196,6 +351,7 @@ export function LibraryCard({
         type="button"
         className="library-card__hit-area"
         aria-label={`Open ${item.title} details`}
+        title={cardTitle}
         onClick={() => onManage(item)}
       />
     </article>

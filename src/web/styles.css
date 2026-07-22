@@ -1972,12 +1972,13 @@ textarea:focus-visible {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 10px;
+  gap: 9px;
   padding: 14px;
 }
 .library-card__heading {
   width: 100%;
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
 }
@@ -1996,19 +1997,159 @@ textarea:focus-visible {
   color: var(--text-muted);
   font-size: 11px;
 }
-.library-card__progress {
-  width: 100%;
-  margin-top: auto;
+.library-card__rating {
+  flex: 0 0 auto;
+  min-height: 27px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 7px;
+  border: 1px solid rgba(245, 197, 24, 0.24);
+  border-radius: 8px;
+  color: #f5c518;
+  background: rgba(245, 197, 24, 0.08);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
-.library-card__progress > div {
+.library-card__rating strong {
+  color: #ffe47b;
+  font-size: 12px;
+}
+.library-card__rating small {
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 650;
+}
+.library-card__labels {
+  width: 100%;
+  min-width: 0;
   display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.library-card__labels > .badge {
+  flex: 0 0 auto;
+  text-transform: capitalize;
+}
+.library-card__genres {
+  min-width: 0;
+  display: flex;
+  gap: 5px;
+  overflow: hidden;
+}
+.library-card__genres > span {
+  min-width: 0;
+  overflow: hidden;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--bg-raised);
+  font-size: 9px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.library-card__download,
+.library-card__availability {
+  width: 100%;
+}
+.library-card__download {
+  padding: 8px 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 17%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg-raised));
+}
+.library-card__progress-heading,
+.library-card__availability > div {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 10px;
   margin-bottom: 6px;
   color: var(--text-muted);
   font-size: 10px;
 }
+.library-card__progress-heading > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-soft);
+  font-weight: 700;
+}
+.library-card__progress-heading strong,
+.library-card__availability strong {
+  color: var(--text);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.library-card__download-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+.library-card__availability > div {
+  margin-bottom: 6px;
+}
+.library-card__availability--compact > div {
+  margin-bottom: 0;
+}
+.library-card__location {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  color: var(--text-muted);
+}
+.library-card__location > span {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.library-card__location small {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 650;
+}
+.library-card__location strong {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 10px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.library-card__storage-meta {
+  color: var(--text-muted) !important;
+  font-size: 9px !important;
+  font-variant-numeric: tabular-nums;
+}
+.library-card__date,
+.library-card__helper {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
 .library-card__date {
   margin-top: auto !important;
+}
+.library-card__helper {
+  margin-top: auto !important;
+  color: var(--text-soft) !important;
+}
+.library-card__helper--danger {
+  color: var(--red) !important;
 }
 
 .calendar-list {
@@ -3468,6 +3609,24 @@ textarea:focus-visible {
   .library-card__poster {
     min-height: 140px;
   }
+  .library-card__body {
+    gap: 8px;
+    padding: 12px;
+  }
+  .library-card__rating small {
+    display: none;
+  }
+  .library-card__download {
+    padding: 7px 8px;
+  }
+  .library-card__download-stats {
+    gap-inline: 8px;
+  }
+  .library-card__location > span {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 1px;
+  }
   .calendar-day {
     grid-template-columns: 1fr;
     gap: 10px;
@@ -3669,6 +3828,16 @@ textarea:focus-visible {
   }
   .library-card__poster {
     min-height: 125px;
+  }
+  .library-card__genres {
+    display: none;
+  }
+  .library-card__location small {
+    font-size: 8px;
+  }
+  .library-card__helper {
+    align-items: flex-start;
+    line-height: 1.35;
   }
   .dialog-actions {
     flex-direction: column-reverse;

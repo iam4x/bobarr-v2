@@ -1,12 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
-const eventQueryKeys: Record<string, string[]> = {
-  "download.changed": ["downloads"],
-  "job.changed": ["jobs"],
-  "library.changed": ["library"],
-  "activity.created": ["activity"],
-  "service.changed": ["system"],
+const eventQueryKeys: Record<string, string[][]> = {
+  "download.changed": [["downloads"], ["library"]],
+  "job.changed": [["jobs"]],
+  "library.changed": [["library"]],
+  "activity.created": [["activity"]],
+  "service.changed": [["system"]],
 };
 
 export function useServerEvents(enabled = true) {
@@ -28,8 +28,10 @@ export function useServerEvents(enabled = true) {
         void queryClient.invalidateQueries();
         return;
       }
-      const rootKey = eventQueryKeys[type] ?? ["activity"];
-      void queryClient.invalidateQueries({ queryKey: rootKey });
+      const rootKeys = eventQueryKeys[type] ?? [["activity"]];
+      for (const queryKey of rootKeys) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
     };
 
     for (const type of [

@@ -245,6 +245,66 @@ test("monitors a movie, manually grabs a Jackett release, and shows it in Activi
   await expect(access(organized)).rejects.toThrow();
 });
 
+test("shows responsive library card metadata during and after acquisition", async ({
+  page,
+  request,
+}, testInfo) => {
+  await authenticate(page);
+  await controlFakeServices(request, { jackettMode: "ready" });
+  const title = `E2E Library Card With A Deliberately Long Location ${testInfo.project.name}`;
+
+  await searchAndOpen(page, title);
+  await page.getByRole("button", { name: "Add to library" }).click();
+  const download = await waitForDownloadState(page, title, "downloading");
+
+  await page.goto("/library/movies");
+  let card = page.locator(".library-card").filter({ hasText: title });
+  await expect(card).toBeVisible();
+  await expect(card.getByLabel("TMDB rating 8.2 out of 10")).toBeVisible();
+  await expect(card.locator(".library-card__download")).toContainText("42%");
+  await expect(
+    card.getByRole("progressbar", { name: `${title} download progress` }),
+  ).toHaveAttribute("aria-valuenow", "42");
+  const downloadLocation = card.locator(".library-card__location");
+  await expect(downloadLocation).toContainText("Downloading to");
+  await expect(downloadLocation).toHaveAttribute(
+    "title",
+    `${mediaRoot}/downloads/${download.id}`,
+  );
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+
+  await controlFakeServices(request, { completeMatching: title });
+  await apiJson(page, "/api/v1/jobs", {
+    method: "POST",
+    body: { kind: "maintenance.reconcile.v1", payload: {} },
+  });
+  await waitForLibraryState(page, title, "available");
+
+  await page.reload();
+  card = page.locator(".library-card").filter({ hasText: title });
+  const organizedSuffix = `/bobarr-e2e/media/movies/${title} (2024)/${title} (2024).mkv`;
+  const organizedLocation = card.locator(".library-card__location");
+  await expect(organizedLocation).toContainText("In library");
+  await expect(organizedLocation).toHaveAttribute(
+    "title",
+    new RegExp(`${escapeRegex(organizedSuffix)}$`),
+  );
+  await expect(card.getByLabel("TMDB rating 8.2 out of 10")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+});
+
 test("chooses a release for a missing movie from library management", async ({
   page,
   request,

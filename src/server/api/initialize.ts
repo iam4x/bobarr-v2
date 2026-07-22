@@ -614,6 +614,7 @@ export async function refreshAllMetadata(options: {
           backdropPath: details.backdropPath,
           genres: details.genres,
           voteAverage: details.voteAverage,
+          voteCount: details.voteCount,
           numberOfSeasons: details.numberOfSeasons,
           numberOfEpisodes: details.numberOfEpisodes,
         },

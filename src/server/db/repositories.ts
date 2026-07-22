@@ -33,6 +33,7 @@ import {
   type LibraryQuery,
   type MediaKind,
   type AcquisitionState,
+  type DownloadState,
   type MonitorPolicy,
   type SecretMetadata,
   type SettingsResponse,
@@ -365,6 +366,64 @@ export class SecretRepository {
   }
 }
 
+export interface LibraryCardDownloadProjection {
+  id: string;
+  externalId: string | null;
+  state: DownloadState;
+  progress: number;
+  downloadedBytes: number;
+  totalBytes: number;
+  downloadRate: number;
+  uploadRate: number;
+  etaSeconds: number | null;
+  downloadPath: string | null;
+  error: string | null;
+  active: boolean;
+}
+
+export interface LibraryCardProjection {
+  rootId: string;
+  libraryPath: string | null;
+  fileCount: number;
+  totalBytes: number;
+  quality: string | null;
+  episodeAvailable: number;
+  episodeTotal: number;
+  nextAirAt: number | null;
+  download: LibraryCardDownloadProjection | null;
+}
+
+export interface LibrarySummary {
+  total: number;
+  downloaded: number;
+  active: number;
+  missing: number;
+  failed: number;
+}
+
+interface LibraryCardProjectionRow {
+  rootId: string;
+  libraryPath: string | null;
+  fileCount: number | null;
+  fileBytes: number | null;
+  quality: string | null;
+  episodeAvailable: number | null;
+  episodeTotal: number | null;
+  nextAirAt: number | null;
+  downloadId: string | null;
+  downloadExternalId: string | null;
+  downloadState: DownloadState | null;
+  downloadProgress: number | null;
+  downloadedBytes: number | null;
+  downloadTotalBytes: number | null;
+  downloadRate: number | null;
+  uploadRate: number | null;
+  etaSeconds: number | null;
+  downloadPath: string | null;
+  downloadError: string | null;
+  downloadActive: number | null;
+}
+
 export class LibraryRepository {
   constructor(
     private readonly database: BackendDatabase,
@@ -521,6 +580,188 @@ export class LibraryRepository {
       .where(where)
       .get()?.count;
     return { items: rows.map(mapLibraryItem), total: Number(total ?? 0) };
+  }
+
+  summarize(
+    query: Pick<LibraryQuery, "kind" | "parentId" | "monitorPolicy">,
+  ): LibrarySummary {
+    const filters: SQL[] = [];
+    if (query.kind !== undefined)
+      filters.push(eq(libraryItems.kind, query.kind));
+    if (query.parentId !== undefined)
+      filters.push(eq(libraryItems.parentId, query.parentId));
+    if (query.monitorPolicy !== undefined)
+      filters.push(eq(libraryItems.monitorPolicy, query.monitorPolicy));
+    const where = filters.length === 0 ? undefined : and(...filters);
+    const row = this.database.client
+      .select({
+        total: sql<number>`count(*)`,
+        downloaded: sql<number>`coalesce(sum(case when ${libraryItems.acquisitionState} = 'available' then 1 else 0 end), 0)`,
+        active: sql<number>`coalesce(sum(case when ${libraryItems.acquisitionState} in ('searching', 'queued', 'downloading', 'organizing') then 1 else 0 end), 0)`,
+        missing: sql<number>`coalesce(sum(case when ${libraryItems.acquisitionState} = 'missing' then 1 else 0 end), 0)`,
+        failed: sql<number>`coalesce(sum(case when ${libraryItems.acquisitionState} = 'failed' then 1 else 0 end), 0)`,
+      })
+      .from(libraryItems)
+      .where(where)
+      .get();
+    return {
+      total: Number(row?.total ?? 0),
+      downloaded: Number(row?.downloaded ?? 0),
+      active: Number(row?.active ?? 0),
+      missing: Number(row?.missing ?? 0),
+      failed: Number(row?.failed ?? 0),
+    };
+  }
+
+  /**
+   * Loads every card's descendant files, episodes, and preferred download in
+   * one SQLite query. A preferred download is the newest active transfer, or
+   * the newest historical transfer when no active transfer exists.
+   */
+  cardProjections(
+    rootIds: readonly string[],
+  ): Map<string, LibraryCardProjection> {
+    if (rootIds.length === 0) return new Map();
+    const rootValues = rootIds.map(() => "(?)").join(", ");
+    const now = this.clock.now().getTime();
+    const rows = this.database.sqlite
+      .query<LibraryCardProjectionRow, (string | number)[]>(`
+        WITH RECURSIVE
+          requested_roots(root_id) AS (VALUES ${rootValues}),
+          media_tree(root_id, media_id) AS (
+            SELECT root_id, root_id FROM requested_roots
+            UNION ALL
+            SELECT media_tree.root_id, child.id
+            FROM media_items AS child
+            JOIN media_tree ON child.parent_id = media_tree.media_id
+          ),
+          file_summary AS (
+            SELECT
+              media_tree.root_id AS root_id,
+              min(library_files.path) AS library_path,
+              count(library_files.id) AS file_count,
+              coalesce(sum(library_files.size_bytes), 0) AS file_bytes,
+              min(library_files.quality) AS quality
+            FROM media_tree
+            JOIN library_files ON library_files.media_item_id = media_tree.media_id
+            GROUP BY media_tree.root_id
+          ),
+          episode_summary AS (
+            SELECT
+              media_tree.root_id AS root_id,
+              coalesce(sum(case
+                when media_items.kind = 'episode'
+                  and media_items.monitor_policy <> 'none'
+                  and media_items.acquisition_state = 'available'
+                then 1 else 0 end), 0) AS episode_available,
+              coalesce(sum(case
+                when media_items.kind = 'episode'
+                  and media_items.monitor_policy <> 'none'
+                then 1 else 0 end), 0) AS episode_total,
+              min(case
+                when media_items.kind = 'episode'
+                  and media_items.monitor_policy <> 'none'
+                  and media_items.release_date >= ?
+                then media_items.release_date else null end) AS next_air_at
+            FROM media_tree
+            JOIN media_items ON media_items.id = media_tree.media_id
+            GROUP BY media_tree.root_id
+          ),
+          ranked_downloads AS (
+            SELECT
+              media_tree.root_id AS root_id,
+              downloads.id AS download_id,
+              downloads.external_id AS download_external_id,
+              downloads.state AS download_state,
+              downloads.progress AS download_progress,
+              downloads.downloaded_bytes AS downloaded_bytes,
+              downloads.total_bytes AS download_total_bytes,
+              downloads.download_rate AS download_rate,
+              downloads.upload_rate AS upload_rate,
+              downloads.eta_seconds AS eta_seconds,
+              downloads.download_path AS download_path,
+              downloads.error AS download_error,
+              case when downloads.state in (
+                'queued', 'downloading', 'paused', 'checking', 'organizing'
+              ) then 1 else 0 end AS download_active,
+              row_number() over (
+                partition by media_tree.root_id
+                order by
+                  case when downloads.state in (
+                    'queued', 'downloading', 'paused', 'checking', 'organizing'
+                  ) then 0 else 1 end,
+                  downloads.updated_at desc,
+                  downloads.id desc
+              ) AS download_rank
+            FROM media_tree
+            JOIN downloads ON downloads.media_item_id = media_tree.media_id
+            WHERE downloads.acquisition_state IS NULL
+              OR downloads.acquisition_state <> 'removed'
+          )
+        SELECT
+          requested_roots.root_id AS rootId,
+          file_summary.library_path AS libraryPath,
+          file_summary.file_count AS fileCount,
+          file_summary.file_bytes AS fileBytes,
+          file_summary.quality AS quality,
+          episode_summary.episode_available AS episodeAvailable,
+          episode_summary.episode_total AS episodeTotal,
+          episode_summary.next_air_at AS nextAirAt,
+          ranked_downloads.download_id AS downloadId,
+          ranked_downloads.download_external_id AS downloadExternalId,
+          ranked_downloads.download_state AS downloadState,
+          ranked_downloads.download_progress AS downloadProgress,
+          ranked_downloads.downloaded_bytes AS downloadedBytes,
+          ranked_downloads.download_total_bytes AS downloadTotalBytes,
+          ranked_downloads.download_rate AS downloadRate,
+          ranked_downloads.upload_rate AS uploadRate,
+          ranked_downloads.eta_seconds AS etaSeconds,
+          ranked_downloads.download_path AS downloadPath,
+          ranked_downloads.download_error AS downloadError,
+          ranked_downloads.download_active AS downloadActive
+        FROM requested_roots
+        LEFT JOIN file_summary ON file_summary.root_id = requested_roots.root_id
+        LEFT JOIN episode_summary ON episode_summary.root_id = requested_roots.root_id
+        LEFT JOIN ranked_downloads
+          ON ranked_downloads.root_id = requested_roots.root_id
+          AND ranked_downloads.download_rank = 1
+      `)
+      .all(...rootIds, now);
+    return new Map(
+      rows.map((row) => {
+        const download =
+          row.downloadId === null || row.downloadState === null
+            ? null
+            : {
+                id: row.downloadId,
+                externalId: row.downloadExternalId,
+                state: row.downloadState,
+                progress: Number(row.downloadProgress ?? 0),
+                downloadedBytes: Number(row.downloadedBytes ?? 0),
+                totalBytes: Number(row.downloadTotalBytes ?? 0),
+                downloadRate: Number(row.downloadRate ?? 0),
+                uploadRate: Number(row.uploadRate ?? 0),
+                etaSeconds: row.etaSeconds,
+                downloadPath: row.downloadPath,
+                error: row.downloadError,
+                active: row.downloadActive === 1,
+              };
+        return [
+          row.rootId,
+          {
+            rootId: row.rootId,
+            libraryPath: row.libraryPath,
+            fileCount: Number(row.fileCount ?? 0),
+            totalBytes: Number(row.fileBytes ?? 0),
+            quality: row.quality,
+            episodeAvailable: Number(row.episodeAvailable ?? 0),
+            episodeTotal: Number(row.episodeTotal ?? 0),
+            nextAirAt: row.nextAirAt,
+            download,
+          },
+        ];
+      }),
+    );
   }
 
   delete(id: string): boolean {

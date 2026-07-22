@@ -17,6 +17,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 
 import { registerBackupRestoreRoutes } from "./backup-restore";
+import { withLiveDownloadProgress } from "./live-download-progress";
 import { finalizeOpenApiDocument } from "./openapi-contract";
 import { registerProductRoutes } from "./product";
 import { requestBodyLimitMiddleware } from "./request-body-limit";
@@ -112,6 +113,32 @@ function jsonBody<TSchema extends z.ZodType>(schema: TSchema) {
     required: true,
     content: { "application/json": { schema } },
   } as const;
+}
+
+function libraryCardRating(metadata: Record<string, unknown>) {
+  const value = metadata["voteAverage"];
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < 0 ||
+    value > 10
+  ) {
+    return null;
+  }
+  const storedVotes = metadata["voteCount"];
+  const votes =
+    typeof storedVotes === "number" &&
+    Number.isSafeInteger(storedVotes) &&
+    storedVotes >= 0
+      ? storedVotes
+      : null;
+  return { source: "tmdb" as const, value, votes };
+}
+
+function isLibraryCardActiveDownloadState(state: string): boolean {
+  return ["queued", "downloading", "paused", "checking", "organizing"].includes(
+    state,
+  );
 }
 
 const routes = {
@@ -544,42 +571,80 @@ export function createApiApp(
   });
   // Static scan-review paths must be registered before `/library/{id}`.
   registerScanReviewRoutes(app, dependencies);
-  app.openapi(routes.listLibrary, (context) => {
+  app.openapi(routes.listLibrary, async (context) => {
     const query = context.req.valid("query");
     const result = dependencies.repositories.library.list(query);
-    const summaryQuery = {
-      limit: 1,
-      offset: 0,
+    const summary = dependencies.repositories.library.summarize({
       ...(query.kind === undefined ? {} : { kind: query.kind }),
       ...(query.parentId === undefined ? {} : { parentId: query.parentId }),
       ...(query.monitorPolicy === undefined
         ? {}
         : { monitorPolicy: query.monitorPolicy }),
-    };
-    const count = (
-      status?: Parameters<
-        typeof dependencies.repositories.library.list
-      >[0]["status"],
-    ): number =>
-      dependencies.repositories.library.list({
-        ...summaryQuery,
-        ...(status === undefined ? {} : { status }),
-      }).total;
+    });
+    const projections = dependencies.repositories.library.cardProjections(
+      result.items.map((item) => item.id),
+    );
+    const liveDownloads = await withLiveDownloadProgress(
+      [...projections.values()].flatMap((projection) =>
+        projection.download?.active ? [projection.download] : [],
+      ),
+      dependencies,
+      context.req.raw.signal,
+    );
+    const liveById = new Map(
+      liveDownloads.map((download) => [download.id, download]),
+    );
+    const items = result.items.map((item) => {
+      const projection = projections.get(item.id);
+      const selectedDownload = projection?.download ?? null;
+      const liveDownload =
+        selectedDownload?.active === true
+          ? (liveById.get(selectedDownload.id) ?? selectedDownload)
+          : null;
+      const activeDownload =
+        liveDownload && isLibraryCardActiveDownloadState(liveDownload.state)
+          ? liveDownload
+          : null;
+      return {
+        ...item,
+        rating: libraryCardRating(item.metadata),
+        storage: {
+          libraryPath: projection?.libraryPath ?? null,
+          downloadPath: selectedDownload?.downloadPath ?? null,
+          fileCount: projection?.fileCount ?? 0,
+          totalBytes: projection?.totalBytes ?? 0,
+          quality: projection?.quality ?? null,
+        },
+        activeDownload:
+          activeDownload === null
+            ? null
+            : {
+                id: activeDownload.id,
+                state: activeDownload.state,
+                progress: activeDownload.progress,
+                downloadedBytes: activeDownload.downloadedBytes,
+                totalBytes: activeDownload.totalBytes,
+                downloadRate: activeDownload.downloadRate,
+                etaSeconds: activeDownload.etaSeconds,
+              },
+        episodeProgress:
+          item.kind === "series"
+            ? {
+                available: projection?.episodeAvailable ?? 0,
+                total: projection?.episodeTotal ?? 0,
+              }
+            : null,
+        nextAirDate:
+          item.kind === "series" && projection?.nextAirAt
+            ? new Date(projection.nextAirAt).toISOString()
+            : null,
+      };
+    });
     return context.json(
       {
-        items: result.items,
+        items,
         page: { limit: query.limit, offset: query.offset, total: result.total },
-        summary: {
-          total: count(),
-          downloaded: count("available"),
-          active:
-            count("searching") +
-            count("queued") +
-            count("downloading") +
-            count("organizing"),
-          missing: count("missing"),
-          failed: count("failed"),
-        },
+        summary,
       },
       200,
     );

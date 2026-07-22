@@ -14,6 +14,7 @@ import { access, stat } from "node:fs/promises";
 
 import { z, type OpenAPIHono } from "@hono/zod-openapi";
 
+import { withLiveDownloadProgress } from "./live-download-progress";
 import {
   MAX_MULTIPART_OVERHEAD_BYTES,
   MAX_TORRENT_UPLOAD_BYTES,
@@ -1070,7 +1071,7 @@ export function registerProductRoutes(
   app.get("/api/v1/downloads", async (context) => {
     const query = parse(DownloadsQuerySchema, context.req.query());
     const result = dependencies.repositories.downloads.list(query);
-    const downloads = await withLiveProgress(
+    const downloads = await withLiveDownloadProgress(
       result.downloads,
       dependencies,
       context.req.raw.signal,
@@ -1948,6 +1949,7 @@ function metadataFor(details: CatalogDetails, includeFutureSeasons?: boolean) {
     backdropPath: details.backdropPath,
     genres: details.genres,
     voteAverage: details.voteAverage,
+    voteCount: details.voteCount,
     numberOfSeasons: details.numberOfSeasons,
     numberOfEpisodes: details.numberOfEpisodes,
     includeFutureSeasons: includeFutureSeasons ?? false,
@@ -2736,78 +2738,6 @@ function snapshotLibraryKind(
     if (page.items.length === 0 || offset >= page.total) break;
   }
   return items;
-}
-
-async function withLiveProgress<
-  T extends {
-    id: string;
-    externalId: string | null;
-    state: string;
-    progress: number;
-  },
->(
-  downloads: readonly T[],
-  dependencies: ApiDependencies,
-  signal?: AbortSignal,
-): Promise<T[]> {
-  try {
-    const [torrents, durableDownloads] = await Promise.all([
-      (await requireIntegrations(dependencies).transmission()).list(signal),
-      downloadRepositoryFromDatabase(
-        dependencies.database,
-      ).listForReconciliation(),
-    ]);
-    const byHash = new Map(
-      torrents.map((torrent) => [torrent.hash.toLowerCase(), torrent]),
-    );
-    const durableById = new Map(
-      durableDownloads.map((download) => [download.id, download]),
-    );
-    const downloadRoot =
-      dependencies.repositories.settings.ensureDefaults().settings.storage
-        .downloadsPath;
-    return downloads.map((download) => {
-      const torrent = download.externalId
-        ? byHash.get(download.externalId.toLowerCase())
-        : undefined;
-      const durable = durableById.get(download.id);
-      return torrent &&
-        durable &&
-        isOwnedTorrent(
-          durable,
-          torrent,
-          downloadRoot,
-          download.externalId ?? undefined,
-        )
-        ? ({ ...download, ...liveDownloadFields(download.state, torrent) } as T)
-        : download;
-    });
-  } catch {
-    return [...downloads];
-  }
-}
-
-function liveDownloadFields(durableState: string, torrent: TorrentSnapshot) {
-  let state = durableState;
-  if (durableState !== "completed" && durableState !== "failed") {
-    if (torrent.error) state = "failed";
-    else if (torrent.finished || torrent.progress >= 1) state = "seeding";
-    else if (torrent.status === "stopped") state = "paused";
-    else if (torrent.status.includes("verify")) state = "checking";
-    else state = "downloading";
-  }
-  const totalBytes = Math.max(torrent.sizeWhenDone, torrent.totalSize, 0);
-  return {
-    state,
-    progress: Math.max(0, Math.min(100, torrent.progress * 100)),
-    downloadedBytes: Math.max(0, totalBytes - torrent.leftUntilDone),
-    totalBytes,
-    downloadRate: Math.max(0, torrent.downloadRate),
-    uploadRate: Math.max(0, torrent.uploadRate),
-    etaSeconds: torrent.etaSeconds,
-    error: torrent.error,
-    files: torrent.files.map((file) => ({ ...file })),
-  };
 }
 
 async function controlDownload(

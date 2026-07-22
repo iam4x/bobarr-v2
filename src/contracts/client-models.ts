@@ -99,7 +99,28 @@ export interface LibraryItem extends Omit<CatalogItem, "kind" | "tmdbId"> {
   episodeProgress?: {
     available: number;
     total: number;
+  } | null;
+  rating?: {
+    source: "tmdb";
+    value: number;
+    votes: number | null;
+  } | null;
+  storage?: {
+    libraryPath: string | null;
+    downloadPath: string | null;
+    fileCount: number;
+    totalBytes: number;
+    quality?: string | null;
   };
+  activeDownload?: {
+    id: string;
+    state: DownloadState;
+    progress: number;
+    downloadedBytes: number;
+    totalBytes: number;
+    downloadRate: number;
+    etaSeconds: number | null;
+  } | null;
 }
 
 export interface ScanReviewCandidate {

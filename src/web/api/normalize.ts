@@ -61,12 +61,37 @@ function recordNumber(
     : undefined;
 }
 
+function recordGenres(
+  record: UnknownRecord | undefined,
+  key: string,
+): Array<{ id: number; name: string }> | undefined {
+  const value = record?.[key];
+  if (!Array.isArray(value)) return undefined;
+  const genres = value.flatMap((genre) => {
+    if (!isRecord(genre)) return [];
+    const id = recordNumber(genre, "id");
+    const name = recordString(genre, "name");
+    return id === undefined || name === undefined ? [] : [{ id, name }];
+  });
+  return genres.length > 0 ? genres : undefined;
+}
+
 function normalizeLibraryItem(value: UnknownRecord): UnknownRecord {
   if (!("monitorPolicy" in value)) return value;
   const metadata = isRecord(value["metadata"]) ? value["metadata"] : undefined;
+  const rating = isRecord(value["rating"]) ? value["rating"] : undefined;
   const posterUrl = recordString(value, "posterUrl");
   const acquisitionState =
     recordString(value, "acquisitionState") ?? recordString(value, "status");
+  const voteAverage =
+    recordNumber(value, "voteAverage") ??
+    recordNumber(metadata, "voteAverage") ??
+    recordNumber(rating, "value");
+  const genres =
+    recordGenres(value, "genres") ?? recordGenres(metadata, "genres");
+  const numberOfSeasons =
+    recordNumber(value, "numberOfSeasons") ??
+    recordNumber(metadata, "numberOfSeasons");
 
   return {
     overview: recordString(metadata, "overview") ?? "",
@@ -76,6 +101,10 @@ function normalizeLibraryItem(value: UnknownRecord): UnknownRecord {
       recordString(metadata, "backdropUrl"),
     ...value,
     posterPath: recordString(value, "posterPath") ?? posterUrl ?? null,
+    ...(voteAverage === undefined ? {} : { voteAverage }),
+    ...(genres === undefined ? {} : { genres }),
+    ...(numberOfSeasons === undefined ? {} : { numberOfSeasons }),
+    addedAt: recordString(value, "addedAt") ?? recordString(value, "createdAt"),
     ...(acquisitionState === undefined ? {} : { acquisitionState }),
   };
 }

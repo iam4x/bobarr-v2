@@ -57,13 +57,23 @@ describe("API collection normalization", () => {
       posterUrl: "https://image.example/poster.jpg",
       status: "missing",
       monitorPolicy: "all",
-      metadata: { overview: "From metadata" },
+      createdAt: "2026-07-03T20:00:00.000Z",
+      metadata: {
+        overview: "From metadata",
+        voteAverage: 7.8,
+        genres: [{ id: 18, name: "Drama" }],
+        numberOfSeasons: 3,
+      },
     } as unknown as LibraryItem;
 
     expect(collectionItems({ items: [item] })[0]).toMatchObject({
       posterPath: "https://image.example/poster.jpg",
       acquisitionState: "missing",
       overview: "From metadata",
+      voteAverage: 7.8,
+      genres: [{ id: 18, name: "Drama" }],
+      numberOfSeasons: 3,
+      addedAt: "2026-07-03T20:00:00.000Z",
     });
   });
 
