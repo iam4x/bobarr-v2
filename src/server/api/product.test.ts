@@ -668,6 +668,144 @@ describe("public product API", () => {
     ).toEqual([]);
   });
 
+  test("downloads incomplete seasons as scheduled individual episodes", async () => {
+    const fixture = await createFixture();
+    fixture.services.seriesEpisodeCount = 3;
+    fixture.services.episodeAirDates = ["2020-04-01", null, "2999-04-03"];
+    const session = await setup(fixture.runtime);
+
+    const response = await jsonRequest(
+      fixture.runtime,
+      "/api/v1/library",
+      "POST",
+      {
+        tmdbId: 1399,
+        kind: "series",
+        monitorPolicy: "selected",
+        seasonNumbers: [4],
+      },
+      session,
+    );
+    const parent = (await response.json()) as { id: string };
+    const season = fixture.runtime.repositories.media.children(parent.id)[0]!;
+    const episodes = fixture.runtime.repositories.media.children(season.id);
+    const jobs = await fixture.runtime.queue.list({
+      states: ["queued", "running"],
+      types: ["media.acquire.v1"],
+      limit: 100,
+    });
+    const jobsByMediaId = new Map(
+      jobs.map((job) => [
+        typeof job.payload === "object" &&
+        job.payload !== null &&
+        "mediaId" in job.payload
+          ? job.payload.mediaId
+          : null,
+        job,
+      ]),
+    );
+
+    expect(season.metadata["acquisitionMode"]).toBe("episodes");
+    expect(
+      episodes.map((episode) => episode.metadata["incrementalAcquisition"]),
+    ).toEqual([true, true, true]);
+    expect(jobsByMediaId.has(season.id)).toBe(false);
+    expect(episodes.every((episode) => jobsByMediaId.has(episode.id))).toBe(
+      true,
+    );
+    expect(jobsByMediaId.get(episodes[0]!.id)?.runAt).toBeLessThanOrEqual(
+      Date.now(),
+    );
+    expect(jobsByMediaId.get(episodes[1]!.id)?.runAt).toBeLessThanOrEqual(
+      Date.now(),
+    );
+    expect(jobsByMediaId.get(episodes[2]!.id)?.runAt).toBe(
+      Date.parse("2999-04-03T00:00:00.000Z"),
+    );
+
+    fixture.services.episodeAirDates = [
+      "2020-04-01",
+      "2020-04-02",
+      "2020-04-03",
+    ];
+    const tmdb = await fixture.runtime.integrations.tmdb();
+    await refreshFutureSeasons({
+      parent: fixture.runtime.repositories.media.get(parent.id)!,
+      details: await tmdb.details("tv", 1399),
+      repositories: fixture.runtime.repositories,
+      queue: fixture.runtime.queue,
+      client: tmdb,
+      language: "en",
+    });
+    expect(
+      fixture.runtime.repositories.media.get(season.id)?.metadata[
+        "acquisitionMode"
+      ],
+    ).toBe("episodes");
+  });
+
+  test("migrates a legacy incomplete season away from its season-pack job", async () => {
+    const fixture = await createFixture();
+    fixture.services.seriesEpisodeCount = 2;
+    const session = await setup(fixture.runtime);
+    const response = await jsonRequest(
+      fixture.runtime,
+      "/api/v1/library",
+      "POST",
+      {
+        tmdbId: 1399,
+        kind: "series",
+        monitorPolicy: "selected",
+        seasonNumbers: [4],
+      },
+      session,
+    );
+    const parent = (await response.json()) as { id: string };
+    const season = fixture.runtime.repositories.media.children(parent.id)[0]!;
+    fixture.runtime.repositories.media.updateMetadata(season.id, {
+      metadata: Object.fromEntries(
+        Object.entries(season.metadata).filter(
+          ([key]) => key !== "acquisitionMode",
+        ),
+      ),
+    });
+    fixture.services.episodeAirDates = ["2020-04-01", "2999-04-02"];
+
+    const tmdb = await fixture.runtime.integrations.tmdb();
+    await refreshFutureSeasons({
+      parent: fixture.runtime.repositories.media.get(parent.id)!,
+      details: await tmdb.details("tv", 1399),
+      repositories: fixture.runtime.repositories,
+      queue: fixture.runtime.queue,
+      client: tmdb,
+      language: "en",
+    });
+
+    const activeJobs = await fixture.runtime.queue.list({
+      states: ["queued", "running"],
+      types: ["media.acquire.v1"],
+      limit: 100,
+    });
+    const activeMediaIds = activeJobs.flatMap((job) =>
+      typeof job.payload === "object" &&
+      job.payload !== null &&
+      "mediaId" in job.payload &&
+      typeof job.payload.mediaId === "string"
+        ? [job.payload.mediaId]
+        : [],
+    );
+    const episodeIds = fixture.runtime.repositories.media
+      .children(season.id)
+      .map((episode) => episode.id);
+    expect(
+      fixture.runtime.repositories.media.get(season.id)?.metadata[
+        "acquisitionMode"
+      ],
+    ).toBe("episodes");
+    expect(activeMediaIds).not.toContain(season.id);
+    expect(activeMediaIds).toEqual(expect.arrayContaining(episodeIds));
+  });
+
   test("builds recommendations from monitored titles", async () => {
     const fixture = await createFixture();
     const session = await setup(fixture.runtime);
@@ -789,6 +927,7 @@ describe("public product API", () => {
 
     const tmdb = await fixture.runtime.integrations.tmdb();
     fixture.services.seriesEpisodeCount = 2;
+    fixture.services.episodeAirDates = ["2020-04-01", "2999-04-02"];
     let details = await tmdb.details("tv", 1399);
     const episodeChanges = await refreshFutureSeasons({
       parent: fixture.runtime.repositories.media.get(parent.id)!,
@@ -860,7 +999,7 @@ describe("public product API", () => {
     ).toBe(true);
   });
 
-  test("refreshes new episodes in selected seasons without opting into future seasons", async () => {
+  test("keeps fully aired selected seasons in season-pack mode", async () => {
     const fixture = await createFixture();
     const session = await setup(fixture.runtime);
     const response = await jsonRequest(
@@ -904,16 +1043,12 @@ describe("public product API", () => {
     const newEpisode = fixture.runtime.repositories.media
       .children(season.id)
       .find((episode) => !originalEpisodeIds.has(episode.id));
-    expect(newEpisode?.metadata["incrementalAcquisition"]).toBe(true);
+    expect(newEpisode?.metadata["incrementalAcquisition"]).toBe(false);
     expect(
-      (await fixture.runtime.queue.list({ types: ["media.acquire.v1"] })).some(
-        (job) =>
-          typeof job.payload === "object" &&
-          job.payload !== null &&
-          "mediaId" in job.payload &&
-          job.payload.mediaId === newEpisode?.id,
-      ),
-    ).toBe(true);
+      fixture.runtime.repositories.media.get(season.id)?.metadata[
+        "acquisitionMode"
+      ],
+    ).toBe("season");
   });
 
   test("supports explicit multi-season selection and later monitoring changes", async () => {
@@ -1889,6 +2024,7 @@ class FakeProductServices {
   seriesSeasonCount = 4;
   seriesEpisodeCount = 1;
   seasonAirYear: number | null = null;
+  episodeAirDates: Array<string | null> | null = null;
   private torrentSnapshot: Record<string, unknown> | null = null;
 
   replaceTorrentOwnership(labels: readonly string[]): void {
@@ -2092,7 +2228,9 @@ class FakeProductServices {
             id: 100_000 + season * 100 + index + 1,
             name: `Episode ${index + 1}`,
             overview: "An episode.",
-            air_date: `${airYear}-04-${String(index + 1).padStart(2, "0")}`,
+            air_date: this.episodeAirDates
+              ? (this.episodeAirDates[index] ?? null)
+              : `${airYear}-04-${String(index + 1).padStart(2, "0")}`,
             episode_number: index + 1,
             season_number: season,
             runtime: 55,

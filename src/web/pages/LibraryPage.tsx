@@ -159,6 +159,51 @@ export function libraryReleaseTarget(
   };
 }
 
+export function defaultEpisodeReleaseTarget(
+  season: LibraryItem | undefined,
+  episodes: readonly LibraryItem[],
+  now = Date.now(),
+): number | null {
+  if (!season || season.kind !== "season") return null;
+  const sorted = episodes
+    .filter(
+      (episode) =>
+        episode.kind === "episode" &&
+        episode.monitorPolicy !== "none" &&
+        ["missing", "failed", "queued", "downloading"].includes(
+          episode.acquisitionState,
+        ) &&
+        isPositiveSafeInteger(episode.episodeNumber),
+    )
+    .sort(
+      (left, right) => (left.episodeNumber ?? 0) - (right.episodeNumber ?? 0),
+    );
+  const incomplete = episodes.some((episode) => {
+    if (episode.kind !== "episode") return false;
+    if (!episode.releaseDate) return true;
+    const releaseAt = Date.parse(episode.releaseDate);
+    return !Number.isFinite(releaseAt) || releaseAt > now;
+  });
+  if (season.metadata?.["acquisitionMode"] !== "episodes" && !incomplete) {
+    return null;
+  }
+
+  const missing = sorted.filter((episode) =>
+    ["missing", "failed"].includes(episode.acquisitionState),
+  );
+  const released = missing.find((episode) => {
+    if (!episode.releaseDate) return true;
+    const releaseAt = Date.parse(episode.releaseDate);
+    return !Number.isFinite(releaseAt) || releaseAt <= now;
+  });
+  return (
+    released?.episodeNumber ??
+    missing[0]?.episodeNumber ??
+    sorted[0]?.episodeNumber ??
+    null
+  );
+}
+
 export function canManuallySearchLibraryItem(
   item: LibraryItem | null,
 ): boolean {
@@ -397,6 +442,7 @@ function LibraryManualReleaseSearch({
   );
   const [selectedSeason, setSelectedSeason] = useState<number>();
   const [selectedEpisode, setSelectedEpisode] = useState<number | null>(null);
+  const [defaultedSeason, setDefaultedSeason] = useState<number>();
 
   useEffect(() => {
     if (item.kind !== "series" || selectedSeason !== undefined) return;
@@ -447,6 +493,28 @@ function LibraryManualReleaseSearch({
         ),
     [episodeQuery.data],
   );
+  useEffect(() => {
+    if (
+      selectedSeason === undefined ||
+      defaultedSeason === selectedSeason ||
+      episodeQuery.isLoading
+    ) {
+      return;
+    }
+    setSelectedEpisode(
+      defaultEpisodeReleaseTarget(
+        selectedSeasonItem,
+        collectionItems(episodeQuery.data),
+      ),
+    );
+    setDefaultedSeason(selectedSeason);
+  }, [
+    defaultedSeason,
+    episodeQuery.data,
+    episodeQuery.isLoading,
+    selectedSeason,
+    selectedSeasonItem,
+  ]);
   const target = libraryReleaseTarget(item, selectedSeason, selectedEpisode);
   const hasValidTmdbId = isPositiveSafeInteger(item.tmdbId);
 
@@ -481,6 +549,7 @@ function LibraryManualReleaseSearch({
             onChange={(event) => {
               setSelectedSeason(Number(event.currentTarget.value));
               setSelectedEpisode(null);
+              setDefaultedSeason(undefined);
             }}
           >
             {monitoredSeasons.map((season) => (

@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   canManuallySearchLibraryItem,
+  defaultEpisodeReleaseTarget,
   LibraryCard,
   LibrarySummary,
   libraryManualReleaseAction,
@@ -206,6 +207,72 @@ describe("library manual release targets", () => {
       season: 4,
       episode: 2,
     });
+  });
+
+  test("defaults incomplete season searches to the earliest missing aired episode", () => {
+    const season: LibraryItem = {
+      ...movie,
+      id: "season-1",
+      kind: "season",
+      parentId: "series-1",
+      seasonNumber: 1,
+      metadata: { acquisitionMode: "episodes" },
+    };
+    const episode = (
+      episodeNumber: number,
+      releaseDate: string | null,
+      acquisitionState: LibraryItem["acquisitionState"] = "missing",
+    ): LibraryItem => ({
+      ...movie,
+      id: `episode-${episodeNumber}`,
+      kind: "episode",
+      parentId: season.id,
+      seasonNumber: 1,
+      episodeNumber,
+      releaseDate,
+      acquisitionState,
+    });
+
+    expect(
+      defaultEpisodeReleaseTarget(
+        season,
+        [
+          episode(1, "2026-01-01T00:00:00.000Z", "available"),
+          episode(2, "2026-02-01T00:00:00.000Z"),
+          episode(3, null),
+          episode(4, "2999-01-01T00:00:00.000Z"),
+        ],
+        Date.parse("2026-07-22T00:00:00.000Z"),
+      ),
+    ).toBe(2);
+  });
+
+  test("keeps season-pack selection for a fully aired season", () => {
+    const season: LibraryItem = {
+      ...movie,
+      id: "season-1",
+      kind: "season",
+      parentId: "series-1",
+      seasonNumber: 1,
+      metadata: { acquisitionMode: "season" },
+    };
+    expect(
+      defaultEpisodeReleaseTarget(
+        season,
+        [
+          {
+            ...movie,
+            id: "episode-1",
+            kind: "episode",
+            parentId: season.id,
+            seasonNumber: 1,
+            episodeNumber: 1,
+            releaseDate: "2020-01-01T00:00:00.000Z",
+          },
+        ],
+        Date.parse("2026-07-22T00:00:00.000Z"),
+      ),
+    ).toBeNull();
   });
 
   test("rejects incomplete or invalid provider identities", () => {

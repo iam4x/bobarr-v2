@@ -725,8 +725,13 @@ export function registerProductRoutes(
         },
       });
     }
-    for (const target of targets)
-      await enqueueAcquisition(target, dependencies);
+    for (const target of targets) {
+      if (target.kind === "season") {
+        await enqueueSeasonAcquisition(target, dependencies);
+      } else {
+        await enqueueAcquisition(target, dependencies);
+      }
+    }
     recordActivity(
       dependencies,
       "library.added",
@@ -1964,6 +1969,33 @@ type MonitoringInput = Pick<
   "monitorPolicy" | "seasonNumbers" | "includeFutureSeasons"
 >;
 
+type SeasonAcquisitionMode = "season" | "episodes";
+
+export function seasonUsesEpisodeAcquisition(item: LibraryItem): boolean {
+  return (
+    item.kind === "season" && item.metadata["acquisitionMode"] === "episodes"
+  );
+}
+
+function seasonAcquisitionMode(
+  season: Awaited<ReturnType<TmdbClient["season"]>> | null,
+  existing: LibraryItem | undefined,
+  now = Date.now(),
+): SeasonAcquisitionMode {
+  const episodes = season?.episodes ?? [];
+  const incomplete =
+    episodes.length === 0 ||
+    episodes.some((episode) => {
+      if (!episode.airDate) return true;
+      const releaseAt = Date.parse(`${episode.airDate}T00:00:00.000Z`);
+      return !Number.isFinite(releaseAt) || releaseAt > now;
+    });
+  if (incomplete || existing?.metadata["acquisitionMode"] === "episodes") {
+    return "episodes";
+  }
+  return "season";
+}
+
 async function updateExistingMonitoring(options: {
   parent: LibraryItem;
   input: MonitoringInput;
@@ -2093,9 +2125,7 @@ async function updateExistingMonitoring(options: {
       }
     }
     const refreshed = dependencies.repositories.media.get(season.id) ?? season;
-    if (["missing", "failed"].includes(refreshed.acquisitionState)) {
-      await enqueueAcquisition(refreshed, dependencies);
-    }
+    await enqueueSeasonAcquisition(refreshed, dependencies);
   }
   dependencies.repositories.media.updateState(
     parent.id,
@@ -2173,17 +2203,9 @@ export async function ensureMonitoredSeasons(options: {
   client: TmdbClient;
   language: string;
   signal?: AbortSignal;
-  incrementalEpisodes?: boolean;
 }): Promise<LibraryItem[]> {
-  const {
-    parent,
-    seasonNumbers,
-    dependencies,
-    client,
-    language,
-    signal,
-    incrementalEpisodes = false,
-  } = options;
+  const { parent, seasonNumbers, dependencies, client, language, signal } =
+    options;
   if (parent.kind !== "series" || parent.tmdbId === null) return [];
   const parentTmdbId = parent.tmdbId;
 
@@ -2207,6 +2229,7 @@ export async function ensureMonitoredSeasons(options: {
       .season(parentTmdbId, seasonNumber, { language, signal })
       .catch(() => null);
     const existingSeason = existingSeasons.get(seasonNumber);
+    const acquisitionMode = seasonAcquisitionMode(season, existingSeason);
     let seasonItem =
       existingSeason ??
       dependencies.repositories.media.create({
@@ -2225,9 +2248,23 @@ export async function ensureMonitoredSeasons(options: {
         metadata: {
           seriesTmdbId: parent.tmdbId,
           overview: season?.overview ?? "",
+          acquisitionMode,
         },
       });
     let changed = existingSeason === undefined;
+    if (
+      existingSeason &&
+      existingSeason.metadata["acquisitionMode"] !== acquisitionMode
+    ) {
+      seasonItem =
+        dependencies.repositories.media.updateMetadata(existingSeason.id, {
+          metadata: {
+            ...existingSeason.metadata,
+            acquisitionMode,
+          },
+        }) ?? seasonItem;
+      changed = true;
+    }
     if (existingSeason?.monitorPolicy === "none") {
       seasonItem =
         dependencies.repositories.media.updateMonitorPolicy(
@@ -2259,6 +2296,19 @@ export async function ensureMonitoredSeasons(options: {
           );
           changed = true;
         }
+        const incrementalAcquisition = acquisitionMode === "episodes";
+        if (
+          existingEpisode.metadata["incrementalAcquisition"] !==
+          incrementalAcquisition
+        ) {
+          dependencies.repositories.media.updateMetadata(existingEpisode.id, {
+            metadata: {
+              ...existingEpisode.metadata,
+              incrementalAcquisition,
+            },
+          });
+          changed = true;
+        }
         continue;
       }
       const episodeItem = dependencies.repositories.media.create({
@@ -2280,7 +2330,7 @@ export async function ensureMonitoredSeasons(options: {
           seriesTitle: parent.title,
           overview: episode.overview,
           runtimeMinutes: episode.runtimeMinutes,
-          incrementalAcquisition: incrementalEpisodes,
+          incrementalAcquisition: acquisitionMode === "episodes",
         },
       });
       if (episodeItem.releaseDate) {
@@ -2399,6 +2449,48 @@ async function enqueueAcquisition(
   });
   dependencies.events?.publish("job.changed", { id: job.id });
   return job;
+}
+
+async function enqueueSeasonAcquisition(
+  season: LibraryItem,
+  dependencies: ApiDependencies,
+): Promise<void> {
+  if (!seasonUsesEpisodeAcquisition(season)) {
+    if (["missing", "failed"].includes(season.acquisitionState)) {
+      await enqueueAcquisition(season, dependencies);
+    }
+    return;
+  }
+
+  await cancelAcquisitionJobs([season.id], dependencies);
+  const episodes = dependencies.repositories.media.children(season.id);
+  for (const episode of episodes) {
+    if (
+      episode.kind !== "episode" ||
+      !["missing", "failed"].includes(episode.acquisitionState)
+    ) {
+      continue;
+    }
+    const parsedReleaseAt = episode.releaseDate
+      ? Date.parse(episode.releaseDate)
+      : Date.now();
+    const releaseAt = Number.isFinite(parsedReleaseAt)
+      ? parsedReleaseAt
+      : Date.now();
+    if (!dependencies.queue || episode.monitorPolicy === "none") continue;
+    const job = await dependencies.queue.enqueue({
+      type: "media.acquire.v1",
+      payload: { version: 1, mediaId: episode.id },
+      dedupeKey: episode.id,
+      runAt: Math.max(Date.now(), releaseAt),
+      maxAttempts: 5,
+    });
+    dependencies.events?.publish("job.changed", { id: job.id });
+  }
+  dependencies.repositories.media.updateState(
+    season.id,
+    aggregateChildAcquisitionState(episodes),
+  );
 }
 
 async function stopMediaAutomation(

@@ -14,7 +14,10 @@ import {
   createIntegrationResolver,
   type IntegrationResolver,
 } from "./integration-resolver";
-import { ensureMonitoredSeasons } from "./product";
+import {
+  ensureMonitoredSeasons,
+  seasonUsesEpisodeAcquisition,
+} from "./product";
 import { AuthService, SecretVault } from "../auth";
 import { loadBackendConfig, type BackendConfig } from "../config";
 import {
@@ -417,11 +420,6 @@ export async function refreshFutureSeasons(options: {
   const currentSeasonNumbers = currentSeasons.map(
     (season) => season.seasonNumber,
   );
-  const knownEpisodeIds = new Set(
-    currentSeasons.flatMap((season) =>
-      repositories.media.children(season.id).map((episode) => episode.id),
-    ),
-  );
   const changedCurrentSeasons = await ensureMonitoredSeasons({
     parent,
     seasonNumbers: currentSeasonNumbers,
@@ -429,29 +427,10 @@ export async function refreshFutureSeasons(options: {
     client,
     language,
     signal,
-    incrementalEpisodes: true,
   });
   for (const season of changedCurrentSeasons) {
     const children = repositories.media.children(season.id);
-    const newEpisodes = children.filter(
-      (episode) =>
-        episode.kind === "episode" && !knownEpisodeIds.has(episode.id),
-    );
-    for (const episode of newEpisodes) {
-      const parsedReleaseAt = episode.releaseDate
-        ? Date.parse(episode.releaseDate)
-        : Date.now();
-      const releaseAt = Number.isFinite(parsedReleaseAt)
-        ? parsedReleaseAt
-        : Date.now();
-      await queue.enqueue({
-        type: "media.acquire.v1",
-        payload: { version: 1, mediaId: episode.id },
-        dedupeKey: episode.id,
-        runAt: Math.max(Date.now(), releaseAt),
-        maxAttempts: 5,
-      });
-    }
+    await enqueueSeasonDefault(queue, season, children);
     repositories.media.updateState(
       season.id,
       aggregateChildAcquisitionState(children),
@@ -487,12 +466,11 @@ export async function refreshFutureSeasons(options: {
     signal,
   });
   for (const season of newSeasons) {
-    await queue.enqueue({
-      type: "media.acquire.v1",
-      payload: { version: 1, mediaId: season.id },
-      dedupeKey: season.id,
-      maxAttempts: 5,
-    });
+    await enqueueSeasonDefault(
+      queue,
+      season,
+      repositories.media.children(season.id),
+    );
   }
   if (newSeasons.length > 0) {
     repositories.media.updateState(
@@ -562,7 +540,7 @@ export async function enqueueMissingMedia(
   for (const media of missing) {
     const supportsScheduledAcquisition =
       media.kind === "movie" ||
-      media.kind === "season" ||
+      (media.kind === "season" && !seasonUsesEpisodeAcquisition(media)) ||
       (media.kind === "episode" &&
         media.metadata["incrementalAcquisition"] === true);
     if (media.monitorPolicy === "none" || !supportsScheduledAcquisition) {
@@ -572,6 +550,75 @@ export async function enqueueMissingMedia(
       type: "media.acquire.v1",
       payload: { version: 1, mediaId: media.id },
       dedupeKey: media.id,
+      ...(media.kind === "episode"
+        ? {
+            runAt: Math.max(
+              Date.now(),
+              media.releaseDate ? Date.parse(media.releaseDate) : Date.now(),
+            ),
+          }
+        : {}),
+      maxAttempts: 5,
+    });
+  }
+}
+
+async function enqueueSeasonDefault(
+  queue: JobQueue,
+  season: LibraryItem,
+  episodes: readonly LibraryItem[],
+): Promise<void> {
+  if (!seasonUsesEpisodeAcquisition(season)) {
+    if (["missing", "failed"].includes(season.acquisitionState)) {
+      await queue.enqueue({
+        type: "media.acquire.v1",
+        payload: { version: 1, mediaId: season.id },
+        dedupeKey: season.id,
+        maxAttempts: 5,
+      });
+    }
+    return;
+  }
+
+  for (let offset = 0; ; offset += 1_000) {
+    const jobs = await queue.list({
+      states: ["queued", "running"],
+      types: ["media.acquire.v1"],
+      limit: 1_000,
+      offset,
+    });
+    for (const job of jobs) {
+      if (
+        typeof job.payload === "object" &&
+        job.payload !== null &&
+        "mediaId" in job.payload &&
+        job.payload.mediaId === season.id
+      ) {
+        await queue.cancel(job.id);
+      }
+    }
+    if (jobs.length < 1_000) break;
+  }
+
+  for (const episode of episodes) {
+    if (
+      episode.kind !== "episode" ||
+      episode.monitorPolicy === "none" ||
+      !["missing", "failed"].includes(episode.acquisitionState)
+    ) {
+      continue;
+    }
+    const parsedReleaseAt = episode.releaseDate
+      ? Date.parse(episode.releaseDate)
+      : Date.now();
+    const releaseAt = Number.isFinite(parsedReleaseAt)
+      ? parsedReleaseAt
+      : Date.now();
+    await queue.enqueue({
+      type: "media.acquire.v1",
+      payload: { version: 1, mediaId: episode.id },
+      dedupeKey: episode.id,
+      runAt: Math.max(Date.now(), releaseAt),
       maxAttempts: 5,
     });
   }

@@ -151,9 +151,10 @@ describe("maintenance pagination", () => {
           parentId: season.id,
           seasonNumber: 1,
           episodeNumber: 2,
-          title: "Newly aired episode",
+          title: "Future episode",
           status: "missing",
           monitorPolicy: "selected",
+          releaseDate: "2999-01-02T00:00:00.000Z",
           metadata: { incrementalAcquisition: true },
         }),
       );
@@ -171,6 +172,15 @@ describe("maintenance pagination", () => {
       );
       expect(queuedMediaIds.has(initialEpisode.id)).toBe(false);
       expect(queuedMediaIds.has(incrementalEpisode.id)).toBe(true);
+      expect(
+        (await queue.list({ types: ["media.acquire.v1"] })).find(
+          (job) =>
+            typeof job.payload === "object" &&
+            job.payload !== null &&
+            "mediaId" in job.payload &&
+            job.payload.mediaId === incrementalEpisode.id,
+        )?.runAt,
+      ).toBe(Date.parse("2999-01-02T00:00:00.000Z"));
     } finally {
       queue.close();
       database.close();
