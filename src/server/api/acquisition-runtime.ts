@@ -396,6 +396,7 @@ async function acquireMedia(
         );
         return;
       }
+      if (await fallbackSeasonToEpisodes(latest, options)) return;
       updateMediaTreeState(item.id, "missing", options.repositories);
       appendActivity(
         options,
@@ -429,6 +430,69 @@ async function acquireMedia(
     options.events.publish("library.changed", { id: item.id });
     throw error;
   }
+}
+
+async function fallbackSeasonToEpisodes(
+  season: LibraryItem,
+  options: AcquisitionRuntimeOptions,
+): Promise<boolean> {
+  if (season.kind !== "season") return false;
+  const episodes = options.repositories.media
+    .children(season.id)
+    .filter((episode) => episode.kind === "episode");
+  if (episodes.length === 0) return false;
+
+  options.repositories.media.updateMetadata(season.id, {
+    metadata: { ...season.metadata, acquisitionMode: "episodes" },
+  });
+  const now = Date.now();
+  let queued = 0;
+  for (const episode of episodes) {
+    if (episode.metadata["incrementalAcquisition"] !== true) {
+      options.repositories.media.updateMetadata(episode.id, {
+        metadata: {
+          ...episode.metadata,
+          incrementalAcquisition: true,
+        },
+      });
+    }
+    if (
+      episode.monitorPolicy === "none" ||
+      !["missing", "failed"].includes(episode.acquisitionState)
+    ) {
+      continue;
+    }
+    const parsedReleaseAt = episode.releaseDate
+      ? Date.parse(episode.releaseDate)
+      : now;
+    const releaseAt = Number.isFinite(parsedReleaseAt) ? parsedReleaseAt : now;
+    const job = await options.queue.enqueue({
+      type: MEDIA_ACQUIRE_JOB,
+      payload: { version: 1, mediaId: episode.id },
+      dedupeKey: episode.id,
+      runAt: Math.max(now, releaseAt),
+      maxAttempts: 5,
+    });
+    options.events.publish("job.changed", { id: job.id });
+    queued += 1;
+  }
+  updateMediaTreeState(
+    season.id,
+    aggregateChildAcquisitionState(
+      options.repositories.media.children(season.id),
+    ),
+    options.repositories,
+  );
+  appendActivity(
+    options,
+    "acquisition.season-fallback",
+    "warning",
+    `No eligible season pack was found for ${season.title}; queued ${queued} individual episode${queued === 1 ? "" : "s"}`,
+    season.id,
+    { episodeCount: episodes.length, queued },
+  );
+  options.events.publish("library.changed", { id: season.id });
+  return true;
 }
 
 function targetForItem(

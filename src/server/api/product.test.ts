@@ -806,6 +806,89 @@ describe("public product API", () => {
     expect(activeMediaIds).toEqual(expect.arrayContaining(episodeIds));
   });
 
+  test("falls back to individual episodes when no season pack is found", async () => {
+    const fixture = await createFixture();
+    fixture.services.seriesEpisodeCount = 2;
+    fixture.services.seasonPackUnavailable = true;
+    const session = await setup(fixture.runtime);
+    const response = await jsonRequest(
+      fixture.runtime,
+      "/api/v1/library",
+      "POST",
+      {
+        tmdbId: 1399,
+        kind: "series",
+        monitorPolicy: "selected",
+        seasonNumbers: [4],
+      },
+      session,
+    );
+    const parent = (await response.json()) as { id: string };
+    const season = fixture.runtime.repositories.media.children(parent.id)[0]!;
+    const episodes = fixture.runtime.repositories.media.children(season.id);
+    expect(season.metadata["acquisitionMode"]).toBe("season");
+
+    const seasonJob = (
+      await fixture.runtime.queue.list({
+        states: ["queued", "running"],
+        types: ["media.acquire.v1"],
+        limit: 100,
+      })
+    ).find(
+      (job) =>
+        typeof job.payload === "object" &&
+        job.payload !== null &&
+        "mediaId" in job.payload &&
+        job.payload.mediaId === season.id,
+    );
+    const handler = fixture.runtime.acquisition.handlers["media.acquire.v1"];
+    if (!seasonJob || !handler) {
+      throw new Error("Expected a season acquisition job");
+    }
+    await handler(seasonJob, {
+      signal: new AbortController().signal,
+      heartbeat: async () => undefined,
+    });
+
+    const episodeIds = new Set(episodes.map((episode) => episode.id));
+    const episodeJobs = (
+      await fixture.runtime.queue.list({
+        states: ["queued", "running"],
+        types: ["media.acquire.v1"],
+        limit: 100,
+      })
+    ).filter(
+      (job) =>
+        typeof job.payload === "object" &&
+        job.payload !== null &&
+        "mediaId" in job.payload &&
+        typeof job.payload.mediaId === "string" &&
+        episodeIds.has(job.payload.mediaId),
+    );
+    expect(
+      fixture.runtime.repositories.media.get(season.id)?.metadata[
+        "acquisitionMode"
+      ],
+    ).toBe("episodes");
+    expect(
+      episodes.map(
+        (episode) =>
+          fixture.runtime.repositories.media.get(episode.id)?.metadata[
+            "incrementalAcquisition"
+          ],
+      ),
+    ).toEqual([true, true]);
+    expect(episodeJobs).toHaveLength(2);
+    expect(episodeJobs.every((job) => job.runAt <= Date.now())).toBe(true);
+    expect(
+      fixture.runtime.repositories.downloads.list({
+        limit: 50,
+        offset: 0,
+        mediaId: season.id,
+      }).downloads,
+    ).toEqual([]);
+  });
+
   test("builds recommendations from monitored titles", async () => {
     const fixture = await createFixture();
     const session = await setup(fixture.runtime);
@@ -2025,6 +2108,7 @@ class FakeProductServices {
   seriesEpisodeCount = 1;
   seasonAirYear: number | null = null;
   episodeAirDates: Array<string | null> | null = null;
+  seasonPackUnavailable = false;
   private torrentSnapshot: Record<string, unknown> | null = null;
 
   replaceTorrentOwnership(labels: readonly string[]): void {
@@ -2268,6 +2352,16 @@ class FakeProductServices {
     }
     const season = Number(url.searchParams.get("season"));
     const episode = Number(url.searchParams.get("ep"));
+    if (
+      this.seasonPackUnavailable &&
+      Number.isSafeInteger(season) &&
+      season > 0 &&
+      (!Number.isSafeInteger(episode) || episode <= 0)
+    ) {
+      return new Response(emptyTorznabFeed(), {
+        headers: { "content-type": "application/rss+xml" },
+      });
+    }
     return new Response(
       Number.isSafeInteger(season) && season > 0
         ? torznabFeed(
@@ -2448,6 +2542,13 @@ function torznabFeed(title = "The.Matrix.1999.1080p.WEB-DL.x265-GRP"): string {
           <torznab:attr name="indexer" value="Fake Indexer" />
         </item>
       </channel>
+    </rss>`;
+}
+
+function emptyTorznabFeed(): string {
+  return `<?xml version="1.0"?>
+    <rss xmlns:torznab="http://torznab.com/schemas/2015/feed">
+      <channel><torznab:response offset="0" total="0" /></channel>
     </rss>`;
 }
 
