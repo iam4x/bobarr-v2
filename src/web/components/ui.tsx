@@ -342,7 +342,7 @@ export function Dialog({
   description?: string;
   onClose: () => void;
   children: ReactNode;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
 }) {
   const titleId = useId();
   const descriptionId = useId();
@@ -413,7 +413,7 @@ export function Dialog({
             <h2 id={titleId}>{title}</h2>
             {description ? <p id={descriptionId}>{description}</p> : null}
           </div>
-          <IconButton label="Close dialog" onClick={onClose} autoFocus>
+          <IconButton label="Close dialog" onClick={onClose}>
             <X size={20} />
           </IconButton>
         </header>

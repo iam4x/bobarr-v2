@@ -29,6 +29,8 @@ export interface DownloadPayload {
 
 export interface FakeServicesState {
   jackettMode: "ready" | "empty" | "degraded";
+  seasonScenario: "standard" | "partially-aired";
+  emptyEpisodes: number[];
   tmdbDegraded: boolean;
   tmdbAmbiguous: boolean;
   transmissionDegraded: boolean;
@@ -77,6 +79,8 @@ export async function controlFakeServices(
   request: APIRequestContext,
   input: {
     jackettMode?: "ready" | "empty" | "degraded";
+    seasonScenario?: "standard" | "partially-aired";
+    emptyEpisodes?: number[];
     tmdbDegraded?: boolean;
     tmdbAmbiguous?: boolean;
     transmissionDegraded?: boolean;

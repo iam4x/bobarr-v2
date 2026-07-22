@@ -23,6 +23,8 @@ test.describe.configure({ mode: "serial" });
 test.beforeEach(async ({ request }) => {
   await controlFakeServices(request, {
     jackettMode: "ready",
+    seasonScenario: "standard",
+    emptyEpisodes: [],
     tmdbAmbiguous: false,
     tmdbDegraded: false,
     transmissionDegraded: false,
@@ -228,7 +230,7 @@ test("monitors a movie, manually grabs a Jackett release, and shows it in Activi
 
   await page.goto("/library/movies");
   const card = page.locator(".library-card").filter({ hasText: title });
-  await card.getByRole("button", { name: `Manage ${title}` }).click();
+  await card.getByRole("button", { name: `Open ${title} details` }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Remove from library" }).click();
   await dialog.getByLabel("Delete organized library files").check();
@@ -320,7 +322,7 @@ test("chooses a release for a missing movie from library management", async ({
 
   await page.goto("/library/movies");
   const card = page.locator(".library-card").filter({ hasText: title });
-  await card.getByRole("button", { name: `Manage ${title}` }).click();
+  await card.getByRole("button", { name: `Open ${title} details` }).click();
   const dialog = page.getByRole("dialog");
   await dialog
     .getByRole("button", { name: "Search releases manually" })
@@ -346,7 +348,7 @@ test("chooses a release for a missing movie from library management", async ({
     .locator(".library-card")
     .filter({ hasText: title });
   await downloadingCard
-    .getByRole("button", { name: `Manage ${title}` })
+    .getByRole("button", { name: `Open ${title} details` })
     .click();
   const replacementDialog = page.getByRole("dialog");
   await replacementDialog
@@ -411,10 +413,10 @@ test("acquires and organizes two monitored TV seasons", async ({
   await controlFakeServices(request, { jackettMode: "ready" });
   await page.goto("/library/shows");
   const card = page.locator(".library-card").filter({ hasText: title });
-  await card.getByRole("button", { name: `Manage ${title}` }).click();
+  await card.getByRole("button", { name: `Open ${title} details` }).click();
   const dialog = page.getByRole("dialog");
   await dialog
-    .getByRole("button", { name: "Search releases manually" })
+    .getByRole("button", { name: /Search any release manually/ })
     .click();
   await expect(dialog.getByLabel("Season", { exact: true })).toHaveValue("2");
   await dialog.getByLabel("Season", { exact: true }).selectOption("1");
@@ -471,6 +473,112 @@ test("acquires and organizes two monitored TV seasons", async ({
       await expect(access(organized)).resolves.toBeUndefined();
     }
   }
+});
+
+test("explains a partially aired TV season episode by episode", async ({
+  page,
+  request,
+}, testInfo) => {
+  await authenticate(page);
+  await controlFakeServices(request, {
+    jackettMode: "ready",
+    seasonScenario: "partially-aired",
+    emptyEpisodes: [3, 4, 6],
+  });
+  const title = `E2E Partially Aired Series ${testInfo.project.name}`;
+  const search = await apiJson<CatalogSearchPayload>(
+    page,
+    `/api/v1/catalog/search?query=${encodeURIComponent(title)}&kind=series`,
+  );
+  const item = search.items[0]!;
+  await apiJson(page, "/api/v1/library", {
+    method: "POST",
+    body: {
+      tmdbId: item.tmdbId,
+      kind: "series",
+      monitorPolicy: "selected",
+      seasonNumbers: [1],
+      includeFutureSeasons: false,
+    },
+  });
+
+  await waitForDownloadState(page, `${title}.2024.S01E01`, "downloading");
+  await waitForDownloadState(page, `${title}.2024.S01E02`, "downloading");
+  await controlFakeServices(request, { completeMatching: "S01E01" });
+  await apiJson(page, "/api/v1/jobs", {
+    method: "POST",
+    body: { kind: "maintenance.reconcile.v1", payload: {} },
+  });
+
+  let seasonId = "";
+  await expect
+    .poll(
+      async () => {
+        const library = await apiJson<{
+          items: Array<{ id: string; title: string }>;
+        }>(page, "/api/v1/library?limit=100");
+        const series = library.items.find((entry) => entry.title === title);
+        if (!series) return "series-missing";
+        const seasons = await apiJson<{
+          items: Array<{ id: string; seasonNumber: number }>;
+        }>(
+          page,
+          `/api/v1/library?limit=100&parentId=${encodeURIComponent(series.id)}`,
+        );
+        seasonId =
+          seasons.items.find((season) => season.seasonNumber === 1)?.id ?? "";
+        if (!seasonId) return "season-missing";
+        const episodes = await apiJson<{
+          items: Array<{ episodeNumber: number; status: string }>;
+        }>(
+          page,
+          `/api/v1/library?limit=100&parentId=${encodeURIComponent(seasonId)}`,
+        );
+        return episodes.items
+          .sort((left, right) => left.episodeNumber - right.episodeNumber)
+          .map((episode) => episode.status)
+          .join(",");
+      },
+      { timeout: 15_000 },
+    )
+    .toBe("available,downloading,missing,missing,missing,missing");
+
+  await page.goto("/library/shows");
+  const card = page.locator(".library-card").filter({ hasText: title });
+  await card.getByRole("button", { name: `Open ${title} details` }).click();
+  const dialog = page.getByRole("dialog", { name: title });
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: /Season 1/ }),
+  ).toHaveAttribute("aria-pressed", "true");
+  const summary = dialog.getByLabel("Season summary");
+  await expect(summary).toContainText("Ready1");
+  await expect(summary).toContainText("In progress1");
+  await expect(summary).toContainText("Aired & missing2");
+  await expect(summary).toContainText("Upcoming / TBA2");
+  await expect(dialog.locator(".episode-row--ready")).toContainText("S01E01");
+  await expect(dialog.locator(".episode-row--downloading")).toContainText(
+    "S01E02",
+  );
+  await expect(dialog.locator(".episode-row--missing")).toHaveCount(2);
+  await expect(dialog.locator(".episode-row--upcoming")).toContainText(
+    "S01E05",
+  );
+  await expect(dialog.locator(".episode-row--tba")).toContainText("S01E06");
+  await expect(dialog.getByText("2 aired episodes are missing")).toBeVisible();
+  expect(
+    await dialog.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+
+  await dialog
+    .getByRole("button", {
+      name: "Find a release for S01E03 Episode 3",
+    })
+    .click();
+  await expect(dialog.getByLabel("Season", { exact: true })).toHaveValue("1");
+  await expect(dialog.getByLabel("Release target")).toHaveValue("3");
 });
 
 test("adds validated magnet and metainfo downloads through the responsive dialog", async ({

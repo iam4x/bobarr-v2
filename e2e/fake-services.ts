@@ -1,10 +1,12 @@
 import { mkdir } from "node:fs/promises";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 
 const port = Number(process.env["FAKE_SERVICES_PORT"] ?? 3101);
 let sessionSequence = 1;
 let sessionId = `bobarr-e2e-transmission-session-${sessionSequence}`;
 
 type JackettMode = "ready" | "empty" | "degraded";
+type SeasonScenario = "standard" | "partially-aired";
 
 interface FakeMedia {
   id: number;
@@ -25,6 +27,8 @@ interface FakeTorrent {
 const media = new Map<number, FakeMedia>();
 const torrents = new Map<string, FakeTorrent>();
 let jackettMode: JackettMode = "ready";
+let seasonScenario: SeasonScenario = "standard";
+let emptyEpisodes = new Set<number>();
 let tmdbDegraded = false;
 let tmdbAmbiguous = false;
 let transmissionDegraded = false;
@@ -40,6 +44,8 @@ Bun.serve({
     if (url.pathname === "/__control" && request.method === "POST") {
       const input = (await request.json()) as {
         jackettMode?: JackettMode;
+        seasonScenario?: SeasonScenario;
+        emptyEpisodes?: number[];
         tmdbDegraded?: boolean;
         tmdbAmbiguous?: boolean;
         transmissionDegraded?: boolean;
@@ -48,6 +54,10 @@ Bun.serve({
         resetTorrents?: boolean;
       };
       if (input.jackettMode !== undefined) jackettMode = input.jackettMode;
+      if (input.seasonScenario !== undefined)
+        seasonScenario = input.seasonScenario;
+      if (input.emptyEpisodes !== undefined)
+        emptyEpisodes = new Set(input.emptyEpisodes);
       if (input.tmdbDegraded !== undefined) tmdbDegraded = input.tmdbDegraded;
       if (input.tmdbAmbiguous !== undefined)
         tmdbAmbiguous = input.tmdbAmbiguous;
@@ -66,6 +76,8 @@ Bun.serve({
       }
       return Response.json({
         jackettMode,
+        seasonScenario,
+        emptyEpisodes: [...emptyEpisodes],
         tmdbDegraded,
         tmdbAmbiguous,
         transmissionDegraded,
@@ -219,6 +231,10 @@ function catalogPayload(item: FakeMedia): Record<string, unknown> {
 }
 
 function detailsPayload(item: FakeMedia): Record<string, unknown> {
+  let numberOfEpisodes: number | undefined;
+  if (item.kind === "tv") {
+    numberOfEpisodes = seasonScenario === "partially-aired" ? 12 : 4;
+  }
   return {
     ...catalogPayload(item),
     genres: [{ id: 18, name: "Drama" }],
@@ -229,11 +245,40 @@ function detailsPayload(item: FakeMedia): Record<string, unknown> {
     homepage: null,
     imdb_id: item.kind === "movie" ? "tt1234567" : null,
     number_of_seasons: item.kind === "tv" ? 2 : undefined,
-    number_of_episodes: item.kind === "tv" ? 4 : undefined,
+    number_of_episodes: numberOfEpisodes,
   };
 }
 
 function seasonPayload(mediaId: number, seasonNumber: number) {
+  if (seasonScenario === "partially-aired") {
+    const airDates = [
+      dateOffset(-28),
+      dateOffset(-21),
+      dateOffset(-14),
+      dateOffset(-7),
+      dateOffset(7),
+      null,
+    ];
+    return {
+      id: mediaId * 10 + seasonNumber,
+      name: `Season ${seasonNumber}`,
+      overview: `A partially aired season with mixed acquisition states.`,
+      air_date: dateOffset(-35),
+      season_number: seasonNumber,
+      poster_path: null,
+      episodes: airDates.map((airDate, index) => ({
+        id: mediaId * 100 + seasonNumber * 10 + index + 1,
+        name: `Episode ${index + 1}`,
+        overview: `Episode ${index + 1} of the partially aired fixture.`,
+        air_date: airDate,
+        episode_number: index + 1,
+        season_number: seasonNumber,
+        runtime: 48,
+        still_path: null,
+        vote_average: 8,
+      })),
+    };
+  }
   return {
     id: mediaId * 10 + seasonNumber,
     name: `Season ${seasonNumber}`,
@@ -255,6 +300,13 @@ function seasonPayload(mediaId: number, seasonNumber: number) {
   };
 }
 
+function dateOffset(days: number): string {
+  const date = new Date();
+  date.setUTCHours(12, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function jackettResponse(url: URL): Response {
   if (jackettMode === "degraded") {
     return new Response("Jackett fixture unavailable", { status: 503 });
@@ -268,6 +320,7 @@ function jackettResponse(url: URL): Response {
   if (jackettMode === "empty") return torznabFeed("");
   const season = numericParameter(url, "season");
   const episode = numericParameter(url, "ep");
+  if (episode !== null && emptyEpisodes.has(episode)) return torznabFeed("");
   const marker = releaseMarker(season, episode);
   const releaseTitle = query
     .replace(/\s+S\d{1,2}(?:E\d{1,3})?$/i, "")
@@ -445,15 +498,29 @@ function transmissionTorrentPayload(torrent: FakeTorrent) {
 async function completeTorrents(matching: string): Promise<void> {
   for (const torrent of torrents.values()) {
     if (!torrent.name.includes(matching)) continue;
-    const allowedRoot = "/tmp/bobarr-e2e/media/downloads/";
-    if (!torrent.downloadDirectory.startsWith(allowedRoot)) {
+    const downloadDirectory = resolve(torrent.downloadDirectory);
+    const relativeDirectory = relative(
+      resolve("/tmp/bobarr-e2e"),
+      downloadDirectory,
+    );
+    const pathSegments = relativeDirectory.split(sep);
+    const hasMediaDownloadsSegment = pathSegments.some(
+      (segment, index) =>
+        segment === "media" && pathSegments[index + 1] === "downloads",
+    );
+    if (
+      relativeDirectory === ".." ||
+      relativeDirectory.startsWith(`..${sep}`) ||
+      isAbsolute(relativeDirectory) ||
+      !hasMediaDownloadsSegment
+    ) {
       throw new TypeError("Fake torrent directory escaped the E2E media root");
     }
-    await mkdir(torrent.downloadDirectory, { recursive: true });
+    await mkdir(downloadDirectory, { recursive: true });
     await Promise.all(
       torrentFileNames(torrent.name).map((fileName) =>
         Bun.write(
-          `${torrent.downloadDirectory}/${fileName}`,
+          `${downloadDirectory}/${fileName}`,
           `deterministic media for ${fileName}`,
         ),
       ),

@@ -7,10 +7,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   canManuallySearchLibraryItem,
   defaultEpisodeReleaseTarget,
+  defaultTvSeasonNumber,
+  episodeDisplayStatus,
   LibraryCard,
   LibrarySummary,
   libraryManualReleaseAction,
   libraryReleaseTarget,
+  summarizeEpisodeStates,
 } from "./LibraryPage";
 
 const movie: LibraryItem = {
@@ -286,5 +289,116 @@ describe("library manual release targets", () => {
     expect(libraryReleaseTarget(series, 0)).toBeNull();
     expect(libraryReleaseTarget(series, 1, 0)).toBeNull();
     expect(libraryReleaseTarget(unmatched)).toBeNull();
+  });
+
+  test("separates ready, active, aired-missing, upcoming, and TBA episodes", () => {
+    const now = Date.parse("2026-07-22T18:00:00.000Z");
+    const episode = (
+      episodeNumber: number,
+      acquisitionState: LibraryItem["acquisitionState"],
+      releaseDate: string | null,
+    ): LibraryItem => ({
+      ...movie,
+      id: `episode-${episodeNumber}`,
+      kind: "episode",
+      parentId: "season-1",
+      seasonNumber: 8,
+      episodeNumber,
+      acquisitionState,
+      releaseDate,
+    });
+    const episodes = [
+      episode(1, "available", "2026-07-01T00:00:00.000Z"),
+      episode(2, "downloading", "2026-07-08T00:00:00.000Z"),
+      episode(3, "missing", "2026-07-15T00:00:00.000Z"),
+      episode(4, "missing", "2026-07-22T00:00:00.000Z"),
+      episode(5, "missing", "2026-07-29T00:00:00.000Z"),
+      episode(6, "missing", null),
+    ];
+
+    expect(
+      episodes.map((item) => episodeDisplayStatus(item, now).state),
+    ).toEqual([
+      "ready",
+      "downloading",
+      "missing",
+      "upcoming",
+      "upcoming",
+      "tba",
+    ]);
+    expect(summarizeEpisodeStates(episodes, now)).toEqual({
+      ready: 1,
+      active: 1,
+      missing: 1,
+      upcoming: 3,
+      unmonitored: 0,
+      total: 6,
+    });
+  });
+
+  test("keeps failures actionable and unmonitored episodes out of future counts", () => {
+    const now = Date.parse("2026-07-22T18:00:00.000Z");
+    const failed: LibraryItem = {
+      ...movie,
+      id: "episode-failed",
+      kind: "episode",
+      parentId: "season-1",
+      seasonNumber: 8,
+      episodeNumber: 3,
+      acquisitionState: "failed",
+      releaseDate: "2026-07-15T00:00:00.000Z",
+    };
+    const unmonitored: LibraryItem = {
+      ...failed,
+      id: "episode-unmonitored",
+      monitorPolicy: "none",
+      acquisitionState: "unmonitored",
+    };
+
+    expect(episodeDisplayStatus(failed, now)).toMatchObject({
+      state: "failed",
+      needsAttention: true,
+    });
+    expect(episodeDisplayStatus(unmonitored, now)).toMatchObject({
+      state: "unmonitored",
+      needsAttention: false,
+    });
+  });
+
+  test("opens the latest aired season needing attention instead of a future season", () => {
+    const now = Date.parse("2026-07-22T18:00:00.000Z");
+    const season = (
+      seasonNumber: number,
+      acquisitionState: LibraryItem["acquisitionState"],
+      releaseDate: string,
+    ): LibraryItem => ({
+      ...movie,
+      id: `season-${seasonNumber}`,
+      kind: "season",
+      parentId: "series-1",
+      seasonNumber,
+      acquisitionState,
+      releaseDate,
+    });
+
+    expect(
+      defaultTvSeasonNumber(
+        [
+          season(7, "available", "2025-06-01T00:00:00.000Z"),
+          season(8, "missing", "2026-05-01T00:00:00.000Z"),
+          season(9, "missing", "2027-05-01T00:00:00.000Z"),
+        ],
+        now,
+      ),
+    ).toBe(8);
+    expect(
+      defaultTvSeasonNumber(
+        [
+          season(8, "missing", "2026-05-01T00:00:00.000Z"),
+          season(9, "downloading", "2027-05-01T00:00:00.000Z"),
+        ],
+        now,
+      ),
+    ).toBe(9);
   });
 });
