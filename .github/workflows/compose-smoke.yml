@@ -1,0 +1,168 @@
+name: Compose smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compose-smoke
+  cancel-in-progress: false
+
+jobs:
+  base:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      BOBARR_BIND_ADDRESS: 127.0.0.1
+      BOBARR_PUBLIC_URL: http://127.0.0.1:3000
+      TRANSMISSION_PASSWORD: compose-smoke-password
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Prepare writable mounts
+        run: |
+          echo "PUID=$(id -u)" >> "$GITHUB_ENV"
+          echo "PGID=$(id -g)" >> "$GITHUB_ENV"
+          mkdir -p config/jackett config/transmission media/downloads media/movies media/tv
+
+      - name: Validate merged models
+        env:
+          VPN_SERVICE_PROVIDER: custom
+        run: bun .github/scripts/verify-compose.ts
+
+      - name: Start base stack
+        run: docker compose up --detach --build --wait --wait-timeout 300
+
+      - name: Verify health, exposure, and permissions
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:3000/health/ready
+          curl --fail --silent --show-error http://127.0.0.1:9117/UI/Dashboard >/dev/null
+          curl --fail --silent --show-error --user "bobarr:$TRANSMISSION_PASSWORD" http://127.0.0.1:9091/transmission/web/ >/dev/null
+          if curl --fail --silent --connect-timeout 2 http://127.0.0.1:8191/health; then
+            echo "FlareSolverr is unexpectedly host-accessible" >&2
+            exit 1
+          fi
+          test "$(docker compose exec -T bobarr id -u)" = "$PUID"
+          test "$(docker compose exec -T jackett id -u)" = "$PUID"
+          test "$(docker compose exec -T transmission id -u)" = "$PUID"
+          docker compose exec -T bobarr sh -c 'test -w /config && test -w /media/downloads && test -w /media/movies && test -w /media/tv'
+          docker compose exec -T jackett sh -c 'test -w /config'
+          docker compose exec -T transmission sh -c 'test -w /config && test -w /media/downloads'
+
+      - name: Verify persistence and restart recovery
+        run: |
+          test -s config/bobarr.sqlite
+          test -s config/jobs.sqlite
+          test -s config/master.key
+          docker compose restart bobarr transmission
+          docker compose up --detach --wait --wait-timeout 180
+          curl --fail --silent --show-error http://127.0.0.1:3000/health/ready
+          test -s config/bobarr.sqlite
+          test -s config/jobs.sqlite
+
+      - name: Verify hardlink-capable media layout
+        run: |
+          printf 'bobarr-compose-smoke' > media/downloads/hardlink-source
+          ln media/downloads/hardlink-source media/movies/hardlink-target
+          test "$(stat -c %i media/downloads/hardlink-source)" = "$(stat -c %i media/movies/hardlink-target)"
+
+      - name: Show service logs after failure
+        if: failure()
+        run: docker compose logs --no-color --tail 300
+
+      - name: Tear down
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+
+  gluetun:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BOBARR_BIND_ADDRESS: 127.0.0.1
+      BOBARR_PUBLIC_URL: http://127.0.0.1:3000
+      TRANSMISSION_PASSWORD: compose-smoke-password
+      VPN_SERVICE_PROVIDER: ${{ secrets.GLUETUN_VPN_SERVICE_PROVIDER }}
+      VPN_TYPE: wireguard
+      WIREGUARD_PRIVATE_KEY: ${{ secrets.GLUETUN_WIREGUARD_PRIVATE_KEY }}
+      WIREGUARD_ADDRESSES: ${{ secrets.GLUETUN_WIREGUARD_ADDRESSES }}
+      VPN_SERVER_COUNTRIES: ${{ secrets.GLUETUN_SERVER_COUNTRIES }}
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Detect configured VPN smoke credentials
+        id: vpn
+        run: |
+          if test -n "$VPN_SERVICE_PROVIDER" && test -n "$WIREGUARD_PRIVATE_KEY" && test -n "$WIREGUARD_ADDRESSES"; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping live VPN smoke; configure the GLUETUN_* repository secrets to enable it."
+          fi
+
+      - name: Setup Bun
+        if: steps.vpn.outputs.enabled == 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Prepare writable mounts and tunnel device
+        if: steps.vpn.outputs.enabled == 'true'
+        run: |
+          echo "PUID=$(id -u)" >> "$GITHUB_ENV"
+          echo "PGID=$(id -g)" >> "$GITHUB_ENV"
+          mkdir -p config/jackett config/transmission media/downloads media/movies media/tv
+          if ! test -c /dev/net/tun; then
+            sudo mkdir -p /dev/net
+            sudo mknod /dev/net/tun c 10 200
+            sudo chmod 0666 /dev/net/tun
+          fi
+
+      - name: Validate VPN model
+        if: steps.vpn.outputs.enabled == 'true'
+        run: bun .github/scripts/verify-compose.ts
+
+      - name: Start VPN stack
+        if: steps.vpn.outputs.enabled == 'true'
+        run: docker compose -f compose.yml -f compose.gluetun.yml up --detach --build --wait --wait-timeout 420
+
+      - name: Verify loopback diagnostics and VPN egress
+        if: steps.vpn.outputs.enabled == 'true'
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:3000/health/ready
+          curl --fail --silent --show-error --user "bobarr:$TRANSMISSION_PASSWORD" http://127.0.0.1:9091/transmission/web/ >/dev/null
+          docker compose -f compose.yml -f compose.gluetun.yml exec -T transmission curl --fail --silent --show-error --max-time 15 https://1.1.1.1/cdn-cgi/trace >/dev/null
+
+      - name: Verify VPN-loss fail-closed behavior
+        if: steps.vpn.outputs.enabled == 'true'
+        run: |
+          docker compose -f compose.yml -f compose.gluetun.yml stop gluetun
+          if docker compose -f compose.yml -f compose.gluetun.yml exec -T transmission curl --fail --silent --max-time 10 https://1.1.1.1/cdn-cgi/trace; then
+            echo "Transmission retained public egress after Gluetun stopped" >&2
+            exit 1
+          fi
+          docker compose -f compose.yml -f compose.gluetun.yml start gluetun
+          docker compose -f compose.yml -f compose.gluetun.yml up --detach --wait --wait-timeout 300
+          curl --fail --silent --show-error http://127.0.0.1:3000/health/ready
+
+      - name: Show VPN service logs after failure
+        if: failure() && steps.vpn.outputs.enabled == 'true'
+        run: docker compose -f compose.yml -f compose.gluetun.yml logs --no-color --tail 300
+
+      - name: Tear down VPN stack
+        if: always() && steps.vpn.outputs.enabled == 'true'
+        run: docker compose -f compose.yml -f compose.gluetun.yml down --volumes --remove-orphans

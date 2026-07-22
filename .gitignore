@@ -5,6 +5,15 @@ node_modules
 out
 dist
 *.tgz
+playwright-report
+test-results
+
+# local application and connector runtime state
+/config/
+
+# generated visual QA artifacts
+/artifacts/
+/design-qa.md
 
 # code coverage
 coverage
@@ -12,8 +21,8 @@ coverage
 
 # logs
 logs
-_.log
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+*.log
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # dotenv environment variable files
 .env

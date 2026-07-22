@@ -1,0 +1,37 @@
+services:
+  bobarr:
+    environment:
+      BOBARR_TRANSMISSION_URL: http://gluetun:9091/transmission/rpc
+
+  gluetun:
+    image: qmcgaw/gluetun:v3.40.0@sha256:2b42bfa046757145a5155acece417b65b4443c8033fb88661a8e9dcf7fda5a00
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      VPN_SERVICE_PROVIDER: ${VPN_SERVICE_PROVIDER:?Set VPN_SERVICE_PROVIDER in .env}
+      VPN_TYPE: ${VPN_TYPE:-wireguard}
+      WIREGUARD_PRIVATE_KEY: ${WIREGUARD_PRIVATE_KEY:-}
+      WIREGUARD_ADDRESSES: ${WIREGUARD_ADDRESSES:-}
+      OPENVPN_USER: ${OPENVPN_USER:-}
+      OPENVPN_PASSWORD: ${OPENVPN_PASSWORD:-}
+      SERVER_COUNTRIES: ${VPN_SERVER_COUNTRIES:-}
+      FIREWALL: "on"
+      FIREWALL_INPUT_PORTS: 9091
+      TZ: ${TZ:-Etc/UTC}
+    ports:
+      - 127.0.0.1:${TRANSMISSION_WEB_PORT:-9091}:9091
+    networks:
+      - backend
+
+  transmission:
+    network_mode: service:gluetun
+    networks: !reset []
+    ports: !reset []
+    depends_on:
+      gluetun:
+        condition: service_healthy

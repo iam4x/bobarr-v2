@@ -1,5 +1,5 @@
 [install]
 minimumReleaseAge = 172800
 
-[test]
-pathIgnorePatterns = ["**/*.test.tsx"]
+[serve.static]
+plugins = ["bun-plugin-tailwind"]

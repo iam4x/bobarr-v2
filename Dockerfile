@@ -1,23 +1,31 @@
-FROM oven/bun:alpine AS builder
+FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS dependencies
 
 WORKDIR /app
-
 COPY package.json bun.lock ./
-RUN bun install
+RUN HUSKY=0 bun install --frozen-lockfile
+
+FROM dependencies AS builder
 
 COPY . .
 RUN bun run build
 
-# Production stage
-FROM oven/bun:alpine
+FROM oven/bun:1.3.14-alpine@sha256:5acc90a93e91ff07bf72aa90a7c9f0fa189765aec90b47bdbf2152d2196383c0 AS runtime
 
 WORKDIR /app
+ENV NODE_ENV=production \
+    BOBARR_CONFIG_DIR=/config \
+    BOBARR_MEDIA_DIR=/media \
+    PORT=3000
 
-# Install curl for healthcheck
-RUN apk --no-cache add curl
+COPY --from=builder --chown=bun:bun /app/dist ./dist
+COPY --from=builder --chown=bun:bun /app/package.json ./package.json
+COPY --from=builder --chown=bun:bun /app/scripts/reset-admin.ts ./scripts/reset-admin.ts
 
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY package.json bun.lock ./
+USER bun
+EXPOSE 3000
+VOLUME ["/config", "/media"]
 
-CMD ["bun", "start"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:3000/health/ready >/dev/null || exit 1
+
+CMD ["bun", "--cwd", "dist", "index.js"]
