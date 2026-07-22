@@ -193,22 +193,27 @@ export function ReleaseSearchPanel({
           </span>
         </div>
       </form>
-      {replacementRequired ? (
-        <div className="notice notice--warning" role="note">
-          Choosing a candidate starts an explicit replacement. Any active Bobarr
-          download for this item is stopped and its incomplete data is removed;
-          an organized library file remains until its replacement is ready.
-        </div>
-      ) : null}
-      {queuedTitle ? (
-        <div className="notice notice--success" role="status">
-          {replacementRequired ? "Replacement" : "Release"} queued:{" "}
-          {queuedTitle}. Track it in Activity.
-        </div>
-      ) : null}
-      {grabMutation.isError ? (
-        <div className="notice notice--error" role="alert">
-          {grabMutation.error.message}
+      {replacementRequired || queuedTitle || grabMutation.isError ? (
+        <div className="notice-stack">
+          {replacementRequired ? (
+            <div className="notice notice--warning" role="note">
+              Choosing a candidate starts an explicit replacement. Any active
+              Bobarr download for this item is stopped and its incomplete data
+              is removed; an organized library file remains until its
+              replacement is ready.
+            </div>
+          ) : null}
+          {queuedTitle ? (
+            <div className="notice notice--success" role="status">
+              {replacementRequired ? "Replacement" : "Release"} queued:{" "}
+              {queuedTitle}. Track it in Activity.
+            </div>
+          ) : null}
+          {grabMutation.isError ? (
+            <div className="notice notice--error" role="alert">
+              {grabMutation.error.message}
+            </div>
+          ) : null}
         </div>
       ) : null}
       {releaseQuery.isLoading ? (
