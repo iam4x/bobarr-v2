@@ -5,7 +5,7 @@ import type {
   ReactNode,
 } from "react";
 
-import { AlertCircle, Inbox, LoaderCircle, X } from "lucide-react";
+import { AlertCircle, ChevronDown, Inbox, LoaderCircle, X } from "lucide-react";
 import { useEffect, useId, useRef } from "react";
 
 import { ApiError } from "../api/client";
@@ -208,7 +208,7 @@ export function SelectField({
       <span className="field__label" id={labelId}>
         {label}
       </span>
-      <select
+      <SelectControl
         {...props}
         id={selectId}
         aria-invalid={Boolean(error)}
@@ -216,7 +216,7 @@ export function SelectField({
         aria-describedby={describedBy}
       >
         {children}
-      </select>
+      </SelectControl>
       {error ? (
         <span className="field__error" id={errorId}>
           {error}
@@ -228,6 +228,24 @@ export function SelectField({
         </span>
       ) : null}
     </label>
+  );
+}
+
+export function SelectControl({
+  children,
+  className,
+  ...props
+}: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <span className={classNames("select-control", className)}>
+      <select {...props}>{children}</select>
+      <ChevronDown
+        className="select-control__icon"
+        aria-hidden="true"
+        size={18}
+        strokeWidth={2}
+      />
+    </span>
   );
 }
 

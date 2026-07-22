@@ -47,6 +47,7 @@ import {
   InlineSpinner,
   ProgressBar,
   SegmentedControl,
+  SelectControl,
   SelectField,
   SkeletonGrid,
 } from "../components/ui";
@@ -1430,7 +1431,7 @@ function TvSeriesManagement({
             <div className="tv-settings__content">
               <label className="field">
                 <span className="field__label">Automatic monitoring</span>
-                <select
+                <SelectControl
                   value={policy}
                   disabled={!canConfigureMonitoring}
                   onChange={(event) =>
@@ -1440,7 +1441,7 @@ function TvSeriesManagement({
                   <option value="none">Do not monitor</option>
                   <option value="selected">Selected seasons</option>
                   <option value="all">All current seasons</option>
-                </select>
+                </SelectControl>
                 <span className="field__hint">
                   Controls what Bobarr may search for automatically.
                 </span>
@@ -1789,7 +1790,7 @@ export function MovieManagement({
               <div className="tv-settings__content">
                 <label className="field">
                   <span className="field__label">Automatic monitoring</span>
-                  <select
+                  <SelectControl
                     value={policy}
                     disabled={!hasTmdbMatch}
                     onChange={(event) =>
@@ -1802,7 +1803,7 @@ export function MovieManagement({
                         : "Off — do not acquire this movie"}
                     </option>
                     <option value="all">On — search again if missing</option>
-                  </select>
+                  </SelectControl>
                   <span className="field__hint">
                     A one-time replacement does not require monitoring.
                   </span>

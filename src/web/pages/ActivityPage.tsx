@@ -40,6 +40,7 @@ import {
   InlineSpinner,
   ProgressBar,
   SegmentedControl,
+  SelectControl,
 } from "../components/ui";
 import {
   formatBytes,
@@ -96,14 +97,14 @@ export function DownloadFilterBar({
   return (
     <label className="compact-select download-filter">
       <span>Download status</span>
-      <select
+      <SelectControl
         value={value}
         onChange={(event) => onChange(event.target.value as DownloadFilter)}
       >
         <option value="active">Active</option>
         <option value="completed">Completed</option>
         <option value="all">All</option>
-      </select>
+      </SelectControl>
     </label>
   );
 }
@@ -537,13 +538,16 @@ export function JobFilterBar({
     <div className="job-browser__toolbar">
       <label className="compact-select">
         <span>Job type</span>
-        <select value={kind} onChange={(event) => onChange(event.target.value)}>
+        <SelectControl
+          value={kind}
+          onChange={(event) => onChange(event.target.value)}
+        >
           {JOB_KIND_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
           ))}
-        </select>
+        </SelectControl>
       </label>
       {busy ? (
         <span className="job-browser__loading" role="status">
@@ -575,13 +579,16 @@ export function ManualJobControls({
       </div>
       <label className="compact-select">
         <span>Task</span>
-        <select value={kind} onChange={(event) => onChange(event.target.value)}>
+        <SelectControl
+          value={kind}
+          onChange={(event) => onChange(event.target.value)}
+        >
           {MANUAL_JOB_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
           ))}
-        </select>
+        </SelectControl>
       </label>
       <Button type="button" busy={busy} onClick={onRun}>
         <CirclePlay size={16} /> Run job
