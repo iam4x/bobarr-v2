@@ -7,8 +7,8 @@ import type { EventHub } from "../events";
 import type { JobHandler, JobQueue } from "../jobs";
 import type { IntegrationResolver } from "./integration-resolver";
 
-import { stat } from "node:fs/promises";
-import { basename } from "node:path";
+import { lstat, mkdir, realpath, stat } from "node:fs/promises";
+import { basename, dirname, resolve } from "node:path";
 
 import {
   ADD_TORRENT_JOB,
@@ -24,7 +24,7 @@ import {
   aggregateChildAcquisitionState,
   organizedEpisodeNumbers,
 } from "../domain";
-import { importRecordedFiles, scanLibrary } from "../library";
+import { importRecordedFiles, isPathContained, scanLibrary } from "../library";
 
 const MEDIA_ACQUIRE_JOB = "media.acquire.v1";
 const LIBRARY_SCAN_JOB = "library.scan.v1";
@@ -45,6 +45,7 @@ export interface AcquisitionRuntimeOptions {
   queue: JobQueue;
   events: EventHub;
   integrations: IntegrationResolver;
+  prepareDownloadDirectory?: (path: string) => Promise<void>;
 }
 
 export function createAcquisitionRuntime(
@@ -195,6 +196,10 @@ export function createAcquisitionRuntime(
       },
       {
         downloadRoot: settings.storage.downloadsPath,
+        prepareDownloadDirectory:
+          options.prepareDownloadDirectory ??
+          ((path) =>
+            prepareDownloadDirectory(settings.storage.downloadsPath, path)),
       },
     );
   }
@@ -280,6 +285,41 @@ export function createAcquisitionRuntime(
       }
     },
   };
+}
+
+async function prepareDownloadDirectory(
+  downloadsRoot: string,
+  requestedPath: string,
+): Promise<void> {
+  const root = resolve(downloadsRoot);
+  const path = resolve(requestedPath);
+  if (!isPathContained(root, path) || dirname(path) !== root) {
+    throw new Error("Download directory escapes the configured root");
+  }
+  const [resolvedRoot, resolvedParent] = await Promise.all([
+    realpath(root),
+    realpath(dirname(path)),
+  ]);
+  if (resolvedRoot !== resolvedParent) {
+    throw new Error("Download directory parent changed unexpectedly");
+  }
+  try {
+    await mkdir(path);
+  } catch (error) {
+    if (!isAlreadyExists(error)) throw error;
+  }
+  const info = await lstat(path);
+  if (!info.isDirectory() || info.isSymbolicLink()) {
+    throw new Error("Download path is not a safe directory");
+  }
+}
+
+function isAlreadyExists(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "EEXIST"
+  );
 }
 
 export function synchronizeAllMediaStates(repositories: Repositories): void {

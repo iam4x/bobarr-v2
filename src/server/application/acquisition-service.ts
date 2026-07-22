@@ -35,6 +35,7 @@ const ORGANIZATION_ERROR_PREFIX = "Organization failed: ";
 
 export interface AcquisitionServiceOptions {
   downloadRoot?: string;
+  prepareDownloadDirectory?: (path: string) => Promise<void>;
   maxMetainfoBytes?: number;
   defaultPeerLimit?: number;
   now?: () => number;
@@ -92,6 +93,8 @@ export function createAcquisitionService(
   const downloadRoot = validateDownloadRoot(
     options.downloadRoot ?? DEFAULT_DOWNLOAD_ROOT,
   );
+  const prepareDownloadDirectory =
+    options.prepareDownloadDirectory ?? (async () => {});
   const maxMetainfoBytes =
     options.maxMetainfoBytes ?? DEFAULT_MAX_METAINFO_BYTES;
   validatePositiveInteger(maxMetainfoBytes, "maxMetainfoBytes");
@@ -373,6 +376,8 @@ export function createAcquisitionService(
         maxMetainfoBytes,
         signal,
       );
+      signal?.throwIfAborted();
+      await prepareDownloadDirectory(record.downloadDirectory);
       signal?.throwIfAborted();
       const added = await dependencies.torrentEngine.add(
         torrentInput,

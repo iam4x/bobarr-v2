@@ -169,6 +169,9 @@ describe("acquisition service", () => {
       downloadRepository,
       events,
       ids: [DOWNLOAD_ID],
+      prepareDownloadDirectory: async (path) => {
+        events.push(`filesystem:prepare:${path}`);
+      },
     });
     const search = await fixture.service.searchCandidates({ target: TARGET });
     const candidate = requireValue(search.candidates[0]);
@@ -202,8 +205,11 @@ describe("acquisition service", () => {
       events.indexOf("external:jackett"),
     );
     expect(events.indexOf("external:jackett")).toBeLessThan(
-      events.indexOf("external:transmission"),
+      events.indexOf(`filesystem:prepare:/downloads/${DOWNLOAD_ID}`),
     );
+    expect(
+      events.indexOf(`filesystem:prepare:/downloads/${DOWNLOAD_ID}`),
+    ).toBeLessThan(events.indexOf("external:transmission"));
     fixture.queue.close();
   });
 
@@ -461,6 +467,7 @@ function serviceFixture(
     now?: () => number;
     ids?: readonly string[];
     maxMetainfoBytes?: number;
+    prepareDownloadDirectory?: (path: string) => Promise<void>;
   } = {},
 ) {
   const events = options.events ?? [];
@@ -486,6 +493,7 @@ function serviceFixture(
     {
       now: options.now,
       maxMetainfoBytes: options.maxMetainfoBytes,
+      prepareDownloadDirectory: options.prepareDownloadDirectory,
       id: () => ids.shift() ?? crypto.randomUUID(),
     },
   );

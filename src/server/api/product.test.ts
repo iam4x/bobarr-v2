@@ -2165,6 +2165,7 @@ async function createFixture(): Promise<{
   };
   const runtime = await initializeBackend({
     config,
+    prepareDownloadDirectory: async () => {},
     environment: {
       NODE_ENV: "test",
       TMDB_API_KEY: "tmdb-test-key",

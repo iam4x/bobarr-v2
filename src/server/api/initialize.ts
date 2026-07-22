@@ -49,6 +49,7 @@ export interface InitializeBackendOptions {
   environment?: Record<string, string | undefined>;
   clock?: Clock;
   logger?: Logger;
+  prepareDownloadDirectory?: (path: string) => Promise<void>;
 }
 
 export interface BackendRuntime {
@@ -168,6 +169,7 @@ export async function initializeBackend(
       queue,
       events,
       integrations,
+      prepareDownloadDirectory: options.prepareDownloadDirectory,
     });
     const maintenanceHandlers: Record<string, JobHandler> = {
       "maintenance.reconcile.v1": async (_job, context) => {
