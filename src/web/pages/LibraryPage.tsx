@@ -65,6 +65,14 @@ type LibraryFilter = "all" | "available" | "missing" | "active" | "failed";
 type ManualReleaseAction = "search" | "replace";
 const LIBRARY_PAGE_SIZE = 50;
 
+export function libraryPlaceholderData<T>(
+  previousData: T | undefined,
+  previousKind: unknown,
+  nextKind: "movie" | "series",
+): T | undefined {
+  return previousKind === nextKind ? previousData : undefined;
+}
+
 export function LibrarySummary({
   summary,
 }: {
@@ -638,7 +646,7 @@ export function LibraryCard({
         libraryItemHasFile(item) ? (
           <p className="library-card__helper">
             <Settings2 size={13} aria-hidden="true" />
-            Monitoring off · Open to replace or manage files
+            Open to replace or manage files
           </p>
         ) : null}
       </div>
@@ -992,6 +1000,16 @@ function TvSeriesManagement({
   const monitoringOff = item.monitorPolicy === "none";
   const selectedSeasonIsMonitored =
     selectedSeason !== undefined && selectedSeason.monitorPolicy !== "none";
+  const futureOnly =
+    policy === "selected" &&
+    selectedSeasons.length === 0 &&
+    includeFutureSeasons;
+  let monitoringSettingsSummary = `${selectedSeasons.length} selected season${selectedSeasons.length === 1 ? "" : "s"}${includeFutureSeasons ? " · future seasons on" : ""}`;
+  if (policy === "none") {
+    monitoringSettingsSummary = "Automatic searches are off";
+  } else if (futureOnly) {
+    monitoringSettingsSummary = "Future seasons only";
+  }
   const canConfigureMonitoring = isPositiveSafeInteger(item.tmdbId);
   const episodeQuery = useQuery({
     queryKey: ["library", "episodes", selectedSeason?.id],
@@ -1057,7 +1075,12 @@ function TvSeriesManagement({
   let guideTitle = "This season is on track";
   let guideCopy = "There is nothing you need to do right now.";
   let guideTone = "success";
-  if (monitoringOff || !selectedSeasonIsMonitored) {
+  if (futureOnly) {
+    guideTitle = "Watching for future seasons";
+    guideCopy =
+      "Current seasons stay unmonitored. Bobarr will add seasons announced after the current metadata baseline.";
+    guideTone = "success";
+  } else if (monitoringOff || !selectedSeasonIsMonitored) {
     guideTitle = monitoringOff
       ? "Monitoring is off for this show"
       : `${selectedSeasonLabel} is not monitored`;
@@ -1118,6 +1141,10 @@ function TvSeriesManagement({
       storedFileCount > 0
         ? `${storedFileCount} existing ${storedFileCount === 1 ? "file remains" : "files remain"} in your library. Browse downloaded seasons below or choose what Bobarr should monitor.`
         : "No automatic searches will run. Choose what Bobarr should monitor or remove this title from the library.";
+  } else if (futureOnly) {
+    overviewTitle = "Future season monitoring is on";
+    overviewDescription =
+      "Downloaded seasons remain in your library without being searched again. Newly announced seasons will be added automatically.";
   } else if (overallTotal > 0) {
     overviewTitle = `${overallReady} of ${overallTotal} monitored ${overallTotal === 1 ? "episode" : "episodes"} ${overallReady === 1 ? "is" : "are"} ready`;
   }
@@ -1330,7 +1357,7 @@ function TvSeriesManagement({
               <h3>{guideTitle}</h3>
               <p>{guideCopy}</p>
             </div>
-            {monitoringOff || !selectedSeasonIsMonitored ? (
+            {!futureOnly && (monitoringOff || !selectedSeasonIsMonitored) ? (
               <Button
                 type="button"
                 disabled={!canConfigureMonitoring}
@@ -1397,11 +1424,7 @@ function TvSeriesManagement({
               <Settings2 size={18} aria-hidden="true" />
               <span>
                 <strong>Monitoring settings</strong>
-                <small>
-                  {policy === "none"
-                    ? "Automatic searches are off"
-                    : `${selectedSeasons.length} selected season${selectedSeasons.length === 1 ? "" : "s"}${includeFutureSeasons ? " · future seasons on" : ""}`}
-                </small>
+                <small>{monitoringSettingsSummary}</small>
               </span>
             </summary>
             <div className="tv-settings__content">
@@ -1484,7 +1507,9 @@ function TvSeriesManagement({
                 busy={saveBusy}
                 disabled={
                   !canConfigureMonitoring ||
-                  (policy === "selected" && selectedSeasons.length === 0)
+                  (policy === "selected" &&
+                    selectedSeasons.length === 0 &&
+                    !includeFutureSeasons)
                 }
                 onClick={onSave}
               >
@@ -1538,6 +1563,7 @@ export function MovieManagement({
   const hasLibraryFile = libraryItemHasFile(item);
   const hasTmdbMatch = isPositiveSafeInteger(item.tmdbId);
   const monitoringOn = item.monitorPolicy !== "none";
+  const showMonitoringSettings = !hasLibraryFile || monitoringOn;
   const manualReleaseAction = libraryManualReleaseAction(item);
   const retryable =
     monitoringOn && ["missing", "failed"].includes(item.acquisitionState);
@@ -1564,7 +1590,7 @@ export function MovieManagement({
     overviewTitle = "Ready in your library";
     overviewCopy = monitoringOn
       ? "Your organized copy is ready. Monitoring stays on in case Bobarr needs to acquire it again."
-      : "Your organized copy is ready. Monitoring is off, so Bobarr will leave it alone unless you choose a one-time replacement.";
+      : "Your organized copy is ready. Bobarr will leave it alone unless you choose a one-time replacement.";
   } else if (activeDownload) {
     overviewTitle = `${downloadStateLabel(activeDownload.state)} your movie`;
     overviewCopy =
@@ -1747,59 +1773,61 @@ export function MovieManagement({
         </section>
 
         <aside className="movie-controls" aria-label="Movie management">
-          <details
-            className="tv-settings movie-settings"
-            open={settingsOpen}
-            onToggle={(event) => setSettingsOpen(event.currentTarget.open)}
-          >
-            <summary>
-              <Settings2 size={18} aria-hidden="true" />
-              <span>
-                <strong>Automatic monitoring</strong>
-                <small>{monitoringSummary}</small>
-              </span>
-            </summary>
-            <div className="tv-settings__content">
-              <label className="field">
-                <span className="field__label">Automatic monitoring</span>
-                <select
-                  value={policy}
-                  disabled={!hasTmdbMatch}
-                  onChange={(event) =>
-                    onPolicyChange(event.target.value as MonitorPolicy)
-                  }
-                >
-                  <option value="none">
-                    {hasLibraryFile
-                      ? "Off — keep the current file only"
-                      : "Off — do not acquire this movie"}
-                  </option>
-                  <option value="all">On — search again if missing</option>
-                </select>
-                <span className="field__hint">
-                  A one-time replacement does not require monitoring.
+          {showMonitoringSettings ? (
+            <details
+              className="tv-settings movie-settings"
+              open={settingsOpen}
+              onToggle={(event) => setSettingsOpen(event.currentTarget.open)}
+            >
+              <summary>
+                <Settings2 size={18} aria-hidden="true" />
+                <span>
+                  <strong>Automatic monitoring</strong>
+                  <small>{monitoringSummary}</small>
                 </span>
-              </label>
-              {saveError ? (
-                <div className="notice notice--error" role="alert">
-                  {saveError}
-                </div>
-              ) : null}
-              {!hasTmdbMatch ? (
-                <div className="notice notice--warning" role="note">
-                  Confirm this movie's TMDB match before changing monitoring.
-                </div>
-              ) : null}
-              <Button
-                type="button"
-                busy={saveBusy}
-                disabled={!hasTmdbMatch || policy === item.monitorPolicy}
-                onClick={onSave}
-              >
-                <Check size={15} /> Save monitoring
-              </Button>
-            </div>
-          </details>
+              </summary>
+              <div className="tv-settings__content">
+                <label className="field">
+                  <span className="field__label">Automatic monitoring</span>
+                  <select
+                    value={policy}
+                    disabled={!hasTmdbMatch}
+                    onChange={(event) =>
+                      onPolicyChange(event.target.value as MonitorPolicy)
+                    }
+                  >
+                    <option value="none">
+                      {hasLibraryFile
+                        ? "Off — keep the current file only"
+                        : "Off — do not acquire this movie"}
+                    </option>
+                    <option value="all">On — search again if missing</option>
+                  </select>
+                  <span className="field__hint">
+                    A one-time replacement does not require monitoring.
+                  </span>
+                </label>
+                {saveError ? (
+                  <div className="notice notice--error" role="alert">
+                    {saveError}
+                  </div>
+                ) : null}
+                {!hasTmdbMatch ? (
+                  <div className="notice notice--warning" role="note">
+                    Confirm this movie's TMDB match before changing monitoring.
+                  </div>
+                ) : null}
+                <Button
+                  type="button"
+                  busy={saveBusy}
+                  disabled={!hasTmdbMatch || policy === item.monitorPolicy}
+                  onClick={onSave}
+                >
+                  <Check size={15} /> Save monitoring
+                </Button>
+              </div>
+            </details>
+          ) : null}
 
           <section className="movie-removal">
             <div>
@@ -2159,6 +2187,8 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
         },
         signal,
       }),
+    placeholderData: (previousData, previousQuery) =>
+      libraryPlaceholderData(previousData, previousQuery?.queryKey[1], kind),
     initialPageParam: 0,
     getNextPageParam: (lastPage) => {
       const nextOffset = lastPage.page.offset + lastPage.items.length;

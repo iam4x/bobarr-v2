@@ -46,6 +46,43 @@ test("completes first-run setup and a real logout/login round trip", async ({
   ).toBeVisible();
 });
 
+test("searches while typing and reuses session-cached TMDB results", async ({
+  page,
+}, testInfo) => {
+  await authenticate(page);
+  await page.goto("/search");
+  const firstTitle = `E2E Cached Search ${testInfo.project.name}`;
+  const secondTitle = `E2E Alternate Search ${testInfo.project.name}`;
+  let firstTitleRequests = 0;
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (
+      url.pathname === "/api/v1/catalog/search" &&
+      url.searchParams.get("query") === firstTitle
+    ) {
+      firstTitleRequests += 1;
+    }
+  });
+
+  const search = page.getByRole("searchbox", {
+    name: "Search movies and shows",
+  });
+  await search.fill(firstTitle);
+  await expect(
+    page.getByRole("button", { name: `View ${firstTitle}` }),
+  ).toBeVisible();
+  await search.fill(secondTitle);
+  await expect(
+    page.getByRole("button", { name: `View ${secondTitle}` }),
+  ).toBeVisible();
+  await search.fill(firstTitle);
+  await expect(
+    page.getByRole("button", { name: `View ${firstTitle}` }),
+  ).toBeVisible();
+
+  expect(firstTitleRequests).toBe(1);
+});
+
 test("builds, applies, and removes responsive Discover filters", async ({
   page,
 }) => {
@@ -131,17 +168,36 @@ test("monitors a movie, manually grabs a Jackett release, and shows it in Activi
   request,
 }, testInfo) => {
   await authenticate(page);
-  await controlFakeServices(request, { jackettMode: "empty" });
+  await controlFakeServices(request, { jackettMode: "ready" });
   const title = `E2E Movie ${testInfo.project.name}`;
 
   await searchAndOpen(page, title);
-  await page.getByRole("button", { name: "Add to library" }).click();
-  await expect(page.getByRole("status")).toContainText("Added to your library");
-  await waitForAcquisitionSettled(page, title);
-  await waitForLibraryState(page, title, "missing");
+  await page.getByRole("button", { name: "Add & search manually" }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "without starting a download",
+  );
+  const pendingLibrary = await apiJson<{
+    items: Array<{
+      id: string;
+      title: string;
+      metadata: Record<string, unknown>;
+    }>;
+  }>(page, "/api/v1/library?limit=100");
+  const pendingMovie = pendingLibrary.items.find(
+    (item) => item.title === title,
+  );
+  expect(pendingMovie?.metadata["manualSearchPending"]).toBe(true);
+  const pendingJobs = await apiJson<{
+    jobs: Array<{ kind: string; payload: Record<string, unknown> }>;
+  }>(page, "/api/v1/jobs?limit=100");
+  expect(
+    pendingJobs.jobs.some(
+      (job) =>
+        job.kind === "media.acquire.v1" &&
+        job.payload["mediaId"] === pendingMovie?.id,
+    ),
+  ).toBe(false);
 
-  await controlFakeServices(request, { jackettMode: "ready" });
-  await page.getByRole("button", { name: "Manual search" }).click();
   const release = page
     .locator(".release-card")
     .filter({ hasText: `${title}.2024.1080p` });
@@ -686,7 +742,7 @@ test("adopts an ambiguous existing movie only after explicit scan review", async
   await expect(
     dialog.getByRole("heading", { name: "Ready in your library" }),
   ).toBeVisible();
-  await expect(dialog.getByLabel("Automatic monitoring")).toHaveValue("none");
+  await expect(dialog.getByLabel("Automatic monitoring")).toHaveCount(0);
   await expect(
     dialog.getByRole("button", { name: "Choose replacement" }),
   ).toBeVisible();
@@ -779,22 +835,36 @@ test("manages and removes a scan-imported untracked TV show", async ({
   ).toBeVisible();
 
   await dialog.getByLabel("Automatic monitoring").selectOption("selected");
-  await dialog.getByLabel("Season 1", { exact: true }).check();
+  await dialog.getByLabel("Monitor future seasons").check();
+  await expect(
+    dialog.getByRole("button", { name: "Save monitoring" }),
+  ).toBeEnabled();
   await dialog.getByRole("button", { name: "Save monitoring" }).click();
   await expect(dialog).toBeHidden();
   await expect
     .poll(async () => {
       const library = await apiJson<{
-        items: Array<{ title: string; monitorPolicy: string }>;
+        items: Array<{
+          title: string;
+          monitorPolicy: string;
+          metadata: Record<string, unknown>;
+        }>;
       }>(page, "/api/v1/library?kind=series&limit=100");
-      return library.items.find((item) => item.title === title)?.monitorPolicy;
+      return library.items.find((item) => item.title === title);
     })
-    .toBe("selected");
+    .toMatchObject({
+      monitorPolicy: "selected",
+      metadata: { includeFutureSeasons: true },
+    });
 
   card = page.locator(".library-card").filter({ hasText: title });
   await expect(card).toBeVisible();
   await card.getByRole("button", { name: `Open ${title} details` }).click();
   dialog = page.getByRole("dialog", { name: title });
+  await expect(dialog.getByText("Future seasons only")).toBeVisible();
+  await expect(
+    dialog.getByRole("heading", { name: "Watching for future seasons" }),
+  ).toBeVisible();
   await dialog.getByRole("button", { name: /Remove show/ }).click();
   const removeDialog = page.getByRole("dialog", {
     name: "Remove from library?",

@@ -176,7 +176,13 @@ export function MediaDetailDialog({
   });
 
   const monitorMutation = useMutation({
-    mutationFn: (item: CatalogItem) =>
+    mutationFn: ({
+      item,
+      acquisitionMode,
+    }: {
+      item: CatalogItem;
+      acquisitionMode: "automatic" | "manual";
+    }) =>
       api.post("monitorMedia", {
         body:
           item.kind === "movie"
@@ -184,6 +190,7 @@ export function MediaDetailDialog({
                 tmdbId: item.tmdbId,
                 kind: item.kind,
                 monitorPolicy: "all",
+                acquisitionMode,
               }
             : {
                 tmdbId: item.tmdbId,
@@ -193,13 +200,20 @@ export function MediaDetailDialog({
                 includeFutureSeasons,
               },
       }),
-    onSuccess: () => {
+    onSuccess: (_libraryItem, { acquisitionMode }) => {
       if (seasonSelection.length > 0) {
         setSelectedSeason(Math.max(...seasonSelection));
       }
-      setMessage(
-        "Added to your library. Bobarr will look for an eligible release.",
-      );
+      if (acquisitionMode === "manual") {
+        setShowReleases(true);
+        setMessage(
+          "Added to your library without starting a download. Choose a release below when you are ready.",
+        );
+      } else {
+        setMessage(
+          "Added to your library. Bobarr will look for an eligible release.",
+        );
+      }
       void queryClient.invalidateQueries({ queryKey: ["library"] });
       void queryClient.invalidateQueries({ queryKey: ["catalog"] });
     },
@@ -265,6 +279,9 @@ export function MediaDetailDialog({
   });
   const backdrop = imageUrl(item?.backdropPath, "original");
   const canManualSearch = Boolean(item?.monitored || monitorMutation.isSuccess);
+  const canAddWithManualSearch = Boolean(
+    item?.kind === "movie" && !item.monitored && !monitorMutation.isSuccess,
+  );
   let selectableSeasons = item?.monitoredSeasonNumbers?.length
     ? item.monitoredSeasonNumbers
     : Array.from(
@@ -280,19 +297,38 @@ export function MediaDetailDialog({
   }
   const hasManualSeasonPicker =
     item?.kind === "series" && (item.numberOfSeasons ?? 0) > 0;
+  let manualSearchLabel = "Manual search";
+  if (showReleases) {
+    manualSearchLabel = "Hide releases";
+  } else if (canAddWithManualSearch) {
+    manualSearchLabel = "Add & search manually";
+  }
   const manualSearchButton = (
     <Button
       type="button"
       variant="secondary"
-      disabled={!canManualSearch}
+      busy={
+        monitorMutation.isPending &&
+        monitorMutation.variables?.acquisitionMode === "manual"
+      }
+      disabled={
+        monitorMutation.isPending ||
+        (!canManualSearch && !canAddWithManualSearch)
+      }
       title={
-        canManualSearch
+        canManualSearch || canAddWithManualSearch
           ? undefined
           : "Add this title to your library before searching releases"
       }
-      onClick={() => setShowReleases((value) => !value)}
+      onClick={() => {
+        if (canAddWithManualSearch && item) {
+          monitorMutation.mutate({ item, acquisitionMode: "manual" });
+          return;
+        }
+        setShowReleases((value) => !value);
+      }}
     >
-      <Search size={17} /> {showReleases ? "Hide releases" : "Manual search"}
+      <Search size={17} /> {manualSearchLabel}
     </Button>
   );
 
@@ -454,14 +490,23 @@ export function MediaDetailDialog({
           <div className="media-detail__actions">
             <Button
               type="button"
-              busy={monitorMutation.isPending}
+              busy={
+                monitorMutation.isPending &&
+                monitorMutation.variables?.acquisitionMode === "automatic"
+              }
               disabled={
+                monitorMutation.isPending ||
                 Boolean(item.monitored) ||
                 (item.kind === "series" &&
                   (item.numberOfSeasons ?? 0) > 0 &&
                   seasonSelection.length === 0)
               }
-              onClick={() => monitorMutation.mutate(item)}
+              onClick={() =>
+                monitorMutation.mutate({
+                  item,
+                  acquisitionMode: "automatic",
+                })
+              }
             >
               {item.monitored ? (
                 <Check size={17} />
@@ -475,8 +520,9 @@ export function MediaDetailDialog({
 
           {!canManualSearch ? (
             <p className="field__hint" role="note">
-              Add this title to your library before searching or grabbing a
-              release.
+              {canAddWithManualSearch
+                ? "Choose Add & search manually to select a release before any download starts."
+                : "Add this title to your library before searching or grabbing a release."}
             </p>
           ) : null}
 

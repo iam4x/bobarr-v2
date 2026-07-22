@@ -370,6 +370,64 @@ describe("public product API", () => {
     });
   });
 
+  test("adds a movie for manual selection without starting automatic acquisition", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+
+    const response = await jsonRequest(
+      fixture.runtime,
+      "/api/v1/library",
+      "POST",
+      {
+        tmdbId: 603,
+        kind: "movie",
+        monitorPolicy: "all",
+        acquisitionMode: "manual",
+      },
+      session,
+    );
+
+    expect(response.status).toBe(201);
+    const movie = (await response.json()) as { id: string };
+    expect(fixture.runtime.repositories.media.get(movie.id)).toMatchObject({
+      monitorPolicy: "all",
+      acquisitionState: "missing",
+      metadata: { manualSearchPending: true },
+    });
+    expect(
+      await fixture.runtime.queue.list({ types: ["media.acquire.v1"] }),
+    ).toEqual([]);
+
+    await enqueueMissingMedia(
+      fixture.runtime.queue,
+      fixture.runtime.repositories,
+    );
+    expect(
+      await fixture.runtime.queue.list({ types: ["media.acquire.v1"] }),
+    ).toEqual([]);
+
+    const releases = (await (
+      await fixture.runtime.app.request(
+        "/api/v1/releases?tmdbId=603&kind=movie",
+        { headers: { cookie: session.cookie } },
+      )
+    ).json()) as { items: Array<{ id: string }> };
+    const grab = await jsonRequest(
+      fixture.runtime,
+      "/api/v1/downloads",
+      "POST",
+      { candidateId: releases.items[0]!.id },
+      session,
+    );
+
+    expect(grab.status).toBe(202);
+    expect(fixture.runtime.repositories.media.get(movie.id)).toMatchObject({
+      monitorPolicy: "all",
+      acquisitionState: "queued",
+      metadata: { manualSearchPending: false },
+    });
+  });
+
   test("searches the full movie and television libraries before paginating", async () => {
     const fixture = await createFixture();
     const session = await setup(fixture.runtime);
@@ -1275,6 +1333,111 @@ describe("public product API", () => {
       monitorPolicy: "all",
       acquisitionState: "available",
     });
+  });
+
+  test("monitors only newly announced seasons for an imported series", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    const series = fixture.runtime.repositories.media.create({
+      kind: "series",
+      tmdbId: 1399,
+      parentId: null,
+      seasonNumber: null,
+      episodeNumber: null,
+      title: "Game of Thrones",
+      year: 2011,
+      posterUrl: null,
+      status: "available",
+      monitorPolicy: "none",
+      releaseDate: null,
+      metadata: { imported: true },
+    });
+    for (let seasonNumber = 1; seasonNumber <= 4; seasonNumber += 1) {
+      fixture.runtime.repositories.media.create({
+        kind: "season",
+        tmdbId: null,
+        parentId: series.id,
+        seasonNumber,
+        episodeNumber: null,
+        title: `Imported Season ${seasonNumber}`,
+        year: 2011,
+        posterUrl: null,
+        status: "available",
+        monitorPolicy: "none",
+        releaseDate: null,
+        metadata: { imported: true },
+      });
+    }
+
+    const invalidResponse = await jsonRequest(
+      fixture.runtime,
+      `/api/v1/library/${series.id}`,
+      "PATCH",
+      {
+        monitorPolicy: "selected",
+        seasonNumbers: [],
+        includeFutureSeasons: false,
+      },
+      session,
+    );
+    expect(invalidResponse.status).toBe(422);
+
+    const response = await jsonRequest(
+      fixture.runtime,
+      `/api/v1/library/${series.id}`,
+      "PATCH",
+      {
+        monitorPolicy: "selected",
+        seasonNumbers: [],
+        includeFutureSeasons: true,
+      },
+      session,
+    );
+    expect(response.status).toBe(200);
+    expect(
+      fixture.runtime.repositories.media.get(series.id)?.metadata,
+    ).toMatchObject({
+      includeFutureSeasons: true,
+      futureSeasonsAfter: 4,
+    });
+    expect(
+      fixture.runtime.repositories.media.get(series.id)?.acquisitionState,
+    ).toBe("available");
+    expect(
+      fixture.runtime.repositories.media
+        .children(series.id)
+        .map((season) => [season.seasonNumber, season.monitorPolicy]),
+    ).toEqual([
+      [1, "none"],
+      [2, "none"],
+      [3, "none"],
+      [4, "none"],
+    ]);
+
+    const tmdb = await fixture.runtime.integrations.tmdb();
+    let details = await tmdb.details("tv", 1399);
+    const unchanged = await refreshFutureSeasons({
+      parent: fixture.runtime.repositories.media.get(series.id)!,
+      details,
+      repositories: fixture.runtime.repositories,
+      queue: fixture.runtime.queue,
+      client: tmdb,
+      language: "en",
+    });
+    expect(unchanged).toEqual([]);
+
+    fixture.services.seriesSeasonCount = 5;
+    details = await tmdb.details("tv", 1399);
+    const added = await refreshFutureSeasons({
+      parent: fixture.runtime.repositories.media.get(series.id)!,
+      details,
+      repositories: fixture.runtime.repositories,
+      queue: fixture.runtime.queue,
+      client: tmdb,
+      language: "en",
+    });
+    expect(added.map((season) => season.seasonNumber)).toEqual([5]);
+    expect(added[0]).toMatchObject({ monitorPolicy: "selected" });
   });
 
   test("re-monitoring an imported series preserves and hydrates recorded episodes", async () => {

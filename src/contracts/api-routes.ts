@@ -143,6 +143,7 @@ export type MonitorMediaInput =
       tmdbId: number;
       kind: "movie";
       monitorPolicy: MonitorPolicy;
+      acquisitionMode?: "automatic" | "manual";
       seasonNumbers?: never;
       includeFutureSeasons?: never;
     }
@@ -150,6 +151,7 @@ export type MonitorMediaInput =
       tmdbId: number;
       kind: "series";
       monitorPolicy: MonitorPolicy;
+      acquisitionMode?: never;
       seasonNumbers?: number[];
       includeFutureSeasons?: boolean;
     };

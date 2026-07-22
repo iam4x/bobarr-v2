@@ -234,11 +234,8 @@ const MonitorMediaSchema = z
     tmdbId: z.number().int().positive(),
     kind: CatalogKindSchema,
     monitorPolicy: z.enum(["none", "selected", "all", "future"]).default("all"),
-    seasonNumbers: z
-      .array(z.number().int().positive())
-      .min(1)
-      .max(100)
-      .optional(),
+    acquisitionMode: z.enum(["automatic", "manual"]).optional(),
+    seasonNumbers: z.array(z.number().int().positive()).max(100).optional(),
     includeFutureSeasons: z.boolean().optional(),
   })
   .strict()
@@ -254,16 +251,45 @@ const MonitorMediaSchema = z
         message: "Season monitoring is available only for series",
       });
     }
+    if (value.kind === "series" && value.acquisitionMode !== undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["acquisitionMode"],
+        message: "Manual acquisition mode is available only for movies",
+      });
+    }
+    if (
+      value.kind === "series" &&
+      value.monitorPolicy === "selected" &&
+      value.seasonNumbers?.length === 0 &&
+      value.includeFutureSeasons !== true
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["seasonNumbers"],
+        message: "Choose a current season or monitor future seasons",
+      });
+    }
   });
-const MonitorPatchSchema = z.object({
-  monitorPolicy: z.enum(["none", "selected", "all", "future"]),
-  seasonNumbers: z
-    .array(z.number().int().positive())
-    .min(1)
-    .max(100)
-    .optional(),
-  includeFutureSeasons: z.boolean().optional(),
-});
+const MonitorPatchSchema = z
+  .object({
+    monitorPolicy: z.enum(["none", "selected", "all", "future"]),
+    seasonNumbers: z.array(z.number().int().positive()).max(100).optional(),
+    includeFutureSeasons: z.boolean().optional(),
+  })
+  .superRefine((value, context) => {
+    if (
+      value.monitorPolicy === "selected" &&
+      value.seasonNumbers?.length === 0 &&
+      value.includeFutureSeasons !== true
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["seasonNumbers"],
+        message: "Choose a current season or monitor future seasons",
+      });
+    }
+  });
 const ReplaceLibrarySchema = z
   .object({ candidateId: OpaqueReleaseIdSchema.optional() })
   .strict();
@@ -695,10 +721,16 @@ export function registerProductRoutes(
       status: input.monitorPolicy === "none" ? "unmonitored" : "missing",
       monitorPolicy: input.monitorPolicy,
       releaseDate: isoDate(details.releaseDate),
-      metadata: metadataFor(
-        details,
-        input.monitorPolicy === "future" || input.includeFutureSeasons === true,
-      ),
+      metadata: {
+        ...metadataFor(
+          details,
+          input.monitorPolicy === "future" ||
+            input.includeFutureSeasons === true,
+        ),
+        ...(input.kind === "movie"
+          ? { manualSearchPending: input.acquisitionMode === "manual" }
+          : {}),
+      },
     });
     const targets =
       input.kind === "series"
@@ -726,18 +758,22 @@ export function registerProductRoutes(
         },
       });
     }
-    for (const target of targets) {
-      if (target.kind === "season") {
-        await enqueueSeasonAcquisition(target, dependencies);
-      } else {
-        await enqueueAcquisition(target, dependencies);
+    if (input.acquisitionMode !== "manual") {
+      for (const target of targets) {
+        if (target.kind === "season") {
+          await enqueueSeasonAcquisition(target, dependencies);
+        } else {
+          await enqueueAcquisition(target, dependencies);
+        }
       }
     }
     recordActivity(
       dependencies,
       "library.added",
       "success",
-      `${parent.title} is now monitored`,
+      input.acquisitionMode === "manual"
+        ? `${parent.title} was added for manual release selection`
+        : `${parent.title} is now monitored`,
       parent.id,
     );
     dependencies.events?.publish("library.changed", { id: parent.id });
@@ -1131,6 +1167,7 @@ export function registerProductRoutes(
     const service = await requireAcquisition(dependencies);
     const contentType = context.req.header("content-type") ?? "";
     let download;
+    let candidateTarget: LibraryItem | undefined;
     let replacementTarget: LibraryItem | undefined;
     if (contentType.includes("multipart/form-data")) {
       const contentLength = Number(context.req.header("content-length"));
@@ -1174,6 +1211,7 @@ export function registerProductRoutes(
         const media = mediaId
           ? dependencies.repositories.media.get(mediaId)
           : undefined;
+        candidateTarget = media;
         if (media && hasRecordedFiles(media, dependencies)) {
           replacementTarget = media;
         }
@@ -1192,14 +1230,22 @@ export function registerProductRoutes(
             }),
           );
     }
-    if (replacementTarget) {
-      markReplacementPending(replacementTarget, dependencies);
-      dependencies.repositories.media.updateState(
-        replacementTarget.id,
-        "queued",
-      );
+    if (
+      candidateTarget &&
+      (candidateTarget.metadata["manualSearchPending"] === true ||
+        replacementTarget)
+    ) {
+      if (replacementTarget)
+        markReplacementPending(replacementTarget, dependencies);
+      dependencies.repositories.media.updateMetadata(candidateTarget.id, {
+        metadata: {
+          ...candidateTarget.metadata,
+          manualSearchPending: false,
+        },
+      });
+      dependencies.repositories.media.updateState(candidateTarget.id, "queued");
       dependencies.events?.publish("library.changed", {
-        id: replacementTarget.id,
+        id: candidateTarget.id,
       });
     }
     recordActivity(
@@ -1989,7 +2035,11 @@ function isoDate(value: string | null): string | null {
   return value ? new Date(`${value}T00:00:00.000Z`).toISOString() : null;
 }
 
-function metadataFor(details: CatalogDetails, includeFutureSeasons?: boolean) {
+function metadataFor(
+  details: CatalogDetails,
+  includeFutureSeasons?: boolean,
+  futureSeasonsAfter?: number,
+) {
   return {
     overview: details.overview,
     originalTitle: details.originalTitle,
@@ -2000,12 +2050,18 @@ function metadataFor(details: CatalogDetails, includeFutureSeasons?: boolean) {
     numberOfSeasons: details.numberOfSeasons,
     numberOfEpisodes: details.numberOfEpisodes,
     includeFutureSeasons: includeFutureSeasons ?? false,
+    ...(includeFutureSeasons
+      ? {
+          futureSeasonsAfter:
+            futureSeasonsAfter ?? details.numberOfSeasons ?? 0,
+        }
+      : {}),
   };
 }
 
 type MonitoringInput = Pick<
   z.infer<typeof MonitorMediaSchema>,
-  "monitorPolicy" | "seasonNumbers" | "includeFutureSeasons"
+  "monitorPolicy" | "acquisitionMode" | "seasonNumbers" | "includeFutureSeasons"
 >;
 
 type SeasonAcquisitionMode = "season" | "episodes";
@@ -2048,6 +2104,17 @@ async function updateExistingMonitoring(options: {
     options;
   const includeFutureSeasons =
     input.includeFutureSeasons ?? input.monitorPolicy === "future";
+  const manualSearchPending =
+    parent.kind === "movie" && input.acquisitionMode === "manual";
+  const existingFutureBaseline = parent.metadata["futureSeasonsAfter"];
+  const futureSeasonsAfter =
+    includeFutureSeasons &&
+    parent.metadata["includeFutureSeasons"] === true &&
+    typeof existingFutureBaseline === "number" &&
+    Number.isSafeInteger(existingFutureBaseline) &&
+    existingFutureBaseline >= 0
+      ? existingFutureBaseline
+      : (details?.numberOfSeasons ?? 0);
   dependencies.repositories.media.updateMonitorPolicy(
     parent.id,
     input.monitorPolicy,
@@ -2060,12 +2127,17 @@ async function updateExistingMonitoring(options: {
       releaseDate: isoDate(details.releaseDate),
       metadata: {
         ...parent.metadata,
-        ...metadataFor(details, includeFutureSeasons),
+        ...metadataFor(details, includeFutureSeasons, futureSeasonsAfter),
+        ...(parent.kind === "movie" ? { manualSearchPending } : {}),
       },
     });
   } else if (parent.kind === "series") {
     dependencies.repositories.media.updateMetadata(parent.id, {
-      metadata: { ...parent.metadata, includeFutureSeasons },
+      metadata: {
+        ...parent.metadata,
+        includeFutureSeasons,
+        ...(includeFutureSeasons ? { futureSeasonsAfter } : {}),
+      },
     });
   }
 
@@ -2095,7 +2167,10 @@ async function updateExistingMonitoring(options: {
           hasRecordedFiles(updated, dependencies) ? "available" : "missing",
         ) ?? updated;
     }
-    if (["missing", "failed"].includes(updated.acquisitionState)) {
+    if (
+      !manualSearchPending &&
+      ["missing", "failed"].includes(updated.acquisitionState)
+    ) {
       await enqueueAcquisition(updated, dependencies);
     }
     recordActivity(
@@ -2185,14 +2260,16 @@ async function updateExistingMonitoring(options: {
     }
     await enqueueSeasonAcquisition(refreshed, dependencies);
   }
-  dependencies.repositories.media.updateState(
-    parent.id,
-    aggregateChildAcquisitionState(
-      selectedSeasons.map(
-        (season) => dependencies.repositories.media.get(season.id) ?? season,
-      ),
-    ),
-  );
+  const parentState =
+    selectedSeasons.length === 0
+      ? stateAfterMonitoringStops(parent, dependencies)
+      : aggregateChildAcquisitionState(
+          selectedSeasons.map(
+            (season) =>
+              dependencies.repositories.media.get(season.id) ?? season,
+          ),
+        );
+  dependencies.repositories.media.updateState(parent.id, parentState);
   const updated = dependencies.repositories.media.get(parent.id) ?? parent;
   recordActivity(
     dependencies,
@@ -2210,7 +2287,7 @@ function selectedSeasonNumbers(
   input: MonitoringInput,
 ): number[] {
   const available = details.numberOfSeasons ?? 0;
-  if (input.seasonNumbers?.length) {
+  if (input.seasonNumbers !== undefined) {
     const selected = [...new Set(input.seasonNumbers)].sort(
       (left, right) => left - right,
     );

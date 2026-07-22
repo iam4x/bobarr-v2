@@ -448,8 +448,19 @@ export async function refreshFutureSeasons(options: {
   }
   const latestMonitoredSeason = Math.max(0, ...currentSeasonNumbers);
   const availableSeasons = details.numberOfSeasons ?? 0;
-  const firstFutureSeason =
-    latestMonitoredSeason > 0 ? latestMonitoredSeason + 1 : availableSeasons;
+  const storedFutureBaseline = parent.metadata["futureSeasonsAfter"];
+  const futureBaseline =
+    typeof storedFutureBaseline === "number" &&
+    Number.isSafeInteger(storedFutureBaseline) &&
+    storedFutureBaseline >= 0
+      ? storedFutureBaseline
+      : null;
+  let firstFutureSeason = availableSeasons;
+  if (futureBaseline !== null) {
+    firstFutureSeason = futureBaseline + 1;
+  } else if (latestMonitoredSeason > 0) {
+    firstFutureSeason = latestMonitoredSeason + 1;
+  }
   const futureSeasonNumbers =
     firstFutureSeason > 0 && availableSeasons >= firstFutureSeason
       ? Array.from(
@@ -543,7 +554,11 @@ export async function enqueueMissingMedia(
       (media.kind === "season" && !seasonUsesEpisodeAcquisition(media)) ||
       (media.kind === "episode" &&
         media.metadata["incrementalAcquisition"] === true);
-    if (media.monitorPolicy === "none" || !supportsScheduledAcquisition) {
+    if (
+      media.monitorPolicy === "none" ||
+      media.metadata["manualSearchPending"] === true ||
+      !supportsScheduledAcquisition
+    ) {
       continue;
     }
     await queue.enqueue({

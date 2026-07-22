@@ -11,6 +11,7 @@ import {
   defaultTvSeasonNumber,
   episodeDisplayStatus,
   LibraryCard,
+  libraryPlaceholderData,
   LibrarySummary,
   libraryItemHasFile,
   libraryManualReleaseAction,
@@ -31,6 +32,13 @@ const movie: LibraryItem = {
 };
 
 describe("library manual release targets", () => {
+  test("keeps library results mounted while a search refreshes", () => {
+    const previous = { pages: [{ items: [movie] }] };
+
+    expect(libraryPlaceholderData(previous, "movie", "movie")).toBe(previous);
+    expect(libraryPlaceholderData(previous, "movie", "series")).toBe(undefined);
+  });
+
   test("opens library details from the full card without an overflow menu", () => {
     const markup = renderToStaticMarkup(
       LibraryCard({ item: movie, onManage: () => undefined }),
@@ -207,9 +215,7 @@ describe("library manual release targets", () => {
     const cardMarkup = renderToStaticMarkup(
       LibraryCard({ item: imported, onManage: () => undefined }),
     );
-    expect(cardMarkup).toContain(
-      "Monitoring off · Open to replace or manage files",
-    );
+    expect(cardMarkup).toContain("Open to replace or manage files");
 
     const markup = renderToStaticMarkup(
       createElement(MovieManagement, {
@@ -227,9 +233,9 @@ describe("library manual release targets", () => {
 
     expect(markup).toContain("Ready in your library");
     expect(markup).toContain("Choose replacement…");
-    expect(markup).toContain("Off · one-time replacement is still available");
     expect(markup).toContain("2160p · 1 file · 8.42 GB");
     expect(markup).toContain("Remove from library…");
+    expect(markup).not.toContain("Automatic monitoring");
     expect(markup).not.toContain("Retry automatic search");
   });
 

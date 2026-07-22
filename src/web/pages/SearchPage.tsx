@@ -2,7 +2,7 @@ import type { CatalogItem } from "../types";
 
 import { useQuery } from "@tanstack/react-query";
 import { Search, X } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 
 import { api } from "../api/client";
@@ -18,6 +18,12 @@ import {
 } from "../components/ui";
 
 type SearchKind = "all" | "movie" | "series";
+export const SEARCH_DEBOUNCE_MS = 350;
+
+export function normalizedSearchTerm(value: string): string {
+  const normalized = value.trim();
+  return normalized.length >= 2 ? normalized : "";
+}
 
 export function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -25,9 +31,10 @@ export function SearchPage() {
   const kind = (searchParams.get("kind") as SearchKind | null) ?? "all";
   const [draft, setDraft] = useState(query);
   const [selected, setSelected] = useState<CatalogItem | null>(null);
+  const cacheKey = query.toLocaleLowerCase();
 
   const searchQuery = useQuery({
-    queryKey: ["catalog", "search", query, kind],
+    queryKey: ["catalog", "search", cacheKey, kind],
     queryFn: ({ signal }) =>
       api.get("catalogSearch", {
         query: {
@@ -37,13 +44,39 @@ export function SearchPage() {
         signal,
       }),
     enabled: query.trim().length >= 2,
-    staleTime: 5 * 60_000,
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: Number.POSITIVE_INFINITY,
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[3] === kind ? previousData : undefined,
   });
   const result = searchQuery.data ? catalogPage(searchQuery.data) : undefined;
 
+  useEffect(() => {
+    setDraft((current) =>
+      normalizedSearchTerm(current) === query ? current : query,
+    );
+  }, [query]);
+
+  useEffect(() => {
+    const normalized = normalizedSearchTerm(draft);
+    if (normalized === query) return;
+    const timeout = window.setTimeout(() => {
+      setSearchParams(
+        (previous) => {
+          const next = new URLSearchParams(previous);
+          if (normalized) next.set("q", normalized);
+          else next.delete("q");
+          return next;
+        },
+        { replace: true },
+      );
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeout);
+  }, [draft, query, setSearchParams]);
+
   function submit(event: FormEvent) {
     event.preventDefault();
-    const normalized = draft.trim();
+    const normalized = normalizedSearchTerm(draft);
     setSearchParams((previous) => {
       const next = new URLSearchParams(previous);
       if (normalized) next.set("q", normalized);
@@ -52,6 +85,18 @@ export function SearchPage() {
       else next.set("kind", kind);
       return next;
     });
+  }
+
+  function clearSearch() {
+    setDraft("");
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.delete("q");
+        return next;
+      },
+      { replace: true },
+    );
   }
 
   function changeKind(nextKind: SearchKind) {
@@ -85,7 +130,7 @@ export function SearchPage() {
             <IconButton
               label="Clear search"
               type="button"
-              onClick={() => setDraft("")}
+              onClick={clearSearch}
             >
               <X size={18} />
             </IconButton>
