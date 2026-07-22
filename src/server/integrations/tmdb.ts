@@ -97,6 +97,10 @@ export interface CatalogQueryOptions {
   signal?: AbortSignal;
 }
 
+export interface CatalogSearchOptions extends CatalogQueryOptions {
+  mediaType?: CatalogMediaType;
+}
+
 export interface DiscoverOptions extends CatalogQueryOptions {
   genres?: readonly number[];
   genreMode?: "all" | "any";
@@ -127,7 +131,7 @@ type DiscoverSortField =
 export type DiscoverSort = `${DiscoverSortField}.${"asc" | "desc"}`;
 
 export interface TmdbClient {
-  search(query: string, options?: CatalogQueryOptions): Promise<CatalogPage>;
+  search(query: string, options?: CatalogSearchOptions): Promise<CatalogPage>;
   popular(
     mediaType: CatalogMediaType,
     options?: CatalogQueryOptions,
@@ -236,15 +240,21 @@ export function createTmdbClient(options: TmdbClientOptions): TmdbClient {
         "include_adult",
         String(queryOptions.includeAdult ?? false),
       );
+      const mediaType = queryOptions.mediaType
+        ? validateMediaType(queryOptions.mediaType)
+        : undefined;
       if (queryOptions.year !== undefined) {
-        parameters.set("year", String(validYear(queryOptions.year)));
+        parameters.set(
+          mediaType === "tv" ? "first_air_date_year" : "year",
+          String(validYear(queryOptions.year)),
+        );
       }
       const payload = await request(
-        "search/multi",
+        `search/${mediaType ?? "multi"}`,
         parameters,
         queryOptions.signal,
       );
-      return parseCatalogPage(payload);
+      return parseCatalogPage(payload, mediaType);
     },
 
     async popular(mediaType, queryOptions = {}) {

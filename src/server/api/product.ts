@@ -96,6 +96,7 @@ const CatalogPageSchema = z.object({
 const CatalogSearchQuerySchema = z.object({
   query: z.string().trim().min(1).max(300),
   kind: CatalogKindSchema.optional(),
+  year: z.coerce.number().int().min(1870).max(3000).optional(),
   page: z.coerce.number().int().min(1).max(500).default(1),
 });
 const CatalogDiscoverSortSchema = z.enum([
@@ -351,6 +352,8 @@ export function registerProductRoutes(
         integrationCall("tmdb", () =>
           client.search(query.query, {
             page: query.page,
+            mediaType: query.kind ? toTmdbKind(query.kind) : undefined,
+            year: query.year,
             language: settings.locale.language,
             region: settings.locale.region,
           }),

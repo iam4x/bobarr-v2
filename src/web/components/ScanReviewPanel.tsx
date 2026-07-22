@@ -63,7 +63,14 @@ function ManualTmdbSearch({
   async function submit(event: FormEvent) {
     event.preventDefault();
     const query = draft.trim();
-    if (query.length < 2) {
+    let reference: number | null;
+    try {
+      reference = tmdbReference(query, review.kind);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Invalid TMDB URL.");
+      return;
+    }
+    if (!reference && query.length < 2) {
       setError("Enter at least 2 characters to search TMDB.");
       return;
     }
@@ -71,11 +78,23 @@ function ManualTmdbSearch({
     setSearching(true);
     setError(undefined);
     try {
-      const response = await api.get("catalogSearch", {
-        query: { query, kind: review.kind },
-      });
+      const items = reference
+        ? [
+            await api.get("catalogDetails", {
+              params: { kind: review.kind, tmdbId: reference },
+            }),
+          ]
+        : (
+            await api.get("catalogSearch", {
+              query: {
+                query,
+                kind: review.kind,
+                year: review.year ?? undefined,
+              },
+            })
+          ).items;
       if (currentRequest !== requestId.current) return;
-      setResults(response.items.map(toScanReviewCandidate));
+      setResults(items.map(toScanReviewCandidate));
     } catch (caught) {
       if (currentRequest !== requestId.current) return;
       setError(
@@ -90,7 +109,10 @@ function ManualTmdbSearch({
     <section className="scan-review-manual" aria-label="Manual TMDB search">
       <div className="scan-review-manual__heading">
         <strong>Search TMDB manually</strong>
-        <span>Try another title, spelling, or the original movie name.</span>
+        <span>
+          Try another title, or paste a TMDB URL or numeric ID for an exact
+          match.
+        </span>
       </div>
       <form
         className="scan-review-manual__form"
@@ -103,7 +125,7 @@ function ManualTmdbSearch({
           <input
             type="search"
             value={draft}
-            placeholder="Search TMDB by title…"
+            placeholder="Title, TMDB URL, or ID…"
             onChange={(event) => setDraft(event.target.value)}
           />
         </label>
@@ -150,6 +172,33 @@ function toScanReviewCandidate(item: CatalogItem): ScanReviewCandidate {
     posterPath: item.posterPath ?? null,
     overview: item.overview,
   };
+}
+
+export function tmdbReference(
+  value: string,
+  expectedKind: "movie" | "series",
+): number | null {
+  if (/^[1-9]\d{0,9}$/.test(value)) return Number(value);
+  if (!/^https?:\/\//i.test(value)) return null;
+
+  try {
+    const url = new URL(value);
+    if (!/(^|\.)themoviedb\.org$/i.test(url.hostname)) return null;
+    const match = url.pathname.match(/^\/(movie|tv)\/(\d+)/i);
+    if (!match) return null;
+    const referenceKind = match[1]?.toLowerCase() === "tv" ? "series" : "movie";
+    if (referenceKind !== expectedKind) {
+      throw new Error(
+        `This ${expectedKind} review cannot be matched to a ${referenceKind} URL.`,
+      );
+    }
+    return Number(match[2]);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("This ")) {
+      throw error;
+    }
+    return null;
+  }
 }
 
 export function ScanReviewCard({

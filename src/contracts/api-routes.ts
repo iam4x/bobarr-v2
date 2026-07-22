@@ -296,7 +296,7 @@ export const apiRoutes = {
   ),
   catalogSearch: route<
     CatalogApiPage,
-    { query: string; kind?: CatalogKind; page?: number }
+    { query: string; kind?: CatalogKind; year?: number; page?: number }
   >()("GET", "/catalog/search"),
   catalogDiscover: route<CatalogApiPage, CatalogDiscoverQuery>()(
     "GET",

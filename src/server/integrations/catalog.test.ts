@@ -44,6 +44,44 @@ describe("TMDB adapter", () => {
     expect(requestedUrl).toContain("language=en-US");
   });
 
+  test("uses media-specific search and year filters for an exact title review", async () => {
+    let requestedUrl: URL | undefined;
+    const client = createTmdbClient({
+      apiKey: "key",
+      fetch: async (input) => {
+        requestedUrl = new URL(String(input));
+        return Response.json({
+          page: 1,
+          total_pages: 1,
+          total_results: 1,
+          results: [
+            {
+              id: 381356,
+              title: "Five",
+              original_title: "Five",
+              release_date: "2016-03-30",
+              genre_ids: [35],
+            },
+          ],
+        });
+      },
+    });
+
+    const page = await client.search("Five", {
+      mediaType: "movie",
+      year: 2016,
+      language: "fr-FR",
+    });
+
+    expect(requestedUrl?.pathname).toBe("/3/search/movie");
+    expect(requestedUrl?.searchParams.get("year")).toBe("2016");
+    expect(page.results[0]).toMatchObject({
+      mediaType: "movie",
+      tmdbId: 381356,
+      title: "Five",
+    });
+  });
+
   test("normalizes genre and language configuration", async () => {
     const fetcher: FetchLike = async (input) => {
       const path = new URL(String(input)).pathname;
