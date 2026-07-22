@@ -1,5 +1,7 @@
 /// <reference types="bun" />
 
+import { join } from "node:path";
+
 export {};
 
 type ComposePort = {
@@ -51,14 +53,12 @@ assert(
 );
 assert(bobarr.init === true, "Bobarr must use an init process");
 assertNonRoot(bobarr, "Bobarr");
-assertNonRoot(jackett, "Jackett");
-assertNonRoot(transmission, "Transmission");
+assertLinuxServerUserMapping(jackett, "Jackett");
+assertLinuxServerUserMapping(transmission, "Transmission");
 assertNoNewPrivileges(bobarr, "Bobarr");
 assertNoNewPrivileges(jackett, "Jackett");
 assertNoNewPrivileges(flaresolverr, "FlareSolverr");
 assertNoNewPrivileges(transmission, "Transmission");
-assertNonRootRun(jackett, "Jackett");
-assertNonRootRun(transmission, "Transmission");
 
 assertTaggedDigest(
   jackett,
@@ -133,10 +133,13 @@ assert(
 );
 
 const bobarrMedia = volumeAt(bobarr, "/media");
-const transmissionMedia = volumeAt(transmission, "/media");
+const transmissionDownloads = volumeAt(transmission, "/media/downloads");
+const linuxServerDownloads = volumeAt(transmission, "/downloads");
 assert(
-  bobarrMedia.source === transmissionMedia.source,
-  "Bobarr and Transmission must share the same /media source for hardlinks",
+  transmissionDownloads.source === linuxServerDownloads.source &&
+    transmissionDownloads.source ===
+      join(bobarrMedia.source ?? "", "downloads"),
+  "Transmission download aliases must use Bobarr's shared media tree",
 );
 assert(
   volumeAt(bobarr, "/config").type === "bind" &&
@@ -269,11 +272,15 @@ function assertNoNewPrivileges(value: ComposeService, name: string): void {
   );
 }
 
-function assertNonRootRun(value: ComposeService, name: string): void {
+function assertLinuxServerUserMapping(
+  value: ComposeService,
+  name: string,
+): void {
   assert(
-    value.tmpfs?.some((mount) => /^\/run:uid=\d+,gid=\d+,exec$/.test(mount)) ===
-      true,
-    `${name} must give its non-root s6 supervisor an executable owned /run`,
+    value.user === undefined &&
+      /^\d+$/.test(value.environment?.["PUID"] ?? "") &&
+      /^\d+$/.test(value.environment?.["PGID"] ?? ""),
+    `${name} must let LinuxServer init apply its PUID/PGID mapping`,
   );
 }
 

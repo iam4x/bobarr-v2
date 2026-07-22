@@ -34,8 +34,10 @@ stat -c '%u:%g %n' config config/jackett config/transmission media
 ```
 
 For hardlinks, `downloads`, `movies`, and `tv` must be on one filesystem and be
-presented through the single `/media` container mount. Do not mount each child
-from a different host filesystem.
+presented to Bobarr through the single `/media` container mount. Transmission
+mounts that same host `downloads` directory at both `/downloads` for LinuxServer
+ownership initialization and `/media/downloads` for Bobarr's durable paths. Do
+not mount each child from a different host filesystem.
 
 ## Master key
 
@@ -173,7 +175,7 @@ download reconciliation resumes without creating a duplicate torrent.
 
 CI runs `.github/scripts/verify-compose.ts` against the base and merged VPN
 models. The check validates the configured Transmission and Jackett bind
-addresses, rejects any FlareSolverr host port, and checks unpinned service images,
+addresses, their LinuxServer PUID/PGID privilege mapping, rejects any FlareSolverr host port, and checks unpinned service images,
 divergent media mounts, root application users, and an overlay that leaves
 Transmission on a direct network. In the VPN model, Gluetun owns the loopback
 9091 publication because Transmission shares its network namespace. The weekly
