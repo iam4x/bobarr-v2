@@ -1,7 +1,12 @@
 import type { MonitorMediaPatch } from "../../contracts/api-routes";
 import type { AcquisitionState, LibraryItem, MonitorPolicy } from "../types";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   Check,
   Film,
@@ -40,6 +45,40 @@ import {
 import { formatDate, imageUrl, initials, mediaYear } from "../lib/format";
 
 type LibraryFilter = "all" | "available" | "missing" | "active" | "failed";
+const LIBRARY_PAGE_SIZE = 50;
+
+export function LibrarySummary({
+  summary,
+}: {
+  summary: {
+    total: number;
+    downloaded: number;
+    active: number;
+    missing: number;
+    failed: number;
+  };
+}) {
+  return (
+    <dl className="library-summary" aria-label="Library summary">
+      <div>
+        <dt>Downloaded</dt>
+        <dd>{summary.downloaded}</dd>
+      </div>
+      <div>
+        <dt>Active</dt>
+        <dd>{summary.active}</dd>
+      </div>
+      <div>
+        <dt>Missing</dt>
+        <dd>{summary.missing}</dd>
+      </div>
+      <div>
+        <dt>Total</dt>
+        <dd>{summary.total}</dd>
+      </div>
+    </dl>
+  );
+}
 
 function acquisitionTone(
   state: AcquisitionState,
@@ -690,10 +729,18 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
   const [filter, setFilter] = useState<LibraryFilter>("all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<LibraryItem | null>(null);
-  const libraryQuery = useQuery({
+  const libraryQuery = useInfiniteQuery({
     queryKey: ["library", kind],
-    queryFn: ({ signal }) =>
-      api.get("listLibrary", { query: { kind }, signal }),
+    queryFn: ({ pageParam, signal }) =>
+      api.get("listLibrary", {
+        query: { kind, limit: LIBRARY_PAGE_SIZE, offset: pageParam },
+        signal,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => {
+      const nextOffset = lastPage.page.offset + lastPage.items.length;
+      return nextOffset < lastPage.page.total ? nextOffset : undefined;
+    },
   });
   const scanMutation = useMutation({
     mutationFn: () => api.post("scanLibrary", { body: { kind } }),
@@ -701,14 +748,15 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
   });
   const items = useMemo(
     () =>
-      collectionItems(libraryQuery.data).filter((item) => {
-        return (
+      (
+        libraryQuery.data?.pages.flatMap((page) => collectionItems(page)) ?? []
+      ).filter(
+        (item) =>
           isFilterMatch(item, filter) &&
           item.title
             .toLocaleLowerCase()
-            .includes(search.trim().toLocaleLowerCase())
-        );
-      }),
+            .includes(search.trim().toLocaleLowerCase()),
+      ),
     [filter, libraryQuery.data, search],
   );
   const isMovies = kind === "movie";
@@ -742,6 +790,9 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
           <Tv size={17} /> Shows
         </Link>
       </div>
+      {libraryQuery.data?.pages[0] ? (
+        <LibrarySummary summary={libraryQuery.data.pages[0].summary} />
+      ) : null}
       <ScanReviewPanel kind={kind} />
       <div className="library-toolbar">
         <div className="mini-search">
@@ -806,17 +857,31 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
         />
       ) : null}
       {items.length ? (
-        <div className="library-grid">
-          {items.map((item) => (
-            <LibraryCard
-              key={item.id}
-              item={item}
-              onManage={(next) => {
-                setSelected(next);
-              }}
-            />
-          ))}
-        </div>
+        <>
+          <div className="library-grid">
+            {items.map((item) => (
+              <LibraryCard
+                key={item.id}
+                item={item}
+                onManage={(next) => {
+                  setSelected(next);
+                }}
+              />
+            ))}
+          </div>
+          {libraryQuery.hasNextPage ? (
+            <div className="load-more-row">
+              <Button
+                type="button"
+                variant="secondary"
+                busy={libraryQuery.isFetchingNextPage}
+                onClick={() => void libraryQuery.fetchNextPage()}
+              >
+                Load more
+              </Button>
+            </div>
+          ) : null}
+        </>
       ) : null}
       <ManageLibraryDialog
         key={selected?.id}

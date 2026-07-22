@@ -334,6 +334,19 @@ describe("public product API", () => {
       monitorPolicy: "all",
       acquisitionState: "missing",
     });
+    const libraryResponse = await fixture.runtime.app.request(
+      "/api/v1/library?kind=movie",
+      { headers: { cookie: session.cookie } },
+    );
+    expect(await libraryResponse.json()).toMatchObject({
+      summary: {
+        total: 1,
+        downloaded: 0,
+        active: 0,
+        missing: 1,
+        failed: 0,
+      },
+    });
 
     const jobs = await fixture.runtime.queue.list({
       types: ["media.acquire.v1"],

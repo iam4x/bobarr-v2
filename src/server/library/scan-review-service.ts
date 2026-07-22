@@ -3,7 +3,8 @@ import type { Repositories } from "../db";
 import type { EventHub } from "../events";
 import type { TmdbClient } from "../integrations";
 
-import { realpath, stat } from "node:fs/promises";
+import { lstat, realpath, stat } from "node:fs/promises";
+import { resolve } from "node:path";
 
 import { importRecordedFiles } from "./importer";
 import { isPathContained } from "./paths";
@@ -59,25 +60,29 @@ export function createScanReviewService(
       const files = await Promise.all(
         review.files.map(async (file) => {
           signal?.throwIfAborted();
-          let resolvedPath: string;
+          const recordedPath = resolve(file.path);
+          if (!isPathContained(root, recordedPath)) {
+            throw conflict(
+              "A recorded library file escapes its configured root",
+            );
+          }
+          let pathInfo: Awaited<ReturnType<typeof lstat>>;
           try {
-            resolvedPath = await realpath(file.path);
+            pathInfo = await lstat(recordedPath);
           } catch (error) {
             throw reviewConflict(
               `A recorded library file is no longer available: ${file.path}`,
               error,
             );
           }
-          if (!isPathContained(root, resolvedPath)) {
-            throw conflict(
-              "A recorded library file escapes its configured root",
-            );
+          if (!pathInfo.isFile() && !pathInfo.isSymbolicLink()) {
+            throw conflict("A recorded library path is no longer a file");
           }
-          const fileInfo = await stat(resolvedPath);
+          const fileInfo = await stat(recordedPath);
           if (!fileInfo.isFile()) {
             throw conflict("A recorded library path is no longer a file");
           }
-          return { path: resolvedPath, sizeBytes: fileInfo.size };
+          return { path: recordedPath, sizeBytes: fileInfo.size };
         }),
       );
 

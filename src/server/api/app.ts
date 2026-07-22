@@ -547,8 +547,40 @@ export function createApiApp(
   app.openapi(routes.listLibrary, (context) => {
     const query = context.req.valid("query");
     const result = dependencies.repositories.library.list(query);
+    const summaryQuery = {
+      limit: 1,
+      offset: 0,
+      ...(query.kind === undefined ? {} : { kind: query.kind }),
+      ...(query.parentId === undefined ? {} : { parentId: query.parentId }),
+      ...(query.monitorPolicy === undefined
+        ? {}
+        : { monitorPolicy: query.monitorPolicy }),
+    };
+    const count = (
+      status?: Parameters<
+        typeof dependencies.repositories.library.list
+      >[0]["status"],
+    ): number =>
+      dependencies.repositories.library.list({
+        ...summaryQuery,
+        ...(status === undefined ? {} : { status }),
+      }).total;
     return context.json(
-      { items: result.items, page: { ...query, total: result.total } },
+      {
+        items: result.items,
+        page: { limit: query.limit, offset: query.offset, total: result.total },
+        summary: {
+          total: count(),
+          downloaded: count("available"),
+          active:
+            count("searching") +
+            count("queued") +
+            count("downloading") +
+            count("organizing"),
+          missing: count("missing"),
+          failed: count("failed"),
+        },
+      },
       200,
     );
   });

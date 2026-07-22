@@ -67,15 +67,15 @@ export async function scanLibrary(
         if (!ignored.has(entry.name)) await walk(path, depth + 1);
         continue;
       }
-      let filePath = path;
-      let fileInfo: Awaited<ReturnType<typeof stat>>;
+      const filePath = path;
+      let fileInfo: Awaited<ReturnType<typeof stat>> | undefined;
       if (entry.isSymbolicLink()) {
         if (!options.followSymlinks) continue;
-        filePath = await realpath(path);
-        if (!isPathContained(root, filePath)) continue;
-        fileInfo = await stat(filePath);
+        fileInfo = await stat(path).catch(() => undefined);
+        if (fileInfo === undefined) continue;
         if (fileInfo.isDirectory()) {
-          await walk(filePath, depth + 1);
+          // Library scans may include symlinked media files, but never traverse
+          // symlinked directories or escape the configured root.
           continue;
         }
       } else {

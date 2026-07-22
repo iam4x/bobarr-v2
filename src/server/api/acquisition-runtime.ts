@@ -222,7 +222,12 @@ export function createAcquisitionRuntime(
       );
     },
     [LIBRARY_SCAN_JOB]: async (job, context) => {
-      await importLibrary(job.payload, context.signal, options);
+      await importLibrary(
+        job.payload,
+        context.signal,
+        context.heartbeat,
+        options,
+      );
     },
   };
 
@@ -484,6 +489,7 @@ function isReleaseQuality(
 async function importLibrary(
   payload: unknown,
   signal: AbortSignal,
+  heartbeat: () => Promise<void>,
   options: AcquisitionRuntimeOptions,
 ): Promise<void> {
   const roots = jobRoots(payload);
@@ -494,10 +500,11 @@ async function importLibrary(
   for (const root of roots) {
     signal.throwIfAborted();
     const kind = root === settings.storage.moviesPath ? "movie" : "series";
-    const files = await scanLibrary({ root });
+    const files = await scanLibrary({ root, followSymlinks: true });
     const groups = groupScanFiles(files.map((file) => ({ ...file, kind })));
     for (const group of groups.values()) {
       signal.throwIfAborted();
+      await heartbeat();
       const result = await tmdb.search(group.title, {
         page: 1,
         language: settings.locale.language,

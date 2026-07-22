@@ -91,6 +91,13 @@ export const LibraryListResponseSchema = z
   .object({
     items: z.array(LibraryItemSchema),
     page: PageInfoSchema,
+    summary: z.object({
+      total: z.number().int().nonnegative(),
+      downloaded: z.number().int().nonnegative(),
+      active: z.number().int().nonnegative(),
+      missing: z.number().int().nonnegative(),
+      failed: z.number().int().nonnegative(),
+    }),
   })
   .openapi("LibraryListResponse");
 

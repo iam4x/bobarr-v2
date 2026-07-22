@@ -1658,6 +1658,31 @@ textarea:focus-visible {
   color: var(--text);
   background: var(--surface-3);
 }
+.library-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 22px;
+}
+.library-summary > div {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.library-summary dt {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.library-summary dd {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-family: "Manrope", sans-serif;
+  font-size: 24px;
+  font-weight: 750;
+}
 .scan-review-panel {
   margin-bottom: 26px;
   padding: 18px;
@@ -3230,6 +3255,9 @@ textarea:focus-visible {
   .activity-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+  .library-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .suggestions-toolbar {
     align-items: stretch;

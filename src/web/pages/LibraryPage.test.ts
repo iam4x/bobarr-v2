@@ -2,8 +2,11 @@ import type { LibraryItem } from "../types";
 
 import { describe, expect, test } from "bun:test";
 
+import { renderToStaticMarkup } from "react-dom/server";
+
 import {
   canManuallySearchLibraryItem,
+  LibrarySummary,
   libraryReleaseTarget,
 } from "./LibraryPage";
 
@@ -18,6 +21,23 @@ const movie: LibraryItem = {
 };
 
 describe("library manual release targets", () => {
+  test("shows downloaded and total library counts", () => {
+    const markup = renderToStaticMarkup(
+      LibrarySummary({
+        summary: {
+          total: 367,
+          downloaded: 9,
+          active: 0,
+          missing: 358,
+          failed: 0,
+        },
+      }),
+    );
+
+    expect(markup).toContain("Downloaded</dt><dd>9");
+    expect(markup).toContain("Total</dt><dd>367");
+  });
+
   test("keeps manual replacement available throughout monitored acquisition", () => {
     for (const acquisitionState of [
       "searching",

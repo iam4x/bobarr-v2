@@ -275,17 +275,34 @@ describe("safe library organization", () => {
 describe("library scanner", () => {
   test("finds media deterministically and skips symlinks by default", async () => {
     const root = await temporaryRoot();
+    const outside = await temporaryRoot();
     await mkdir(join(root, "Season 01"));
     await Bun.write(join(root, "Season 01", "episode.mkv"), "video");
+    await Bun.write(join(outside, "download.mkv"), "linked video");
     await Bun.write(join(root, "notes.txt"), "notes");
     await symlink(
       join(root, "Season 01", "episode.mkv"),
       join(root, "linked.mkv"),
     );
+    await symlink(join(outside, "download.mkv"), join(root, "external.mkv"));
+    await symlink(join(outside, "missing.mkv"), join(root, "broken.mkv"));
     const files = await scanLibrary({ root });
     expect(files.map(({ relativePath }) => relativePath)).toEqual([
       "Season 01/episode.mkv",
     ]);
+
+    const followed = await scanLibrary({ root, followSymlinks: true });
+    expect(followed.map(({ relativePath }) => relativePath)).toEqual([
+      "external.mkv",
+      "linked.mkv",
+      "Season 01/episode.mkv",
+    ]);
+    expect(
+      followed.find(({ relativePath }) => relativePath === "external.mkv"),
+    ).toMatchObject({
+      absolutePath: join(root, "external.mkv"),
+      sizeBytes: 12,
+    });
   });
 });
 

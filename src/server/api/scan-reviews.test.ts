@@ -2,7 +2,14 @@ import type { BackendConfig } from "../config";
 import type { BackendRuntime } from "./initialize";
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm, unlink } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  symlink,
+  unlink,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -180,6 +187,37 @@ describe("library scan review API", () => {
     expect(
       fixture.runtime.repositories.scanReviews.get(review.id)?.status,
     ).toBe("pending");
+  });
+
+  test("resolves a library symlink without replacing it with its external target", async () => {
+    const fixture = await createFixture();
+    const externalFile = join(fixture.baseDirectory, "download.mkv");
+    const linkedFile = join(fixture.moviesRoot, "Matrix (1999)", "linked.mkv");
+    await Bun.write(externalFile, "linked movie");
+    await symlink(externalFile, linkedFile);
+    const review = fixture.runtime.repositories.scanReviews.upsert({
+      kind: "movie",
+      title: "Matrix",
+      year: 1999,
+      rootPath: fixture.moviesRoot,
+      files: [{ path: linkedFile, sizeBytes: 12 }],
+      candidates: [matrixCandidate(603, "Matrix")],
+    });
+    const session = await setup(fixture.runtime);
+
+    const response = await jsonRequest(
+      fixture.runtime,
+      `/api/v1/library/scan-reviews/${review.id}/resolve`,
+      { tmdbId: 603 },
+      session,
+    );
+    expect(response.status).toBe(200);
+    const resolved = (await response.json()) as { mediaItemId: string };
+    expect(
+      fixture.runtime.repositories.libraryFiles.listForMedia(
+        resolved.mediaItemId,
+      ),
+    ).toEqual([expect.objectContaining({ path: linkedFile })]);
   });
 });
 

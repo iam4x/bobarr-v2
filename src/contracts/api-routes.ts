@@ -64,6 +64,18 @@ export interface JobsApiPage {
   page: ApiPageInfo;
 }
 
+export interface LibraryApiPage {
+  items: LibraryItem[];
+  page: ApiPageInfo;
+  summary: {
+    total: number;
+    downloaded: number;
+    active: number;
+    missing: number;
+    failed: number;
+  };
+}
+
 export interface JobsApiQuery extends PaginationQuery {
   status?: "queued" | "running" | "completed" | "failed" | "cancelled";
   kind?: string;
@@ -224,7 +236,7 @@ export const apiRoutes = {
   ),
   systemStatus: route<SystemStatus>()("GET", "/system"),
   listLibrary: route<
-    ApiCollectionResponse<LibraryItem>,
+    LibraryApiPage,
     | (PaginationQuery & {
         status?: string;
         kind?: "movie" | "series" | "season" | "episode";
