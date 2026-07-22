@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   DownloadRemovalTitle,
+  DownloadFilterBar,
   formatJobKind,
   JobFilterBar,
   JobPagination,
@@ -11,6 +12,18 @@ import {
 } from "./ActivityPage";
 
 describe("activity jobs browser", () => {
+  test("defaults the download filter UI to active downloads", () => {
+    const markup = renderToStaticMarkup(
+      <DownloadFilterBar value="active" onChange={() => {}} />,
+    );
+
+    expect(markup).toContain("Download status");
+    expect(markup).toContain(
+      '<option value="active" selected="">Active</option>',
+    );
+    expect(markup).toContain('<option value="completed">Completed</option>');
+  });
+
   test("renders an accessible exact-type filter with known durable jobs", () => {
     const markup = renderToStaticMarkup(
       <JobFilterBar kind="library.scan.v1" busy={false} onChange={() => {}} />,

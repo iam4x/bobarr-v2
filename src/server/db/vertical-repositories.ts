@@ -265,8 +265,13 @@ export class DownloadRepository {
         ne(downloads.acquisitionState, "removed"),
       )!,
     ];
-    if (query.state !== undefined)
+    if (query.state !== undefined) {
       filters.push(eq(downloads.state, query.state));
+    } else if (query.completion === "active") {
+      filters.push(ne(downloads.state, "completed"));
+    } else if (query.completion === "completed") {
+      filters.push(eq(downloads.state, "completed"));
+    }
     if (query.mediaId !== undefined)
       filters.push(eq(downloads.mediaItemId, query.mediaId));
     const where = filters.length === 0 ? undefined : and(...filters);

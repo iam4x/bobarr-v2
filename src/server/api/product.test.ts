@@ -14,6 +14,7 @@ import {
   CreateDownloadInputSchema,
   CreateLibraryFileInputSchema,
   CreateLibraryItemRequestSchema,
+  DownloadPatchSchema,
 } from "../../contracts";
 import {
   ADD_TORRENT_JOB,
@@ -2097,6 +2098,39 @@ describe("public product API", () => {
     expect(await response.json()).toMatchObject({
       downloads: [{ title: expect.stringContaining("Download") }],
       page: { limit: 25, offset: 100, total: 101 },
+    });
+  });
+
+  test("filters completed downloads out of the active Activity view", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    const active = fixture.runtime.repositories.downloads.create(
+      CreateDownloadInputSchema.parse({ title: "Still downloading" }),
+    );
+    const finished = fixture.runtime.repositories.downloads.create(
+      CreateDownloadInputSchema.parse({ title: "Already finished" }),
+    );
+    fixture.runtime.repositories.downloads.update(
+      finished.id,
+      DownloadPatchSchema.parse({ state: "completed", progress: 100 }),
+    );
+
+    const activeResponse = await fixture.runtime.app.request(
+      "/api/v1/downloads?completion=active",
+      { headers: { cookie: session.cookie } },
+    );
+    const completedResponse = await fixture.runtime.app.request(
+      "/api/v1/downloads?completion=completed",
+      { headers: { cookie: session.cookie } },
+    );
+
+    expect(await activeResponse.json()).toMatchObject({
+      downloads: [{ id: active.id }],
+      page: { total: 1 },
+    });
+    expect(await completedResponse.json()).toMatchObject({
+      downloads: [{ id: finished.id }],
+      page: { total: 1 },
     });
   });
 

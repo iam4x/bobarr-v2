@@ -111,6 +111,7 @@ export const DownloadPatchSchema = z
 
 export const DownloadsQuerySchema = PaginationQuerySchema.extend({
   state: DownloadStateSchema.optional(),
+  completion: z.enum(["active", "completed", "all"]).optional(),
   mediaId: EntityIdSchema.optional(),
 }).openapi("DownloadsQuery");
 

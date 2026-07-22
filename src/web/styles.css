@@ -1772,6 +1772,11 @@ textarea:focus-visible {
   gap: 16px;
   margin-bottom: 24px;
 }
+.activity-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 .suggestions-toolbar {
   display: flex;
   align-items: center;
@@ -4205,6 +4210,9 @@ textarea:focus-visible {
   }
   .activity-toolbar > .button {
     align-self: flex-end;
+  }
+  .activity-toolbar__actions {
+    justify-content: space-between;
   }
   .job-browser__toolbar {
     align-items: stretch;

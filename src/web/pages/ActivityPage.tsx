@@ -51,6 +51,7 @@ import {
 
 type ActivityTab = "downloads" | "jobs" | "history";
 type DownloadAction = "pause" | "resume" | "retry";
+type DownloadFilter = "active" | "completed" | "all";
 const DOWNLOAD_PAGE_SIZE = 50;
 export const JOB_PAGE_SIZE = 20;
 
@@ -82,6 +83,28 @@ export function formatJobKind(kind: string): string {
   return (
     JOB_KIND_OPTIONS.find((option) => option.value === kind)?.label ??
     kind.replaceAll(/[._-]+/g, " ")
+  );
+}
+
+export function DownloadFilterBar({
+  value,
+  onChange,
+}: {
+  value: DownloadFilter;
+  onChange: (value: DownloadFilter) => void;
+}) {
+  return (
+    <label className="compact-select download-filter">
+      <span>Download status</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value as DownloadFilter)}
+      >
+        <option value="active">Active</option>
+        <option value="completed">Completed</option>
+        <option value="all">All</option>
+      </select>
+    </label>
   );
 }
 
@@ -663,15 +686,21 @@ export function ActivityPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<Download | null>(null);
   const [deleteData, setDeleteData] = useState(false);
+  const [downloadFilter, setDownloadFilter] =
+    useState<DownloadFilter>("active");
   const [jobKind, setJobKind] = useState("");
   const [jobOffset, setJobOffset] = useState(0);
   const [manualJobKind, setManualJobKind] = useState("library.scan.v1");
   const [selectedJobId, setSelectedJobId] = useState<string>();
   const downloadsQuery = useInfiniteQuery({
-    queryKey: ["downloads"],
+    queryKey: ["downloads", { completion: downloadFilter }],
     queryFn: ({ pageParam, signal }) =>
       api.get("listDownloads", {
-        query: { limit: DOWNLOAD_PAGE_SIZE, offset: pageParam },
+        query: {
+          limit: DOWNLOAD_PAGE_SIZE,
+          offset: pageParam,
+          completion: downloadFilter,
+        },
         signal,
       }),
     initialPageParam: 0,
@@ -783,6 +812,12 @@ export function ActivityPage() {
   });
   const downloads =
     downloadsQuery.data?.pages.flatMap((page) => collectionItems(page)) ?? [];
+  let emptyDownloadsTitle = "Nothing is downloading";
+  if (downloadFilter === "completed") {
+    emptyDownloadsTitle = "No completed downloads";
+  } else if (downloadFilter === "all") {
+    emptyDownloadsTitle = "No downloads yet";
+  }
 
   useEffect(() => {
     const total = jobsQuery.data?.page.total;
@@ -818,14 +853,22 @@ export function ActivityPage() {
           ]}
           onChange={setTab}
         />
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={() => void queryClient.invalidateQueries()}
-        >
-          <RefreshCw size={16} /> Refresh
-        </Button>
+        <div className="activity-toolbar__actions">
+          {tab === "downloads" ? (
+            <DownloadFilterBar
+              value={downloadFilter}
+              onChange={setDownloadFilter}
+            />
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => void queryClient.invalidateQueries()}
+          >
+            <RefreshCw size={16} /> Refresh
+          </Button>
+        </div>
       </div>
       {tab === "downloads" ? (
         <>
@@ -845,8 +888,12 @@ export function ActivityPage() {
           ) : null}
           {downloadsQuery.data && downloads.length === 0 ? (
             <EmptyState
-              title="Nothing is downloading"
-              description="Automatic acquisitions and manually added torrents will appear here."
+              title={emptyDownloadsTitle}
+              description={
+                downloadFilter === "completed"
+                  ? "Finished downloads will appear here when they complete."
+                  : "Automatic acquisitions and manually added torrents will appear here."
+              }
               action={
                 <Button type="button" onClick={() => setAddOpen(true)}>
                   <Plus size={16} /> Add download

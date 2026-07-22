@@ -337,6 +337,7 @@ export const apiRoutes = {
     DownloadsApiPage,
     | (PaginationQuery & {
         state?: string;
+        completion?: "active" | "completed" | "all";
         mediaId?: string;
       })
     | undefined
