@@ -1456,6 +1456,68 @@ describe("public product API", () => {
     ).toBe(false);
   });
 
+  test("removes a download record when its torrent was already removed manually", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    const monitored = await jsonRequest(
+      fixture.runtime,
+      "/api/v1/library",
+      "POST",
+      { tmdbId: 603, kind: "movie", monitorPolicy: "all" },
+      session,
+    );
+    const movie = (await monitored.json()) as { id: string };
+    const releases = (await (
+      await fixture.runtime.app.request(
+        "/api/v1/releases?tmdbId=603&kind=movie",
+        { headers: { cookie: session.cookie } },
+      )
+    ).json()) as { items: Array<{ id: string }> };
+    const queued = await jsonRequest(
+      fixture.runtime,
+      "/api/v1/downloads",
+      "POST",
+      { candidateId: releases.items[0]!.id },
+      session,
+    );
+    const download = (await queued.json()) as { id: string };
+    await (await fixture.runtime.acquisition.service()).runAddJob(download.id);
+    fixture.services.removeTorrentManually();
+    const removeCallsBefore = fixture.services.transmissionCalls.filter(
+      (call) => call.method === "torrent_remove",
+    ).length;
+
+    const response = await jsonRequest(
+      fixture.runtime,
+      `/api/v1/downloads/${download.id}`,
+      "DELETE",
+      { deleteData: true },
+      session,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      removed: true,
+      dataDeleted: false,
+    });
+    expect(fixture.runtime.repositories.downloads.get(download.id)).toBe(
+      undefined,
+    );
+    expect(
+      await downloadRepositoryFromDatabase(fixture.runtime.database).findById(
+        download.id,
+      ),
+    ).toMatchObject({ state: "removed", error: "Removed by administrator" });
+    expect(fixture.runtime.repositories.media.get(movie.id)).toMatchObject({
+      monitorPolicy: "none",
+    });
+    expect(
+      fixture.services.transmissionCalls.filter(
+        (call) => call.method === "torrent_remove",
+      ),
+    ).toHaveLength(removeCallsBefore);
+  });
+
   test("removing a linked queued download stops monitoring and cancels its jobs", async () => {
     const fixture = await createFixture();
     const session = await setup(fixture.runtime);
@@ -1833,6 +1895,10 @@ class FakeProductServices {
     if (this.torrentSnapshot) {
       this.torrentSnapshot = { ...this.torrentSnapshot, labels: [...labels] };
     }
+  }
+
+  removeTorrentManually(): void {
+    this.torrentSnapshot = null;
   }
 
   readonly fetch = async (

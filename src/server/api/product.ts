@@ -1221,7 +1221,7 @@ export function registerProductRoutes(
     const download = dependencies.repositories.downloads.get(id);
     if (!download) throw notFound("Download not found");
     const owned = download.externalId
-      ? await requireOwnedTorrent(
+      ? await findOwnedTorrentForRemoval(
           download,
           dependencies,
           context.req.raw.signal,
@@ -1265,7 +1265,10 @@ export function registerProductRoutes(
       id,
     );
     dependencies.events?.publish("download.changed", { id });
-    return context.json({ removed: true, dataDeleted: input.deleteData });
+    return context.json({
+      removed: true,
+      dataDeleted: owned !== null && input.deleteData,
+    });
   });
 
   app.get("/api/v1/events", (context) => {
@@ -3007,6 +3010,36 @@ async function requireOwnedTorrent(
   );
   if (!torrent) {
     throw conflictError("Owned Transmission torrent is unavailable");
+  }
+  const downloadRoot =
+    dependencies.repositories.settings.ensureDefaults().settings.storage
+      .downloadsPath;
+  if (!isOwnedTorrent(durable, torrent, downloadRoot, download.externalId)) {
+    throw conflictError("Transmission torrent ownership could not be verified");
+  }
+  return { durable, torrent, transmission };
+}
+
+async function findOwnedTorrentForRemoval(
+  download: { id: string; externalId: string | null },
+  dependencies: ApiDependencies,
+  signal?: AbortSignal,
+): Promise<{
+  durable: DownloadRecord;
+  torrent: TorrentSnapshot;
+  transmission: TorrentEngine;
+} | null> {
+  if (!download.externalId) return null;
+  const transmission = await requireIntegrations(dependencies).transmission();
+  const torrent = await integrationCall("transmission", () =>
+    transmission.get(download.externalId!, signal),
+  );
+  if (!torrent) return null;
+  const durable = await downloadRepositoryFromDatabase(
+    dependencies.database,
+  ).findById(download.id);
+  if (!durable) {
+    throw conflictError("Download ownership record is unavailable");
   }
   const downloadRoot =
     dependencies.repositories.settings.ensureDefaults().settings.storage
