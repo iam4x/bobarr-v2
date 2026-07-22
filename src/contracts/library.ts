@@ -117,6 +117,7 @@ export const LibraryItemParamsSchema = z
   .openapi("LibraryItemParams");
 
 export const LibraryQuerySchema = PaginationQuerySchema.extend({
+  search: z.string().trim().max(200).optional(),
   status: LibraryStatusSchema.optional(),
   kind: MediaKindSchema.optional(),
   parentId: EntityIdSchema.optional(),

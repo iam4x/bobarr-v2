@@ -360,6 +360,51 @@ describe("public product API", () => {
     });
   });
 
+  test("searches the full movie and television libraries before paginating", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    for (let index = 0; index < 55; index += 1) {
+      fixture.runtime.repositories.media.create(
+        CreateLibraryItemRequestSchema.parse({
+          kind: "movie",
+          title: `Filler movie ${index}`,
+        }),
+      );
+    }
+    fixture.runtime.repositories.media.create(
+      CreateLibraryItemRequestSchema.parse({
+        kind: "movie",
+        title: "The Hidden Movie",
+      }),
+    );
+    fixture.runtime.repositories.media.create(
+      CreateLibraryItemRequestSchema.parse({
+        kind: "series",
+        title: "A Hidden Show",
+      }),
+    );
+
+    const moviesResponse = await fixture.runtime.app.request(
+      "/api/v1/library?kind=movie&search=hidden&limit=1",
+      { headers: { cookie: session.cookie } },
+    );
+    const showsResponse = await fixture.runtime.app.request(
+      "/api/v1/library?kind=series&search=HIDDEN&limit=1",
+      { headers: { cookie: session.cookie } },
+    );
+
+    expect(moviesResponse.status).toBe(200);
+    expect(await moviesResponse.json()).toMatchObject({
+      items: [{ title: "The Hidden Movie" }],
+      page: { limit: 1, offset: 0, total: 1 },
+    });
+    expect(showsResponse.status).toBe(200);
+    expect(await showsResponse.json()).toMatchObject({
+      items: [{ title: "A Hidden Show" }],
+      page: { limit: 1, offset: 0, total: 1 },
+    });
+  });
+
   test("projects current media state and hides untracked calendar events", async () => {
     const fixture = await createFixture();
     const session = await setup(fixture.runtime);

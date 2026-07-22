@@ -557,6 +557,11 @@ export class LibraryRepository {
 
   list(query: LibraryQuery): { items: LibraryItem[]; total: number } {
     const filters: SQL[] = [];
+    if (query.search !== undefined && query.search !== "") {
+      filters.push(
+        sql`instr(lower(${libraryItems.title}), lower(${query.search})) > 0`,
+      );
+    }
     if (query.status !== undefined)
       filters.push(eq(libraryItems.acquisitionState, query.status));
     if (query.kind !== undefined)

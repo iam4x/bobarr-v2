@@ -1686,11 +1686,17 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
   const [filter, setFilter] = useState<LibraryFilter>("all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<LibraryItem | null>(null);
+  const normalizedSearch = search.trim();
   const libraryQuery = useInfiniteQuery({
-    queryKey: ["library", kind],
+    queryKey: ["library", kind, normalizedSearch],
     queryFn: ({ pageParam, signal }) =>
       api.get("listLibrary", {
-        query: { kind, limit: LIBRARY_PAGE_SIZE, offset: pageParam },
+        query: {
+          kind,
+          limit: LIBRARY_PAGE_SIZE,
+          offset: pageParam,
+          ...(normalizedSearch === "" ? {} : { search: normalizedSearch }),
+        },
         signal,
       }),
     initialPageParam: 0,
@@ -1707,14 +1713,8 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
     () =>
       (
         libraryQuery.data?.pages.flatMap((page) => collectionItems(page)) ?? []
-      ).filter(
-        (item) =>
-          isFilterMatch(item, filter) &&
-          item.title
-            .toLocaleLowerCase()
-            .includes(search.trim().toLocaleLowerCase()),
-      ),
-    [filter, libraryQuery.data, search],
+      ).filter((item) => isFilterMatch(item, filter)),
+    [filter, libraryQuery.data],
   );
   const isMovies = kind === "movie";
 

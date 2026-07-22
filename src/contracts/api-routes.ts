@@ -239,6 +239,7 @@ export const apiRoutes = {
   listLibrary: route<
     LibraryApiPage,
     | (PaginationQuery & {
+        search?: string;
         status?: string;
         kind?: "movie" | "series" | "season" | "episode";
         parentId?: string;
