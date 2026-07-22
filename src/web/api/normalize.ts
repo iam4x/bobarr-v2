@@ -154,6 +154,10 @@ function normalizeJob(value: UnknownRecord): UnknownRecord {
   };
 }
 
+export function normalizeJobDetails<T>(value: T): T {
+  return isRecord(value) ? (normalizeJob(value) as T) : value;
+}
+
 function normalizeRelease(value: UnknownRecord): UnknownRecord {
   if (!("eligible" in value) || !("sizeBytes" in value)) return value;
   return {

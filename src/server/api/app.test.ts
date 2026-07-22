@@ -11,6 +11,7 @@ import {
   ApiErrorEnvelopeSchema,
   AuthSessionSchema,
   JobsListResponseSchema,
+  JobDetailsSchema,
   JobSchema,
   SetupStatusSchema,
   SystemStatusSchema,
@@ -47,6 +48,30 @@ describe("Bobarr backend API", () => {
       runtime.repositories.settings.ensureDefaults().settings.acquisition
         .requiredTerms,
     ).toEqual([]);
+
+    const scheduledMaintenance = await runtime.queue.list({
+      types: ["library.scan.v1", "maintenance.backup.v1"],
+    });
+    expect(scheduledMaintenance).toHaveLength(2);
+    expect(scheduledMaintenance).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "library.scan.v1",
+          state: "queued",
+          attempt: 0,
+          maxAttempts: 3,
+        }),
+        expect.objectContaining({
+          type: "maintenance.backup.v1",
+          state: "queued",
+          attempt: 0,
+          maxAttempts: 3,
+        }),
+      ]),
+    );
+    expect(scheduledMaintenance.every((job) => job.runAt > Date.now())).toBe(
+      true,
+    );
 
     const openApiResponse = await runtime.app.request("/api/openapi.json");
     expect(openApiResponse.status).toBe(200);
@@ -249,6 +274,19 @@ describe("Bobarr backend API", () => {
     expect((await runtime.queue.get(job.id))?.payload).toEqual({
       version: 1,
       roots: ["/media/movies", "/media/tv"],
+    });
+    const jobDetailsResponse = await runtime.app.request(
+      `/api/v1/jobs/${job.id}`,
+      { headers: { cookie } },
+    );
+    expect(jobDetailsResponse.status).toBe(200);
+    expect(
+      JobDetailsSchema.parse(await jobDetailsResponse.json()),
+    ).toMatchObject({
+      id: job.id,
+      attempt: 0,
+      maxAttempts: 5,
+      logs: [{ level: "info", event: "job.queued" }],
     });
     const cancelledJob = await jsonRequest(
       runtime,

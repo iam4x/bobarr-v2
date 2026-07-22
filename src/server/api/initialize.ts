@@ -209,6 +209,9 @@ export async function initializeBackend(
     const backgroundWork = new Set<Promise<unknown>>();
     let shutdownStarted = false;
     let activeWorkerDrain: Promise<void> | null = null;
+    const timers: Partial<
+      Record<"worker" | "reconcile" | "progress" | "maintenance", Timer>
+    > = {};
 
     const trackBackground = <T>(work: Promise<T>): Promise<T> => {
       backgroundWork.add(work);
@@ -245,39 +248,8 @@ export async function initializeBackend(
       void operation.then(clearActiveDrain, clearActiveDrain);
       return operation;
     };
-    const workerTimer = setInterval(
-      () => void drainWorker().catch(() => undefined),
-      750,
-    );
-    workerTimer.unref?.();
-    const reconcileTimer = setInterval(
-      () =>
-        runInBackground(
-          queue.enqueue({
-            type: "maintenance.reconcile.v1",
-            payload: { version: 1 },
-            dedupeKey: "active-downloads",
-            maxAttempts: 5,
-          }),
-        ),
-      30_000,
-    );
-    reconcileTimer.unref?.();
-    const progressTimer = setInterval(() => {
-      if (events.subscribers === 0 || workerAbort.signal.aborted) return;
-      runInBackground(acquisition.publishLiveProgress(workerAbort.signal));
-    }, 3_000);
-    progressTimer.unref?.();
-    const maintenanceTimer = setInterval(
-      () => runInBackground(enqueueScheduledMaintenance(queue, repositories)),
-      60 * 60_000,
-    );
-    maintenanceTimer.unref?.();
     const stopTimers = (): void => {
-      clearInterval(workerTimer);
-      clearInterval(reconcileTimer);
-      clearInterval(progressTimer);
-      clearInterval(maintenanceTimer);
+      for (const timer of Object.values(timers)) clearInterval(timer);
     };
     cleanupPartialRuntime = (): void => {
       shutdownStarted = true;
@@ -294,7 +266,6 @@ export async function initializeBackend(
     } catch {
       // Connectors may intentionally be unconfigured on first run.
     }
-    await drainWorker();
     const app = createApiApp({
       config,
       database,
@@ -313,6 +284,36 @@ export async function initializeBackend(
       logger,
       cancelJob: (id) => worker.cancel(id),
     });
+    // Start background work only after repositories, integrations, handlers,
+    // and the HTTP application have all been constructed.
+    timers.worker = setInterval(
+      () => void drainWorker().catch(() => undefined),
+      750,
+    );
+    timers.worker.unref?.();
+    timers.reconcile = setInterval(
+      () =>
+        runInBackground(
+          queue.enqueue({
+            type: "maintenance.reconcile.v1",
+            payload: { version: 1 },
+            dedupeKey: "active-downloads",
+            maxAttempts: 5,
+          }),
+        ),
+      30_000,
+    );
+    timers.reconcile.unref?.();
+    timers.progress = setInterval(() => {
+      if (events.subscribers === 0 || workerAbort.signal.aborted) return;
+      runInBackground(acquisition.publishLiveProgress(workerAbort.signal));
+    }, 3_000);
+    timers.progress.unref?.();
+    timers.maintenance = setInterval(
+      () => runInBackground(enqueueScheduledMaintenance(queue, repositories)),
+      60 * 60_000,
+    );
+    timers.maintenance.unref?.();
     let resourcesClosed = false;
     let closePromise: Promise<BackendRuntimeCloseResult> | null = null;
     const beginShutdown = (): void => {

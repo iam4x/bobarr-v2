@@ -38,6 +38,7 @@ import {
   JobSchema,
   JobsListResponseSchema,
   JobsQuerySchema,
+  JobDetailsSchema,
   LibraryItemParamsSchema,
   LibraryItemSchema,
   LibraryListResponseSchema,
@@ -343,7 +344,7 @@ const routes = {
     security: [{ sessionCookie: [] }],
     request: { params: JobParamsSchema },
     responses: {
-      200: jsonResponse(JobSchema, "Persisted job state"),
+      200: jsonResponse(JobDetailsSchema, "Persisted job state and log"),
       default: errorResponse,
     },
   }),
@@ -616,15 +617,26 @@ export function createApiApp(
   });
   app.openapi(routes.getJob, async (context) => {
     if (dependencies.queue !== undefined) {
-      const job = await dependencies.queue.get(context.req.valid("param").id);
+      const id = context.req.valid("param").id;
+      const job = await dependencies.queue.get(id);
       if (job === null) throw notFound("Job not found");
-      return context.json(durableJobToContract(job), 200);
+      const logs = await dependencies.queue.logs(id);
+      return context.json(
+        {
+          ...durableJobToContract(job),
+          logs: logs.map((entry) => ({
+            ...entry,
+            timestamp: new Date(entry.timestamp).toISOString(),
+          })),
+        },
+        200,
+      );
     }
     const job = dependencies.repositories.jobs.get(
       context.req.valid("param").id,
     );
     if (job === undefined) throw notFound("Job not found");
-    return context.json(job, 200);
+    return context.json({ ...job, logs: [] }, 200);
   });
   app.openapi(routes.retryJob, async (context) => {
     const queue = requireDurableQueue(dependencies);

@@ -25,6 +25,13 @@ export interface DurableJob<T = unknown> {
   completedAt: number | null;
 }
 
+export interface JobLogEntry {
+  timestamp: number;
+  level: "info" | "warn" | "error";
+  event: string;
+  message: string | null;
+}
+
 export interface EnqueueJob<T = unknown> {
   id?: string;
   type: string;
@@ -59,6 +66,7 @@ export interface JobQueue {
   get<T = unknown>(id: string): Promise<DurableJob<T> | null>;
   list(filter?: JobListFilter): Promise<readonly DurableJob[]>;
   count(filter?: Pick<JobListFilter, "states" | "types">): Promise<number>;
+  logs(id: string): Promise<readonly JobLogEntry[]>;
   claim(options: ClaimJobOptions): Promise<DurableJob | null>;
   heartbeat(
     id: string,
@@ -134,6 +142,18 @@ CREATE INDEX IF NOT EXISTS jobs_claim_idx
 CREATE INDEX IF NOT EXISTS jobs_lease_idx
   ON jobs(state, lease_expires_at)
   WHERE state = 'running';
+
+CREATE TABLE IF NOT EXISTS job_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  timestamp INTEGER NOT NULL,
+  level TEXT NOT NULL CHECK (level IN ('info', 'warn', 'error')),
+  event TEXT NOT NULL,
+  message TEXT
+);
+
+CREATE INDEX IF NOT EXISTS job_logs_job_idx
+  ON job_logs(job_id, timestamp, id);
 `;
 
 export class JobLeaseLostError extends Error {
@@ -167,6 +187,11 @@ export function durableJobToContract(job: DurableJob): Job {
             maxAttempts: job.maxAttempts,
           }
         : null,
+    attempt: job.attempt,
+    maxAttempts: job.maxAttempts,
+    runAt: new Date(job.runAt).toISOString(),
+    priority: job.priority,
+    dedupeKey: job.dedupeKey,
     createdAt: new Date(job.createdAt).toISOString(),
     updatedAt: new Date(job.updatedAt).toISOString(),
     startedAt: job.attempt > 0 ? new Date(job.updatedAt).toISOString() : null,
@@ -196,6 +221,10 @@ export function createSqliteJobQueue(options: SqliteJobQueueOptions): JobQueue {
   const selectActiveDedupe = database.query(
     "SELECT * FROM jobs WHERE type = ?1 AND dedupe_key = ?2 AND state IN ('queued', 'running') LIMIT 1",
   );
+  const insertLog = database.query(
+    `INSERT INTO job_logs (job_id, timestamp, level, event, message)
+     VALUES (?1, ?2, ?3, ?4, ?5)`,
+  );
 
   async function enqueue<T>(input: EnqueueJob<T>): Promise<DurableJob<T>> {
     validateEnqueue(input);
@@ -220,6 +249,16 @@ export function createSqliteJobQueue(options: SqliteJobQueueOptions): JobQueue {
       timestamp,
     );
     if (result.changes === 1) {
+      const scheduled = input.runAt !== undefined && input.runAt > timestamp;
+      insertLog.run(
+        id,
+        timestamp,
+        "info",
+        scheduled ? "job.scheduled" : "job.queued",
+        scheduled
+          ? `Scheduled for ${new Date(input.runAt!).toISOString()}`
+          : "Ready for a worker",
+      );
       return rowToJob(requireRow(selectById.get(id))) as DurableJob<T>;
     }
     if (dedupeKey) {
@@ -265,7 +304,17 @@ export function createSqliteJobQueue(options: SqliteJobQueueOptions): JobQueue {
       if (result.changes !== 1) return null;
       return rowToJob(requireRow(selectById.get(row.id)));
     });
-    return transaction();
+    const claimed = transaction();
+    if (claimed) {
+      insertLog.run(
+        claimed.id,
+        timestamp,
+        "info",
+        "job.started",
+        `Attempt ${claimed.attempt} of ${claimed.maxAttempts}`,
+      );
+    }
+    return claimed;
   }
 
   return {
@@ -319,6 +368,15 @@ export function createSqliteJobQueue(options: SqliteJobQueueOptions): JobQueue {
       return Number(row?.count ?? 0);
     },
 
+    async logs(id) {
+      return database
+        .query(
+          `SELECT timestamp, level, event, message
+           FROM job_logs WHERE job_id = ?1 ORDER BY timestamp ASC, id ASC`,
+        )
+        .all(id) as JobLogEntry[];
+    },
+
     claim,
 
     async heartbeat(id, leaseToken, leaseMs, timestamp = now()) {
@@ -344,6 +402,7 @@ export function createSqliteJobQueue(options: SqliteJobQueueOptions): JobQueue {
         )
         .run(timestamp, id, leaseToken);
       if (result.changes !== 1) throw new JobLeaseLostError(id);
+      insertLog.run(id, timestamp, "info", "job.completed", "Completed");
     },
 
     async fail(id, leaseToken, error, failOptions = {}) {
@@ -373,6 +432,13 @@ export function createSqliteJobQueue(options: SqliteJobQueueOptions): JobQueue {
           leaseToken,
         );
       if (result.changes !== 1) throw new JobLeaseLostError(id);
+      insertLog.run(
+        id,
+        timestamp,
+        finalFailure ? "error" : "warn",
+        finalFailure ? "job.failed" : "job.retry_scheduled",
+        formatError(error),
+      );
     },
 
     async cancel(id, timestamp = now()) {
@@ -384,6 +450,9 @@ export function createSqliteJobQueue(options: SqliteJobQueueOptions): JobQueue {
            WHERE id = ?2 AND state IN ('queued', 'running')`,
         )
         .run(timestamp, id);
+      if (result.changes === 1) {
+        insertLog.run(id, timestamp, "warn", "job.cancelled", "Cancelled");
+      }
       return result.changes === 1;
     },
 

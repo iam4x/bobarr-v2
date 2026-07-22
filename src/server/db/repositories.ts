@@ -823,6 +823,11 @@ function mapJob(row: JobRow): Job {
       row.errorJson === null
         ? null
         : parseJsonObject(row.errorJson, "job error"),
+    attempt: row.startedAt === null ? 0 : 1,
+    maxAttempts: 1,
+    runAt: toIsoDate(row.createdAt),
+    priority: 0,
+    dedupeKey: null,
     createdAt: toIsoDate(row.createdAt),
     updatedAt: toIsoDate(row.updatedAt),
     startedAt: row.startedAt === null ? null : toIsoDate(row.startedAt),

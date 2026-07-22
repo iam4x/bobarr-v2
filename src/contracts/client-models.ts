@@ -173,8 +173,26 @@ export interface Job {
     | "cancelled";
   attempts: number;
   maxAttempts: number;
-  runAt?: string;
+  runAt: string;
   error?: string | null;
+  payload?: Record<string, unknown>;
+  priority?: number;
+  dedupeKey?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+}
+
+export interface JobLogEntry {
+  timestamp: string;
+  level: "info" | "warn" | "error";
+  event: string;
+  message: string | null;
+}
+
+export interface JobDetails extends Job {
+  logs: JobLogEntry[];
 }
 
 export interface ActivityEvent {

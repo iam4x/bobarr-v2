@@ -106,6 +106,13 @@ describe("SQLite durable job queue", () => {
     currentTime += 1_000;
     expect(await worker.runOnce()).toBe(true);
     expect(await queue.get(retrying.id)).toMatchObject({ state: "completed" });
+    expect((await queue.logs(retrying.id)).map(({ event }) => event)).toEqual([
+      "job.queued",
+      "job.started",
+      "job.retry_scheduled",
+      "job.started",
+      "job.completed",
+    ]);
     expect(handled).toEqual(["movie", "episode"]);
     queue.close();
   });
@@ -165,6 +172,12 @@ describe("SQLite durable job queue", () => {
     expect(failed?.state).toBe("failed");
     expect(failed?.lastError).toBe("Error: Invalid URL: [redacted magnet]");
     expect(failed?.lastError).not.toContain("do-not-store");
+    const failureLog = (await queue.logs(job.id)).at(-1);
+    expect(failureLog).toMatchObject({
+      level: "error",
+      event: "job.failed",
+      message: "Error: Invalid URL: [redacted magnet]",
+    });
     queue.close();
   });
 

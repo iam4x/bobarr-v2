@@ -7,6 +7,7 @@ import type {
   Download,
   IntegrationStatus,
   Job,
+  JobDetails,
   LibraryItem,
   MonitorPolicy,
   ReleaseCandidate,
@@ -344,6 +345,7 @@ export const apiRoutes = {
     never,
     { kind: string; payload?: Record<string, unknown> }
   >()("POST", "/jobs"),
+  getJob: route<JobDetails>()("GET", "/jobs/:id"),
   retryJob: route<Job>()("POST", "/jobs/:id/retry"),
   cancelJob: route<{ id: string; cancelled: true }>()("DELETE", "/jobs/:id"),
   calendar: route<

@@ -2278,6 +2278,24 @@ textarea:focus-visible {
   justify-content: flex-end;
   gap: 6px;
 }
+.job-card__summary {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.job-card__summary:hover h3,
+.job-card__summary:focus-visible h3 {
+  color: var(--accent);
+}
+.job-card__summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 5px;
+  border-radius: 3px;
+}
 .job-card h3 {
   margin: 0 0 4px;
   font-family: inherit;
@@ -2289,6 +2307,99 @@ textarea:focus-visible {
   margin: 0;
   color: var(--text-muted);
   font-size: 11px;
+}
+.job-details {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.job-details__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+.job-details__facts > div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+}
+.job-details__facts dt {
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.job-details__facts dd {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 13px;
+}
+.job-details h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+.job-log {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.job-log li {
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+}
+.job-log__level {
+  align-self: start;
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.job-log__level--warn {
+  color: var(--yellow);
+}
+.job-log__level--error {
+  color: var(--red);
+}
+.job-log strong,
+.job-log time {
+  display: block;
+}
+.job-log strong {
+  font-size: 12px;
+}
+.job-log time,
+.job-log p,
+.job-details__empty-log {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.job-details details summary {
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.job-details pre {
+  overflow: auto;
+  max-height: 260px;
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  color: var(--text-soft);
+  background: var(--bg-raised);
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .timeline {
   margin: 0;

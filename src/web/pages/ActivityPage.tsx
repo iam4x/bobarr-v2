@@ -1,5 +1,5 @@
 import type { ApiPageInfo } from "../../contracts";
-import type { ActivityEvent, Download, Job } from "../types";
+import type { ActivityEvent, Download, Job, JobDetails } from "../types";
 
 import {
   useInfiniteQuery,
@@ -28,7 +28,7 @@ import {
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 
 import { api } from "../api/client";
-import { collectionItems } from "../api/normalize";
+import { collectionItems, normalizeJobDetails } from "../api/normalize";
 import { Page } from "../components/Page";
 import {
   Badge,
@@ -343,11 +343,13 @@ function AddDownloadDialog({
 function JobsList({
   jobs,
   busyJobId,
+  onOpen,
   onCancel,
   onRetry,
 }: {
   jobs: Job[];
   busyJobId?: string;
+  onOpen: (id: string) => void;
   onCancel: (id: string) => void;
   onRetry: (id: string) => void;
 }) {
@@ -371,16 +373,22 @@ function JobsList({
               className={`job-card__state job-card__state--${job.state}`}
               aria-hidden="true"
             />
-            <div>
+            <button
+              className="job-card__summary"
+              type="button"
+              onClick={() => onOpen(job.id)}
+            >
               <h3>{formatJobKind(job.type)}</h3>
               <p>
-                Attempt {job.attempts} of {job.maxAttempts}
-                {job.runAt ? ` · ${formatRelativeDate(job.runAt)}` : ""}
+                {job.state === "pending" &&
+                new Date(job.runAt).getTime() > Date.now()
+                  ? `Scheduled ${formatRelativeDate(job.runAt)}`
+                  : `Attempt ${job.attempts} of ${job.maxAttempts}`}
               </p>
               {job.error ? (
                 <small className="danger-text">{job.error}</small>
               ) : null}
-            </div>
+            </button>
             <div className="job-card__actions">
               <Badge tone={tone}>{job.state}</Badge>
               {job.state === "failed" || job.state === "cancelled" ? (
@@ -410,6 +418,86 @@ function JobsList({
         );
       })}
     </div>
+  );
+}
+
+function JobDetailsDialog({
+  job,
+  loading,
+  error,
+  onClose,
+}: {
+  job?: JobDetails;
+  loading: boolean;
+  error: unknown;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog
+      open={loading || error !== null || job !== undefined}
+      title={job ? formatJobKind(job.type) : "Job details"}
+      description="Persisted execution state and lifecycle log for this background job."
+      onClose={onClose}
+      size="lg"
+    >
+      {loading ? <InlineSpinner label="Loading job log…" /> : null}
+      {error ? <ErrorState error={error} /> : null}
+      {job ? (
+        <div className="job-details">
+          <dl className="job-details__facts">
+            <div>
+              <dt>Status</dt>
+              <dd>{job.state}</dd>
+            </div>
+            <div>
+              <dt>Attempts</dt>
+              <dd>
+                {job.attempts} of {job.maxAttempts}
+              </dd>
+            </div>
+            <div>
+              <dt>Scheduled</dt>
+              <dd>{new Date(job.runAt).toLocaleString()}</dd>
+            </div>
+            <div>
+              <dt>Job ID</dt>
+              <dd>{job.id}</dd>
+            </div>
+          </dl>
+          <section>
+            <h3>Execution log</h3>
+            {job.logs.length ? (
+              <ol className="job-log">
+                {job.logs.map((entry, index) => (
+                  <li key={`${entry.timestamp}-${entry.event}-${index}`}>
+                    <span
+                      className={`job-log__level job-log__level--${entry.level}`}
+                    >
+                      {entry.level}
+                    </span>
+                    <div>
+                      <strong>{entry.event}</strong>
+                      <time dateTime={entry.timestamp}>
+                        {new Date(entry.timestamp).toLocaleString()}
+                      </time>
+                      {entry.message ? <p>{entry.message}</p> : null}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="job-details__empty-log">
+                No lifecycle entries were recorded for this older job.
+              </p>
+            )}
+          </section>
+          <details>
+            <summary>Job payload</summary>
+            <pre>{JSON.stringify(job.payload ?? {}, null, 2)}</pre>
+          </details>
+        </div>
+      ) : null}
+    </Dialog>
   );
 }
 
@@ -578,6 +666,7 @@ export function ActivityPage() {
   const [jobKind, setJobKind] = useState("");
   const [jobOffset, setJobOffset] = useState(0);
   const [manualJobKind, setManualJobKind] = useState("library.scan.v1");
+  const [selectedJobId, setSelectedJobId] = useState<string>();
   const downloadsQuery = useInfiniteQuery({
     queryKey: ["downloads"],
     queryFn: ({ pageParam, signal }) =>
@@ -604,6 +693,19 @@ export function ActivityPage() {
         signal,
       }),
     enabled: tab === "jobs",
+    refetchInterval: 2_000,
+  });
+  const jobDetailsQuery = useQuery({
+    queryKey: ["job", selectedJobId],
+    queryFn: async ({ signal }) =>
+      normalizeJobDetails(
+        await api.get("getJob", {
+          params: { id: selectedJobId! },
+          signal,
+        }),
+      ),
+    enabled: selectedJobId !== undefined,
+    refetchInterval: selectedJobId === undefined ? false : 2_000,
   });
   const historyQuery = useQuery({
     queryKey: ["activity"],
@@ -839,6 +941,7 @@ export function ActivityPage() {
                   ? jobActionMutation.variables?.id
                   : undefined
               }
+              onOpen={setSelectedJobId}
               onCancel={(id) =>
                 jobActionMutation.mutate({ id, action: "cancel" })
               }
@@ -874,6 +977,12 @@ export function ActivityPage() {
         </QueryTabContent>
       ) : null}
       <AddDownloadDialog open={addOpen} onClose={() => setAddOpen(false)} />
+      <JobDetailsDialog
+        job={jobDetailsQuery.data}
+        loading={jobDetailsQuery.isLoading}
+        error={jobDetailsQuery.error}
+        onClose={() => setSelectedJobId(undefined)}
+      />
       <Dialog
         open={Boolean(cancelTarget)}
         title="Remove download?"
