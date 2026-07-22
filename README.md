@@ -36,10 +36,11 @@ Set either `TMDB_ACCESS_TOKEN` for a v4 read-access token or `TMDB_API_KEY` for 
 v3 API key, and replace `TRANSMISSION_PASSWORD` in `.env` before the first start.
 On Linux, also set `PUID` and `PGID` to the owner of the directories above
 (`id -u` and `id -g`). Open <http://localhost:3000>, create the administrator,
-then verify the services from Settings. Jackett's setup UI is deliberately
-exposed only on <http://127.0.0.1:9117>. Configure indexers and FlareSolverr
-there. Transmission's authenticated Web UI is available for local diagnostics
-only on <http://127.0.0.1:9091>; Bobarr remains the normal control surface. The
+then verify the services from Settings. Jackett's setup UI is published on host
+port 9117 by default. Configure indexers and FlareSolverr there. Set
+`JACKETT_BIND_ADDRESS=127.0.0.1` to restrict it to local access. Transmission's
+authenticated Web UI is available for local diagnostics only on
+<http://127.0.0.1:9091>; Bobarr remains the normal control surface. The
 Compose default permits its session cookie over direct HTTP access, including a
 private Tailscale address. Set `BOBARR_COOKIE_SECURE=true` when serving Bobarr
 over HTTPS.

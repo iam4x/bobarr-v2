@@ -192,8 +192,9 @@ For each new host, also perform a live commissioning check:
 
 1. Wait for `docker compose ps` to report every service healthy.
 2. Confirm `/health/ready` succeeds through Bobarr's published port.
-3. Confirm the authenticated Transmission UI on 9091 and Jackett on 9117 are
-   reachable only through loopback, and port 8191 is unreachable from the host.
+3. Confirm the authenticated Transmission UI on 9091 is reachable only through
+   loopback. Confirm Jackett on 9117 is reachable only through its configured
+   `JACKETT_BIND_ADDRESS`, and port 8191 is unreachable from the host.
 4. Restart Bobarr and Transmission, then confirm the same download is adopted
    by label/infohash rather than duplicated.
 5. Organize a small test file and confirm its source and library copy have the

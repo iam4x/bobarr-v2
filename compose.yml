@@ -62,7 +62,7 @@ services:
     volumes:
       - ${JACKETT_CONFIG_PATH:-./config/jackett}:/config
     ports:
-      - 127.0.0.1:${JACKETT_PORT:-9117}:9117
+      - ${JACKETT_BIND_ADDRESS:-0.0.0.0}:${JACKETT_PORT:-9117}:9117
     healthcheck:
       test:
         - CMD-SHELL
