@@ -4,6 +4,7 @@ import type {
   BackupRestoreStatus,
   CalendarItem,
   CatalogItem,
+  CatalogSeason,
   Download,
   IntegrationStatus,
   Job,
@@ -317,6 +318,10 @@ export const apiRoutes = {
     "/catalog/recommendations",
   ),
   catalogDetails: route<CatalogItem>()("GET", "/catalog/:kind/:tmdbId"),
+  catalogSeason: route<CatalogSeason>()(
+    "GET",
+    "/catalog/series/:tmdbId/seasons/:seasonNumber",
+  ),
   searchReleases: route<
     ReleasesApiResponse,
     {

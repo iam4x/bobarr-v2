@@ -77,6 +77,26 @@ export interface CatalogItem {
   acquisitionState?: AcquisitionState;
 }
 
+export interface CatalogSeason {
+  tmdbId: number;
+  name: string;
+  overview: string;
+  airDate: string | null;
+  seasonNumber: number;
+  posterPath: string | null;
+  episodes: Array<{
+    tmdbId: number;
+    name: string;
+    overview: string;
+    airDate: string | null;
+    episodeNumber: number;
+    seasonNumber: number;
+    runtimeMinutes: number | null;
+    stillPath: string | null;
+    voteAverage: number;
+  }>;
+}
+
 export interface CatalogPage {
   items: CatalogItem[];
   page: number;

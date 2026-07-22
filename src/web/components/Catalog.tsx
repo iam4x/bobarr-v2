@@ -1,6 +1,11 @@
-import type { CatalogItem } from "../types";
+import type { CatalogItem, CatalogSeason } from "../types";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { BookmarkPlus, Calendar, Check, Search, Star } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -17,6 +22,27 @@ function stateTone(
   if (state === "downloading" || state === "organizing") return "info";
   if (state === "searching" || state === "queued") return "warning";
   return "neutral";
+}
+
+export function seasonYearLabel(season: CatalogSeason | undefined): string {
+  if (!season) return "Year unavailable";
+
+  const years = [
+    season.airDate,
+    ...season.episodes.map(({ airDate }) => airDate),
+  ]
+    .flatMap((date) => {
+      const year = date?.match(/^(\d{4})-/)?.[1];
+      return year ? [Number(year)] : [];
+    })
+    .filter((year) => Number.isSafeInteger(year));
+
+  if (years.length === 0) return "Year TBA";
+  const firstYear = Math.min(...years);
+  const lastYear = Math.max(...years);
+  return firstYear === lastYear
+    ? String(firstYear)
+    : `${firstYear}–${lastYear}`;
 }
 
 export function MediaCard({
@@ -218,6 +244,25 @@ export function MediaDetailDialog({
   }, [detailQuery.data, selectedSeason]);
 
   const item = detailQuery.data ?? selected;
+  const seasonQueries = useQueries({
+    queries: Array.from(
+      { length: item?.kind === "series" ? (item.numberOfSeasons ?? 0) : 0 },
+      (_, index) => {
+        const seasonNumber = index + 1;
+        return {
+          queryKey: ["catalog", "season", item?.tmdbId, seasonNumber],
+          queryFn: ({ signal }: { signal: AbortSignal }) =>
+            api.get("catalogSeason", {
+              params: { tmdbId: item!.tmdbId, seasonNumber },
+              signal,
+            }),
+          enabled: Boolean(
+            item && !item.monitored && !monitorMutation.isSuccess,
+          ),
+        };
+      },
+    ),
+  });
   const backdrop = imageUrl(item?.backdropPath, "original");
   const canManualSearch = Boolean(item?.monitored || monitorMutation.isSuccess);
   let selectableSeasons = item?.monitoredSeasonNumbers?.length
@@ -359,24 +404,34 @@ export function MediaDetailDialog({
                 {Array.from(
                   { length: item.numberOfSeasons ?? 0 },
                   (_, index) => index + 1,
-                ).map((season) => (
-                  <label className="season-choice" key={season}>
-                    <input
-                      type="checkbox"
-                      checked={seasonSelection.includes(season)}
-                      onChange={(event) =>
-                        setSeasonSelection((current) =>
-                          event.target.checked
-                            ? [...current, season].sort(
-                                (left, right) => left - right,
-                              )
-                            : current.filter((value) => value !== season),
-                        )
-                      }
-                    />
-                    <span>Season {season}</span>
-                  </label>
-                ))}
+                ).map((season) => {
+                  const seasonQuery = seasonQueries[season - 1];
+                  return (
+                    <label className="season-choice" key={season}>
+                      <input
+                        type="checkbox"
+                        checked={seasonSelection.includes(season)}
+                        onChange={(event) =>
+                          setSeasonSelection((current) =>
+                            event.target.checked
+                              ? [...current, season].sort(
+                                  (left, right) => left - right,
+                                )
+                              : current.filter((value) => value !== season),
+                          )
+                        }
+                      />
+                      <span className="season-choice__label">
+                        <span>Season {season}</span>
+                        <small>
+                          {seasonQuery?.isPending
+                            ? "Loading year…"
+                            : seasonYearLabel(seasonQuery?.data)}
+                        </small>
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
               <label className="check-row">
                 <input

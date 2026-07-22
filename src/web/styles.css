@@ -1123,7 +1123,19 @@ textarea:focus-visible {
 .season-choice input {
   width: 17px;
   height: 17px;
+  flex: 0 0 auto;
   accent-color: var(--accent);
+}
+.season-choice__label {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.season-choice__label small {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
 }
 .release-results {
   padding-top: 3px;
