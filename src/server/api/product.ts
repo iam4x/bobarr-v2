@@ -268,6 +268,7 @@ const ReplaceLibrarySchema = z
   .object({ candidateId: OpaqueReleaseIdSchema.optional() })
   .strict();
 const LibraryRemovalSchema = z.object({
+  deleteLibraryRecord: z.boolean().default(false),
   deleteLibraryFiles: z.boolean().default(false),
   deleteTorrent: z.boolean().default(false),
   deleteDownloadData: z.boolean().default(false),
@@ -804,7 +805,10 @@ export function registerProductRoutes(
       }
       dependencies.repositories.media.updateMonitorPolicy(member.id, policy);
       if (input.monitorPolicy === "none") {
-        dependencies.repositories.media.updateState(member.id, "unmonitored");
+        dependencies.repositories.media.updateState(
+          member.id,
+          stateAfterMonitoringStops(member, dependencies),
+        );
       } else if (member.acquisitionState === "unmonitored") {
         dependencies.repositories.media.updateState(member.id, "missing");
       }
@@ -825,11 +829,17 @@ export function registerProductRoutes(
     const id = parse(DownloadParamsSchema, context.req.param()).id;
     const item = dependencies.repositories.media.get(id);
     if (!item) throw notFound("Library item not found");
+    if (item.monitorPolicy === "none") {
+      throw conflictError("Resume monitoring before retrying this title");
+    }
     const targets =
       item.kind === "series"
         ? dependencies.repositories.media
             .children(item.id)
-            .filter((child) => child.kind === "season")
+            .filter(
+              (child) =>
+                child.kind === "season" && child.monitorPolicy !== "none",
+            )
         : [item];
     const jobs = [];
     for (const target of targets) {
@@ -864,8 +874,10 @@ export function registerProductRoutes(
     );
     const item = dependencies.repositories.media.get(id);
     if (!item) throw notFound("Library item not found");
-    if (item.monitorPolicy === "none") {
-      throw conflictError("Resume monitoring before replacing this release");
+    if (item.monitorPolicy === "none" && !input.candidateId) {
+      throw conflictError(
+        "Choose a release for a one-time replacement, or resume monitoring for an automatic replacement",
+      );
     }
     const targets =
       item.kind === "series"
@@ -999,11 +1011,42 @@ export function registerProductRoutes(
     }
     const item = dependencies.repositories.media.get(id);
     if (!item) throw notFound("Library item not found");
+    const deleteLibraryRecord =
+      input.deleteLibraryRecord ||
+      (input.deleteLibraryFiles &&
+        input.deleteTorrent &&
+        input.deleteDownloadData);
+    if (
+      deleteLibraryRecord &&
+      !input.deleteTorrent &&
+      mediaTree(item, dependencies).some(
+        (member) =>
+          dependencies.repositories.downloads.list({
+            limit: 1,
+            offset: 0,
+            mediaId: member.id,
+          }).downloads.length > 0,
+      )
+    ) {
+      throw conflictError(
+        "Remove linked torrents before deleting this library record",
+      );
+    }
     const tree = await stopMediaAutomation(item, dependencies);
     const mediaIds = tree.map((member) => member.id);
     if (input.deleteLibraryFiles) {
       for (const mediaId of mediaIds) {
         await deleteRecordedLibraryFiles(mediaId, dependencies);
+      }
+      for (const mediaId of mediaIds) {
+        const remaining = dependencies.repositories.media.get(mediaId);
+        if (!remaining) continue;
+        dependencies.repositories.media.updateState(
+          remaining.id,
+          hasRecordedFiles(remaining, dependencies)
+            ? "available"
+            : "unmonitored",
+        );
       }
     }
     if (input.deleteTorrent)
@@ -1014,10 +1057,6 @@ export function registerProductRoutes(
           dependencies,
         );
       }
-    const deleteLibraryRecord =
-      input.deleteLibraryFiles &&
-      input.deleteTorrent &&
-      input.deleteDownloadData;
     if (deleteLibraryRecord) {
       dependencies.repositories.calendar.deleteForLibraryItems(mediaIds);
       if (!dependencies.repositories.media.delete(item.id)) {
@@ -2034,7 +2073,10 @@ async function updateExistingMonitoring(options: {
     const tree = mediaTree(parent, dependencies);
     for (const member of tree) {
       dependencies.repositories.media.updateMonitorPolicy(member.id, "none");
-      dependencies.repositories.media.updateState(member.id, "unmonitored");
+      dependencies.repositories.media.updateState(
+        member.id,
+        stateAfterMonitoringStops(member, dependencies),
+      );
     }
     await cancelAcquisitionJobs(
       tree.map((member) => member.id),
@@ -2084,7 +2126,10 @@ async function updateExistingMonitoring(options: {
   for (const season of unselected) {
     for (const member of mediaTree(season, dependencies)) {
       dependencies.repositories.media.updateMonitorPolicy(member.id, "none");
-      dependencies.repositories.media.updateState(member.id, "unmonitored");
+      dependencies.repositories.media.updateState(
+        member.id,
+        stateAfterMonitoringStops(member, dependencies),
+      );
     }
   }
   await cancelAcquisitionJobs(
@@ -2124,7 +2169,20 @@ async function updateExistingMonitoring(options: {
         );
       }
     }
-    const refreshed = dependencies.repositories.media.get(season.id) ?? season;
+    let refreshed = dependencies.repositories.media.get(season.id) ?? season;
+    const episodes = dependencies.repositories.media
+      .children(season.id)
+      .filter((child) => child.kind === "episode");
+    if (
+      episodes.length > 0 &&
+      ["available", "unmonitored"].includes(refreshed.acquisitionState)
+    ) {
+      refreshed =
+        dependencies.repositories.media.updateState(
+          season.id,
+          aggregateChildAcquisitionState(episodes),
+        ) ?? refreshed;
+    }
     await enqueueSeasonAcquisition(refreshed, dependencies);
   }
   dependencies.repositories.media.updateState(
@@ -2175,6 +2233,16 @@ function hasRecordedFiles(
     (member) =>
       dependencies.repositories.libraryFiles.listForMedia(member.id).length > 0,
   );
+}
+
+function stateAfterMonitoringStops(
+  item: LibraryItem,
+  dependencies: ApiDependencies,
+): "available" | "unmonitored" {
+  return item.acquisitionState === "available" ||
+    hasRecordedFiles(item, dependencies)
+    ? "available"
+    : "unmonitored";
 }
 
 async function createMonitoredSeasons(
@@ -2239,7 +2307,9 @@ export async function ensureMonitoredSeasons(options: {
         seasonNumber,
         episodeNumber: null,
         title: season?.name || `${parent.title} — Season ${seasonNumber}`,
-        year: parent.year,
+        year: season?.airDate
+          ? Number(season.airDate.slice(0, 4))
+          : parent.year,
         posterUrl:
           tmdbImage(season?.posterPath ?? null, "w500") ?? parent.posterUrl,
         status: "missing",
@@ -2252,7 +2322,43 @@ export async function ensureMonitoredSeasons(options: {
         },
       });
     let changed = existingSeason === undefined;
-    if (
+    if (existingSeason && season) {
+      const title = season.name || existingSeason.title;
+      const year = season.airDate
+        ? Number(season.airDate.slice(0, 4))
+        : existingSeason.year;
+      const posterUrl =
+        tmdbImage(season.posterPath, "w500") ?? existingSeason.posterUrl;
+      const releaseDate = isoDate(season.airDate);
+      const metadataChanged =
+        existingSeason.metadata["seriesTmdbId"] !== parent.tmdbId ||
+        existingSeason.metadata["overview"] !== season.overview ||
+        existingSeason.metadata["acquisitionMode"] !== acquisitionMode;
+      const metadataNeedsHydration =
+        existingSeason.tmdbId !== season.tmdbId ||
+        existingSeason.title !== title ||
+        existingSeason.year !== year ||
+        existingSeason.posterUrl !== posterUrl ||
+        existingSeason.releaseDate !== releaseDate ||
+        metadataChanged;
+      if (metadataNeedsHydration) {
+        seasonItem =
+          dependencies.repositories.media.updateMetadata(existingSeason.id, {
+            tmdbId: season.tmdbId,
+            title,
+            year,
+            posterUrl,
+            releaseDate,
+            metadata: {
+              ...existingSeason.metadata,
+              seriesTmdbId: parent.tmdbId,
+              overview: season.overview,
+              acquisitionMode,
+            },
+          }) ?? seasonItem;
+        changed = true;
+      }
+    } else if (
       existingSeason &&
       existingSeason.metadata["acquisitionMode"] !== acquisitionMode
     ) {
@@ -2289,24 +2395,51 @@ export async function ensureMonitoredSeasons(options: {
     for (const episode of season?.episodes ?? []) {
       const existingEpisode = existingEpisodes.get(episode.episodeNumber);
       if (existingEpisode) {
+        const year = episode.airDate
+          ? Number(episode.airDate.slice(0, 4))
+          : existingEpisode.year;
+        const posterUrl =
+          tmdbImage(episode.stillPath, "w500") ?? existingEpisode.posterUrl;
+        const releaseDate = isoDate(episode.airDate);
+        const incrementalAcquisition = acquisitionMode === "episodes";
+        const metadataChanged =
+          existingEpisode.metadata["seriesId"] !== parent.id ||
+          existingEpisode.metadata["seriesTitle"] !== parent.title ||
+          existingEpisode.metadata["overview"] !== episode.overview ||
+          existingEpisode.metadata["runtimeMinutes"] !==
+            episode.runtimeMinutes ||
+          existingEpisode.metadata["incrementalAcquisition"] !==
+            incrementalAcquisition;
+        const metadataNeedsHydration =
+          existingEpisode.tmdbId !== episode.tmdbId ||
+          existingEpisode.title !== episode.name ||
+          existingEpisode.year !== year ||
+          existingEpisode.posterUrl !== posterUrl ||
+          existingEpisode.releaseDate !== releaseDate ||
+          metadataChanged;
+        if (metadataNeedsHydration) {
+          dependencies.repositories.media.updateMetadata(existingEpisode.id, {
+            tmdbId: episode.tmdbId,
+            title: episode.name,
+            year,
+            posterUrl,
+            releaseDate,
+            metadata: {
+              ...existingEpisode.metadata,
+              seriesId: parent.id,
+              seriesTitle: parent.title,
+              overview: episode.overview,
+              runtimeMinutes: episode.runtimeMinutes,
+              incrementalAcquisition,
+            },
+          });
+          changed = true;
+        }
         if (existingEpisode.monitorPolicy === "none") {
           dependencies.repositories.media.updateMonitorPolicy(
             existingEpisode.id,
             "selected",
           );
-          changed = true;
-        }
-        const incrementalAcquisition = acquisitionMode === "episodes";
-        if (
-          existingEpisode.metadata["incrementalAcquisition"] !==
-          incrementalAcquisition
-        ) {
-          dependencies.repositories.media.updateMetadata(existingEpisode.id, {
-            metadata: {
-              ...existingEpisode.metadata,
-              incrementalAcquisition,
-            },
-          });
           changed = true;
         }
         continue;
@@ -2500,7 +2633,10 @@ async function stopMediaAutomation(
   const tree = mediaTree(media, dependencies);
   for (const member of tree) {
     dependencies.repositories.media.updateMonitorPolicy(member.id, "none");
-    dependencies.repositories.media.updateState(member.id, "unmonitored");
+    dependencies.repositories.media.updateState(
+      member.id,
+      stateAfterMonitoringStops(member, dependencies),
+    );
     if (member.metadata["replacementPending"] === true) {
       dependencies.repositories.media.updateMetadata(member.id, {
         metadata: { ...member.metadata, replacementPending: false },

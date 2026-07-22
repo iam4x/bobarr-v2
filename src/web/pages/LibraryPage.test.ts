@@ -2,6 +2,7 @@ import type { LibraryItem } from "../types";
 
 import { describe, expect, test } from "bun:test";
 
+import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import {
@@ -11,8 +12,11 @@ import {
   episodeDisplayStatus,
   LibraryCard,
   LibrarySummary,
+  libraryItemHasFile,
   libraryManualReleaseAction,
   libraryReleaseTarget,
+  monitoringSeasonNumbers,
+  MovieManagement,
   summarizeEpisodeStates,
 } from "./LibraryPage";
 
@@ -179,6 +183,98 @@ describe("library manual release targets", () => {
         ...movie,
         tmdbId: null,
         acquisitionState: "available",
+      }),
+    ).toBeNull();
+  });
+
+  test("treats a scan-imported movie as a replaceable library file", () => {
+    const imported: LibraryItem = {
+      ...movie,
+      monitorPolicy: "none",
+      acquisitionState: "available",
+      storage: {
+        libraryPath: "/media/movies/The Matrix (1999)/The Matrix (1999).mkv",
+        downloadPath: null,
+        fileCount: 1,
+        totalBytes: 8_420_000_000,
+        quality: "2160p",
+      },
+    };
+
+    expect(libraryItemHasFile(imported)).toBe(true);
+    expect(libraryManualReleaseAction(imported)).toBe("replace");
+
+    const cardMarkup = renderToStaticMarkup(
+      LibraryCard({ item: imported, onManage: () => undefined }),
+    );
+    expect(cardMarkup).toContain(
+      "Monitoring off · Open to replace or manage files",
+    );
+
+    const markup = renderToStaticMarkup(
+      createElement(MovieManagement, {
+        item: imported,
+        policy: "none",
+        saveBusy: false,
+        retryBusy: false,
+        onPolicyChange: () => undefined,
+        onSave: () => undefined,
+        onRetry: () => undefined,
+        onManualSearch: () => undefined,
+        onRemove: () => undefined,
+      }),
+    );
+
+    expect(markup).toContain("Ready in your library");
+    expect(markup).toContain("Choose replacement…");
+    expect(markup).toContain("Off · one-time replacement is still available");
+    expect(markup).toContain("2160p · 1 file · 8.42 GB");
+    expect(markup).toContain("Remove from library…");
+    expect(markup).not.toContain("Retry automatic search");
+  });
+
+  test("uses stored files and active downloads to choose replacement actions", () => {
+    expect(
+      libraryManualReleaseAction({
+        ...movie,
+        acquisitionState: "unmonitored",
+        monitorPolicy: "none",
+        storage: {
+          libraryPath: "/media/movies/The Matrix.mkv",
+          downloadPath: null,
+          fileCount: 1,
+          totalBytes: 100,
+          quality: null,
+        },
+      }),
+    ).toBe("replace");
+    expect(
+      libraryManualReleaseAction({
+        ...movie,
+        acquisitionState: "downloading",
+        activeDownload: {
+          id: "download-1",
+          state: "downloading",
+          progress: 50,
+          downloadedBytes: 50,
+          totalBytes: 100,
+          downloadRate: 10,
+          etaSeconds: 5,
+        },
+      }),
+    ).toBe("replace");
+    expect(
+      libraryManualReleaseAction({
+        ...movie,
+        acquisitionState: "available",
+        monitorPolicy: "none",
+        storage: {
+          libraryPath: null,
+          downloadPath: null,
+          fileCount: 0,
+          totalBytes: 0,
+          quality: null,
+        },
       }),
     ).toBeNull();
   });
@@ -363,6 +459,20 @@ describe("library manual release targets", () => {
       state: "unmonitored",
       needsAttention: false,
     });
+    expect(
+      episodeDisplayStatus({
+        ...unmonitored,
+        id: "episode-imported",
+        acquisitionState: "available",
+        storage: {
+          libraryPath: "/media/tv/Example/Season 01/episode.mkv",
+          downloadPath: null,
+          fileCount: 1,
+          totalBytes: 1_000,
+          quality: null,
+        },
+      }),
+    ).toMatchObject({ state: "ready", needsAttention: false });
   });
 
   test("opens the latest aired season needing attention instead of a future season", () => {
@@ -400,5 +510,42 @@ describe("library manual release targets", () => {
         now,
       ),
     ).toBe(9);
+  });
+
+  test("opens an imported unmonitored season that already has files", () => {
+    const importedSeason = (seasonNumber: number, fileCount: number) => ({
+      ...movie,
+      id: `season-${seasonNumber}`,
+      kind: "season" as const,
+      parentId: "series-1",
+      seasonNumber,
+      monitorPolicy: "none" as const,
+      acquisitionState: "available" as const,
+      storage: {
+        libraryPath: `/media/tv/Example/Season ${seasonNumber}`,
+        downloadPath: null,
+        fileCount,
+        totalBytes: fileCount * 1_000,
+        quality: null,
+      },
+    });
+
+    expect(
+      defaultTvSeasonNumber([importedSeason(1, 2), importedSeason(2, 4)]),
+    ).toBe(2);
+  });
+
+  test("offers imported child seasons even without a metadata season count", () => {
+    const season = (seasonNumber: number): LibraryItem => ({
+      ...movie,
+      id: `season-${seasonNumber}`,
+      kind: "season",
+      parentId: "series-1",
+      seasonNumber,
+      monitorPolicy: "none",
+    });
+
+    expect(monitoringSeasonNumbers([season(3), season(1)], 0)).toEqual([1, 3]);
+    expect(monitoringSeasonNumbers([season(3)], 4)).toEqual([1, 2, 3, 4]);
   });
 });

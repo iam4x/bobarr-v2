@@ -161,6 +161,7 @@ export interface MonitorMediaPatch {
 }
 
 export interface LibraryRemovalInput {
+  deleteLibraryRecord?: boolean;
   deleteLibraryFiles?: boolean;
   deleteTorrent?: boolean;
   deleteDownloadData?: boolean;

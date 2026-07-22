@@ -2,6 +2,9 @@ import type { BackendConfig } from "../config";
 import type { BackendRuntime } from "./initialize";
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   enqueueMissingMedia,
@@ -31,9 +34,15 @@ const MAGNET_URI =
 const NATIVE_FETCH = globalThis.fetch;
 
 const runtimes: BackendRuntime[] = [];
+const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(runtimes.splice(0).map((runtime) => runtime.close()));
+  await Promise.all([
+    ...runtimes.splice(0).map((runtime) => runtime.close()),
+    ...temporaryDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
+  ]);
   globalThis.fetch = NATIVE_FETCH;
 });
 
@@ -559,7 +568,6 @@ describe("public product API", () => {
         metadata: { imported: true },
       }),
     );
-
     const response = await fixture.runtime.app.request(
       "/api/v1/releases?tmdbId=603&kind=movie",
       { headers: { cookie: session.cookie } },
@@ -1269,6 +1277,147 @@ describe("public product API", () => {
     });
   });
 
+  test("re-monitoring an imported series preserves and hydrates recorded episodes", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    fixture.services.seriesSeasonCount = 1;
+    fixture.services.seriesEpisodeCount = 2;
+    const series = fixture.runtime.repositories.media.create({
+      kind: "series",
+      tmdbId: 1399,
+      parentId: null,
+      seasonNumber: null,
+      episodeNumber: null,
+      title: "Game of Thrones",
+      year: 2011,
+      posterUrl: null,
+      status: "available",
+      monitorPolicy: "none",
+      releaseDate: null,
+      metadata: { imported: true },
+    });
+    const season = fixture.runtime.repositories.media.create({
+      kind: "season",
+      tmdbId: null,
+      parentId: series.id,
+      seasonNumber: 1,
+      episodeNumber: null,
+      title: "Imported Season 1",
+      year: 2011,
+      posterUrl: null,
+      status: "available",
+      monitorPolicy: "none",
+      releaseDate: null,
+      metadata: { imported: true },
+    });
+    const episode = fixture.runtime.repositories.media.create({
+      kind: "episode",
+      tmdbId: null,
+      parentId: season.id,
+      seasonNumber: 1,
+      episodeNumber: 1,
+      title: "Game.of.Thrones.S01E01",
+      year: 2011,
+      posterUrl: null,
+      status: "available",
+      monitorPolicy: "none",
+      releaseDate: null,
+      metadata: { imported: true },
+    });
+    fixture.runtime.repositories.libraryFiles.upsert(
+      CreateLibraryFileInputSchema.parse({
+        mediaId: episode.id,
+        downloadId: null,
+        path: "/media/tv/Game of Thrones/Season 01/Game.of.Thrones.S01E01.mkv",
+        sizeBytes: 100,
+        quality: null,
+        videoCodec: null,
+        audioCodec: null,
+        strategy: "copy",
+      }),
+    );
+
+    const stopResponse = await jsonRequest(
+      fixture.runtime,
+      `/api/v1/library/${series.id}`,
+      "PATCH",
+      { monitorPolicy: "none" },
+      session,
+    );
+    expect(stopResponse.status).toBe(200);
+    expect(fixture.runtime.repositories.media.get(series.id)).toMatchObject({
+      monitorPolicy: "none",
+      acquisitionState: "available",
+    });
+    expect(fixture.runtime.repositories.media.get(season.id)).toMatchObject({
+      monitorPolicy: "none",
+      acquisitionState: "available",
+    });
+    expect(fixture.runtime.repositories.media.get(episode.id)).toMatchObject({
+      monitorPolicy: "none",
+      acquisitionState: "available",
+    });
+
+    const response = await jsonRequest(
+      fixture.runtime,
+      `/api/v1/library/${series.id}`,
+      "PATCH",
+      {
+        monitorPolicy: "selected",
+        seasonNumbers: [1],
+        includeFutureSeasons: false,
+      },
+      session,
+    );
+
+    expect(response.status).toBe(200);
+    expect(fixture.runtime.repositories.media.children(series.id)).toHaveLength(
+      1,
+    );
+    expect(fixture.runtime.repositories.media.children(season.id)).toHaveLength(
+      2,
+    );
+    expect(fixture.runtime.repositories.media.get(series.id)).toMatchObject({
+      monitorPolicy: "selected",
+      acquisitionState: "missing",
+    });
+    expect(fixture.runtime.repositories.media.get(season.id)).toMatchObject({
+      id: season.id,
+      tmdbId: 5_001,
+      title: "Season 1",
+      monitorPolicy: "selected",
+      acquisitionState: "missing",
+    });
+    expect(fixture.runtime.repositories.media.get(episode.id)).toMatchObject({
+      id: episode.id,
+      tmdbId: 100_101,
+      title: "Episode 1",
+      monitorPolicy: "selected",
+      acquisitionState: "available",
+      releaseDate: "2021-04-01T00:00:00.000Z",
+    });
+    expect(
+      fixture.runtime.repositories.libraryFiles.listForMedia(episode.id),
+    ).toHaveLength(1);
+    const missingEpisode = fixture.runtime.repositories.media
+      .children(season.id)
+      .find((candidate) => candidate.episodeNumber === 2);
+    expect(missingEpisode).toMatchObject({
+      title: "Episode 2",
+      monitorPolicy: "selected",
+      acquisitionState: "missing",
+    });
+    expect(
+      (await fixture.runtime.queue.list({ types: ["media.acquire.v1"] })).some(
+        (job) =>
+          typeof job.payload === "object" &&
+          job.payload !== null &&
+          "mediaId" in job.payload &&
+          job.payload.mediaId === season.id,
+      ),
+    ).toBe(true);
+  });
+
   test("queues an explicit replacement while preserving the organized file", async () => {
     const fixture = await createFixture();
     const session = await setup(fixture.runtime);
@@ -1311,6 +1460,80 @@ describe("public product API", () => {
     expect(fixture.runtime.repositories.media.get(movie.id)).toMatchObject({
       acquisitionState: "searching",
       metadata: { replacementPending: true },
+    });
+    expect(
+      fixture.runtime.repositories.libraryFiles.listForMedia(movie.id),
+    ).toHaveLength(1);
+  });
+
+  test("allows a one-time candidate replacement for an imported unmonitored movie", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    const movie = fixture.runtime.repositories.media.create(
+      CreateLibraryItemRequestSchema.parse({
+        kind: "movie",
+        tmdbId: 603,
+        title: "The Matrix",
+        year: 1999,
+        status: "available",
+        monitorPolicy: "none",
+        metadata: { imported: true },
+      }),
+    );
+    fixture.runtime.repositories.libraryFiles.upsert(
+      CreateLibraryFileInputSchema.parse({
+        mediaId: movie.id,
+        downloadId: null,
+        path: "/media/movies/The Matrix (1999)/The Matrix (1999).mkv",
+        sizeBytes: 100,
+        quality: null,
+        videoCodec: null,
+        audioCodec: null,
+        strategy: "copy",
+      }),
+    );
+
+    const automatic = await jsonRequest(
+      fixture.runtime,
+      `/api/v1/library/${movie.id}/replace`,
+      "POST",
+      {},
+      session,
+    );
+    expect(automatic.status).toBe(409);
+
+    const search = (await (
+      await fixture.runtime.app.request(
+        "/api/v1/releases?tmdbId=603&kind=movie",
+        { headers: { cookie: session.cookie } },
+      )
+    ).json()) as {
+      items: Array<{ id: string }>;
+      mediaId: string | null;
+      replacementRequired: boolean;
+    };
+    expect(search).toMatchObject({
+      mediaId: movie.id,
+      replacementRequired: true,
+    });
+
+    const response = await jsonRequest(
+      fixture.runtime,
+      `/api/v1/library/${movie.id}/replace`,
+      "POST",
+      { candidateId: search.items[0]!.id },
+      session,
+    );
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({
+      accepted: true,
+      downloadId: expect.any(String),
+    });
+    expect(fixture.runtime.repositories.media.get(movie.id)).toMatchObject({
+      monitorPolicy: "none",
+      acquisitionState: "queued",
+      metadata: { imported: true, replacementPending: true },
     });
     expect(
       fixture.runtime.repositories.libraryFiles.listForMedia(movie.id),
@@ -2079,6 +2302,247 @@ describe("public product API", () => {
     expect(fixture.runtime.repositories.media.get(series.id)).toBeUndefined();
     expect(fixture.runtime.repositories.media.get(season.id)).toBeUndefined();
     expect(fixture.runtime.repositories.media.get(episode.id)).toBeUndefined();
+  });
+
+  test("removes an imported library record without requiring torrent flags", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    const imported = fixture.runtime.repositories.media.create(
+      CreateLibraryItemRequestSchema.parse({
+        kind: "series",
+        tmdbId: 1399,
+        title: "Game of Thrones",
+        year: 2011,
+        status: "available",
+        monitorPolicy: "none",
+        metadata: { imported: true },
+      }),
+    );
+    const transmissionCallsBefore = fixture.services.transmissionCalls.length;
+
+    const response = await jsonRequest(
+      fixture.runtime,
+      `/api/v1/library/${imported.id}`,
+      "DELETE",
+      { deleteLibraryRecord: true },
+      session,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      deleted: true,
+      libraryFilesDeleted: false,
+      torrentDeleted: false,
+      downloadDataDeleted: false,
+    });
+    expect(fixture.runtime.repositories.media.get(imported.id)).toBeUndefined();
+    expect(fixture.services.transmissionCalls).toHaveLength(
+      transmissionCallsBefore,
+    );
+  });
+
+  test("removes an imported movie and its organized file without torrent flags", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    const baseDirectory = await mkdtemp(join(tmpdir(), "bobarr-product-"));
+    temporaryDirectories.push(baseDirectory);
+    const moviesPath = join(baseDirectory, "movies");
+    const televisionPath = join(baseDirectory, "tv");
+    const movieDirectory = join(moviesPath, "The Matrix (1999)");
+    const moviePath = join(movieDirectory, "The Matrix (1999).mkv");
+    await mkdir(movieDirectory, { recursive: true });
+    await Bun.write(moviePath, "recorded movie");
+    fixture.runtime.repositories.settings.update({
+      storage: {
+        ...fixture.runtime.repositories.settings.ensureDefaults().settings
+          .storage,
+        moviesPath,
+        televisionPath,
+      },
+    });
+    const imported = fixture.runtime.repositories.media.create(
+      CreateLibraryItemRequestSchema.parse({
+        kind: "movie",
+        tmdbId: 603,
+        title: "The Matrix",
+        year: 1999,
+        status: "available",
+        monitorPolicy: "none",
+        metadata: { imported: true },
+      }),
+    );
+    fixture.runtime.repositories.libraryFiles.upsert(
+      CreateLibraryFileInputSchema.parse({
+        mediaId: imported.id,
+        downloadId: null,
+        path: moviePath,
+        sizeBytes: 14,
+        quality: null,
+        videoCodec: null,
+        audioCodec: null,
+        strategy: "copy",
+      }),
+    );
+    const transmissionCallsBefore = fixture.services.transmissionCalls.length;
+
+    const response = await jsonRequest(
+      fixture.runtime,
+      `/api/v1/library/${imported.id}`,
+      "DELETE",
+      { deleteLibraryRecord: true, deleteLibraryFiles: true },
+      session,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      deleted: true,
+      libraryFilesDeleted: true,
+      torrentDeleted: false,
+      downloadDataDeleted: false,
+    });
+    expect(await Bun.file(moviePath).exists()).toBe(false);
+    expect(fixture.runtime.repositories.media.get(imported.id)).toBeUndefined();
+    expect(fixture.services.transmissionCalls).toHaveLength(
+      transmissionCallsBefore,
+    );
+  });
+
+  test("marks retained imported records unmonitored after deleting their files", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    const baseDirectory = await mkdtemp(join(tmpdir(), "bobarr-product-"));
+    temporaryDirectories.push(baseDirectory);
+    const moviesPath = join(baseDirectory, "movies");
+    const televisionPath = join(baseDirectory, "tv");
+    const episodeDirectory = join(
+      televisionPath,
+      "Game of Thrones (2011)",
+      "Season 01",
+    );
+    const episodePath = join(episodeDirectory, "Game.of.Thrones.S01E01.mkv");
+    await mkdir(episodeDirectory, { recursive: true });
+    await Bun.write(episodePath, "recorded episode");
+    fixture.runtime.repositories.settings.update({
+      storage: {
+        ...fixture.runtime.repositories.settings.ensureDefaults().settings
+          .storage,
+        moviesPath,
+        televisionPath,
+      },
+    });
+    const series = fixture.runtime.repositories.media.create({
+      kind: "series",
+      tmdbId: 1399,
+      parentId: null,
+      seasonNumber: null,
+      episodeNumber: null,
+      title: "Game of Thrones",
+      year: 2011,
+      posterUrl: null,
+      status: "available",
+      monitorPolicy: "none",
+      releaseDate: null,
+      metadata: { imported: true },
+    });
+    const season = fixture.runtime.repositories.media.create({
+      kind: "season",
+      tmdbId: null,
+      parentId: series.id,
+      seasonNumber: 1,
+      episodeNumber: null,
+      title: "Season 1",
+      year: 2011,
+      posterUrl: null,
+      status: "available",
+      monitorPolicy: "none",
+      releaseDate: null,
+      metadata: { imported: true },
+    });
+    const episode = fixture.runtime.repositories.media.create({
+      kind: "episode",
+      tmdbId: null,
+      parentId: season.id,
+      seasonNumber: 1,
+      episodeNumber: 1,
+      title: "Episode 1",
+      year: 2011,
+      posterUrl: null,
+      status: "available",
+      monitorPolicy: "none",
+      releaseDate: null,
+      metadata: { imported: true },
+    });
+    fixture.runtime.repositories.libraryFiles.upsert(
+      CreateLibraryFileInputSchema.parse({
+        mediaId: episode.id,
+        downloadId: null,
+        path: episodePath,
+        sizeBytes: 16,
+        quality: null,
+        videoCodec: null,
+        audioCodec: null,
+        strategy: "copy",
+      }),
+    );
+
+    const response = await jsonRequest(
+      fixture.runtime,
+      `/api/v1/library/${series.id}`,
+      "DELETE",
+      { deleteLibraryFiles: true },
+      session,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      deleted: false,
+      libraryFilesDeleted: true,
+    });
+    expect(await Bun.file(episodePath).exists()).toBe(false);
+    expect(
+      fixture.runtime.repositories.libraryFiles.listForMedia(episode.id),
+    ).toHaveLength(0);
+    for (const mediaId of [series.id, season.id, episode.id]) {
+      expect(fixture.runtime.repositories.media.get(mediaId)).toMatchObject({
+        monitorPolicy: "none",
+        acquisitionState: "unmonitored",
+      });
+    }
+  });
+
+  test("requires linked torrents to be removed before deleting a library record", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    const series = fixture.runtime.repositories.media.create(
+      CreateLibraryItemRequestSchema.parse({
+        kind: "series",
+        tmdbId: 1399,
+        title: "Game of Thrones",
+        year: 2011,
+        status: "downloading",
+        monitorPolicy: "selected",
+      }),
+    );
+    fixture.runtime.repositories.downloads.create(
+      CreateDownloadInputSchema.parse({
+        mediaId: series.id,
+        title: "Game of Thrones S01",
+      }),
+    );
+
+    const response = await jsonRequest(
+      fixture.runtime,
+      `/api/v1/library/${series.id}`,
+      "DELETE",
+      { deleteLibraryRecord: true },
+      session,
+    );
+
+    expect(response.status).toBe(409);
+    expect(fixture.runtime.repositories.media.get(series.id)).toMatchObject({
+      monitorPolicy: "selected",
+      acquisitionState: "downloading",
+    });
   });
 
   test("paginates the full durable download history", async () => {

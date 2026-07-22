@@ -524,6 +524,7 @@ export class LibraryRepository {
   updateMetadata(
     id: string,
     patch: {
+      tmdbId?: number | null;
       title?: string;
       year?: number | null;
       posterUrl?: string | null;
@@ -532,6 +533,7 @@ export class LibraryRepository {
     },
   ): LibraryItem | undefined {
     const values: Partial<typeof libraryItems.$inferInsert> = {
+      tmdbId: patch.tmdbId,
       title: patch.title,
       year: patch.year,
       posterUrl: patch.posterUrl,

@@ -236,7 +236,9 @@ test("monitors a movie, manually grabs a Jackett release, and shows it in Activi
   await dialog.getByLabel("Delete organized library files").check();
   await dialog.getByLabel("Remove torrent from Transmission").check();
   await dialog.getByLabel("Delete original download data").check();
-  await dialog.getByRole("button", { name: "Remove", exact: true }).click();
+  await dialog
+    .getByRole("button", { name: "Confirm removal", exact: true })
+    .click();
   await expect(card).toHaveCount(0);
   const libraryAfterRemoval = await apiJson<{
     items: Array<{ id: string }>;
@@ -676,9 +678,143 @@ test("adopts an ambiguous existing movie only after explicit scan review", async
     .first()
     .click();
   await expect(review).toBeHidden();
+  const card = page.locator(".library-card").filter({ hasText: title });
+  await expect(card).toBeVisible();
+
+  await card.getByRole("button", { name: `Open ${title} details` }).click();
+  let dialog = page.getByRole("dialog", { name: title });
   await expect(
-    page.locator(".library-card").filter({ hasText: title }),
+    dialog.getByRole("heading", { name: "Ready in your library" }),
   ).toBeVisible();
+  await expect(dialog.getByLabel("Automatic monitoring")).toHaveValue("none");
+  await expect(
+    dialog.getByRole("button", { name: "Choose replacement" }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Retry automatic search" }),
+  ).toHaveCount(0);
+
+  await dialog.getByRole("button", { name: "Choose replacement" }).click();
+  dialog = page.getByRole("dialog", {
+    name: `Choose a replacement for ${title}`,
+  });
+  await expect(dialog.getByText("explicit replacement")).toBeVisible();
+  await expect(dialog.locator(".release-card").first()).toBeVisible();
+  await dialog.getByRole("button", { name: "Back to management" }).click();
+
+  dialog = page.getByRole("dialog", { name: title });
+  await dialog.getByRole("button", { name: "Remove from library" }).click();
+  const removeDialog = page.getByRole("dialog", {
+    name: "Remove from library?",
+  });
+  await expect(
+    removeDialog.getByLabel("Remove this title from Bobarr"),
+  ).toBeChecked();
+  await expect(
+    removeDialog.getByLabel("Delete organized library files"),
+  ).not.toBeChecked();
+  await removeDialog.getByLabel("Delete organized library files").check();
+  await removeDialog.getByRole("button", { name: "Confirm removal" }).click();
+
+  await expect(card).toHaveCount(0);
+  await expect(access(`${folder}/${title}.2024.mkv`)).rejects.toThrow();
+});
+
+test("manages and removes a scan-imported untracked TV show", async ({
+  page,
+  request,
+}, testInfo) => {
+  await authenticate(page);
+  await controlFakeServices(request, { jackettMode: "empty" });
+  const title = `E2E Imported Series ${testInfo.project.name}`;
+  const seasonDirectory = `${mediaRoot}/tv/${title} (2024)/Season 01`;
+  const episodePath = `${seasonDirectory}/${title}.S01E01.mkv`;
+  await mkdir(seasonDirectory, { recursive: true });
+  await writeFile(episodePath, "existing deterministic TV episode");
+
+  await page.goto("/library/shows");
+  await page.getByRole("button", { name: "Scan library" }).click();
+  await expect(page.getByRole("status")).toContainText("Library scan queued");
+  await expect
+    .poll(
+      async () => {
+        const library = await apiJson<{
+          items: Array<{
+            title: string;
+            monitorPolicy: string;
+            acquisitionState: string;
+          }>;
+        }>(page, "/api/v1/library?kind=series&limit=100");
+        return library.items.find((item) => item.title === title);
+      },
+      { timeout: 12_000 },
+    )
+    .toMatchObject({
+      monitorPolicy: "none",
+      acquisitionState: "available",
+    });
+
+  await page.reload();
+  let card = page.locator(".library-card").filter({ hasText: title });
+  await expect(card).toBeVisible();
+  await card.getByRole("button", { name: `Open ${title} details` }).click();
+  let dialog = page.getByRole("dialog", { name: title });
+  await expect(
+    dialog.getByText("Monitoring is off", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: /Season 1/ }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(dialog.getByRole("button", { name: /Season 1/ })).toContainText(
+    "Ready · monitoring off",
+  );
+  const readyEpisode = dialog.locator(".episode-row--ready");
+  await expect(readyEpisode).toContainText("S01E01");
+  await expect(readyEpisode).toContainText("File is ready in your library");
+  await expect(
+    dialog.getByText("Monitoring settings", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: /Remove from library/ }),
+  ).toBeVisible();
+
+  await dialog.getByLabel("Automatic monitoring").selectOption("selected");
+  await dialog.getByLabel("Season 1", { exact: true }).check();
+  await dialog.getByRole("button", { name: "Save monitoring" }).click();
+  await expect(dialog).toBeHidden();
+  await expect
+    .poll(async () => {
+      const library = await apiJson<{
+        items: Array<{ title: string; monitorPolicy: string }>;
+      }>(page, "/api/v1/library?kind=series&limit=100");
+      return library.items.find((item) => item.title === title)?.monitorPolicy;
+    })
+    .toBe("selected");
+
+  card = page.locator(".library-card").filter({ hasText: title });
+  await expect(card).toBeVisible();
+  await card.getByRole("button", { name: `Open ${title} details` }).click();
+  dialog = page.getByRole("dialog", { name: title });
+  await dialog.getByRole("button", { name: /Remove show/ }).click();
+  const removeDialog = page.getByRole("dialog", {
+    name: "Remove from library?",
+  });
+  await expect(
+    removeDialog.getByLabel("Remove this title from Bobarr"),
+  ).toBeChecked();
+  await removeDialog.getByLabel("Delete organized library files").check();
+  await removeDialog.getByRole("button", { name: "Confirm removal" }).click();
+
+  await expect(card).toHaveCount(0);
+  await expect
+    .poll(async () => {
+      const library = await apiJson<{
+        items: Array<{ title: string }>;
+      }>(page, "/api/v1/library?kind=series&limit=100");
+      return library.items.some((item) => item.title === title);
+    })
+    .toBe(false);
+  await expect(access(episodePath)).rejects.toThrow();
 });
 
 test("surfaces a degraded connector result without losing navigation", async ({

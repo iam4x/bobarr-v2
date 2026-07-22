@@ -85,27 +85,44 @@ export function createScanReviewService(
         throw conflict("TMDB returned a different title than the selected one");
       }
 
+      const importedMetadata = {
+        imported: true,
+        scanReviewId: review.id,
+        overview: details.overview,
+        originalTitle: details.originalTitle,
+        backdropPath: details.backdropPath,
+        genres: details.genres,
+        voteAverage: details.voteAverage,
+        voteCount: details.voteCount,
+        numberOfSeasons: details.numberOfSeasons,
+        numberOfEpisodes: details.numberOfEpisodes,
+      };
       let media = options.repositories.media.getByTmdb(review.kind, tmdbId);
-      media ??= options.repositories.media.create({
-        kind: review.kind,
-        tmdbId,
-        parentId: null,
-        seasonNumber: null,
-        episodeNumber: null,
-        title: details.title,
-        year: details.year,
-        posterUrl: imageUrl(details.posterPath),
-        status: "available",
-        monitorPolicy: "none",
-        releaseDate: toIsoReleaseDate(details.releaseDate),
-        metadata: {
-          imported: true,
-          scanReviewId: review.id,
-          overview: details.overview,
-          backdropPath: details.backdropPath,
-          genres: details.genres,
-        },
-      });
+      if (media) {
+        media =
+          options.repositories.media.updateMetadata(media.id, {
+            title: details.title,
+            year: details.year,
+            posterUrl: imageUrl(details.posterPath) ?? media.posterUrl,
+            releaseDate: toIsoReleaseDate(details.releaseDate),
+            metadata: { ...media.metadata, ...importedMetadata },
+          }) ?? media;
+      } else {
+        media = options.repositories.media.create({
+          kind: review.kind,
+          tmdbId,
+          parentId: null,
+          seasonNumber: null,
+          episodeNumber: null,
+          title: details.title,
+          year: details.year,
+          posterUrl: imageUrl(details.posterPath),
+          status: "available",
+          monitorPolicy: "none",
+          releaseDate: toIsoReleaseDate(details.releaseDate),
+          metadata: importedMetadata,
+        });
+      }
       importRecordedFiles({
         media,
         files,
