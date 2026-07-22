@@ -67,6 +67,17 @@ export const JOB_KIND_OPTIONS = [
   { value: "maintenance.cleanup.v1", label: "Cleanup" },
 ] as const;
 
+export const MANUAL_JOB_OPTIONS = JOB_KIND_OPTIONS.filter((option) =>
+  [
+    "library.scan.v1",
+    "maintenance.reconcile.v1",
+    "maintenance.search-missing.v1",
+    "maintenance.refresh-metadata.v1",
+    "maintenance.backup.v1",
+    "maintenance.cleanup.v1",
+  ].includes(option.value),
+);
+
 export function formatJobKind(kind: string): string {
   return (
     JOB_KIND_OPTIONS.find((option) => option.value === kind)?.label ??
@@ -432,6 +443,42 @@ export function JobFilterBar({
   );
 }
 
+export function ManualJobControls({
+  kind,
+  busy,
+  onChange,
+  onRun,
+}: {
+  kind: string;
+  busy: boolean;
+  onChange: (kind: string) => void;
+  onRun: () => void;
+}) {
+  return (
+    <div className="manual-job-controls">
+      <div>
+        <strong>Run maintenance now</strong>
+        <small>
+          Queue a scan or maintenance task and follow its progress below.
+        </small>
+      </div>
+      <label className="compact-select">
+        <span>Task</span>
+        <select value={kind} onChange={(event) => onChange(event.target.value)}>
+          {MANUAL_JOB_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <Button type="button" busy={busy} onClick={onRun}>
+        <CirclePlay size={16} /> Run job
+      </Button>
+    </div>
+  );
+}
+
 export function JobPagination({
   page,
   busy,
@@ -530,6 +577,7 @@ export function ActivityPage() {
   const [deleteData, setDeleteData] = useState(false);
   const [jobKind, setJobKind] = useState("");
   const [jobOffset, setJobOffset] = useState(0);
+  const [manualJobKind, setManualJobKind] = useState("library.scan.v1");
   const downloadsQuery = useInfiniteQuery({
     queryKey: ["downloads"],
     queryFn: ({ pageParam, signal }) =>
@@ -621,6 +669,15 @@ export function ActivityPage() {
       }
     },
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["jobs"] }),
+  });
+  const createJobMutation = useMutation({
+    mutationFn: (kind: string) =>
+      api.post("createJob", { body: { kind, payload: {} } }),
+    onSuccess: (_job, kind) => {
+      setJobKind(kind);
+      setJobOffset(0);
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    },
   });
   const downloads =
     downloadsQuery.data?.pages.flatMap((page) => collectionItems(page)) ?? [];
@@ -743,6 +800,25 @@ export function ActivityPage() {
       ) : null}
       {tab === "jobs" ? (
         <div className="job-browser">
+          <ManualJobControls
+            kind={manualJobKind}
+            busy={createJobMutation.isPending}
+            onChange={(kind) => {
+              setManualJobKind(kind);
+              createJobMutation.reset();
+            }}
+            onRun={() => createJobMutation.mutate(manualJobKind)}
+          />
+          {createJobMutation.isSuccess ? (
+            <div className="notice notice--success" role="status">
+              <CheckCircle2 size={17} /> {formatJobKind(manualJobKind)} queued.
+            </div>
+          ) : null}
+          {createJobMutation.isError ? (
+            <div className="notice notice--error" role="alert">
+              {createJobMutation.error.message}
+            </div>
+          ) : null}
           <JobFilterBar
             kind={jobKind}
             busy={jobsQuery.isFetching && !jobsQuery.isLoading}

@@ -7,6 +7,7 @@ import {
   formatJobKind,
   JobFilterBar,
   JobPagination,
+  ManualJobControls,
 } from "./ActivityPage";
 
 describe("activity jobs browser", () => {
@@ -37,6 +38,23 @@ describe("activity jobs browser", () => {
     expect(markup).toContain("1–20 of 43");
     expect(previous).toContain("disabled");
     expect(next).not.toContain("disabled");
+  });
+
+  test("offers safe maintenance jobs for manual execution", () => {
+    const markup = renderToStaticMarkup(
+      <ManualJobControls
+        kind="library.scan.v1"
+        busy={false}
+        onChange={() => {}}
+        onRun={() => {}}
+      />,
+    );
+
+    expect(markup).toContain("Run maintenance now");
+    expect(markup).toContain('value="library.scan.v1" selected=""');
+    expect(markup).toContain("Library scan");
+    expect(markup).toContain("Refresh metadata");
+    expect(markup).not.toContain("Media acquisition");
   });
 
   test("formats unknown job kinds for readable activity cards", () => {

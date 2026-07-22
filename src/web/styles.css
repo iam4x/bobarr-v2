@@ -2185,6 +2185,29 @@ textarea:focus-visible {
   flex-direction: column;
   gap: 16px;
 }
+.manual-job-controls {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  align-items: end;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.manual-job-controls > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.manual-job-controls strong {
+  color: var(--text);
+  font-size: 14px;
+}
+.manual-job-controls small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
 .job-browser__toolbar {
   min-height: 44px;
   display: flex;
@@ -3265,6 +3288,17 @@ textarea:focus-visible {
   .job-browser__toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+  .manual-job-controls {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+  .manual-job-controls .compact-select {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .manual-job-controls .compact-select select {
+    width: 100%;
   }
   .job-browser__toolbar .compact-select {
     width: 100%;

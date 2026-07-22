@@ -339,6 +339,11 @@ export const apiRoutes = {
     { deleteData?: boolean } | undefined
   >()("DELETE", "/downloads/:id"),
   listJobs: route<JobsApiPage, JobsApiQuery | undefined>()("GET", "/jobs"),
+  createJob: route<
+    Job,
+    never,
+    { kind: string; payload?: Record<string, unknown> }
+  >()("POST", "/jobs"),
   retryJob: route<Job>()("POST", "/jobs/:id/retry"),
   cancelJob: route<{ id: string; cancelled: true }>()("DELETE", "/jobs/:id"),
   calendar: route<
