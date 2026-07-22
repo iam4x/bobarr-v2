@@ -10,7 +10,6 @@ import {
 import {
   Check,
   Film,
-  MoreHorizontal,
   Play,
   RefreshCw,
   ScanSearch,
@@ -35,7 +34,6 @@ import {
   Dialog,
   EmptyState,
   ErrorState,
-  IconButton,
   InlineSpinner,
   ProgressBar,
   SegmentedControl,
@@ -142,7 +140,7 @@ export function canManuallySearchLibraryItem(
   );
 }
 
-function LibraryCard({
+export function LibraryCard({
   item,
   onManage,
 }: {
@@ -172,12 +170,6 @@ function LibraryCard({
               {mediaYear(item)} · {item.kind === "movie" ? "Movie" : "Series"}
             </p>
           </div>
-          <IconButton
-            label={`Manage ${item.title}`}
-            onClick={() => onManage(item)}
-          >
-            <MoreHorizontal size={20} />
-          </IconButton>
         </div>
         <Badge tone={acquisitionTone(item.acquisitionState)}>
           {item.acquisitionState}
@@ -200,6 +192,12 @@ function LibraryCard({
           </p>
         ) : null}
       </div>
+      <button
+        type="button"
+        className="library-card__hit-area"
+        aria-label={`Open ${item.title} details`}
+        onClick={() => onManage(item)}
+      />
     </article>
   );
 }

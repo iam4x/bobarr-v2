@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   canManuallySearchLibraryItem,
+  LibraryCard,
   LibrarySummary,
   libraryReleaseTarget,
 } from "./LibraryPage";
@@ -21,6 +22,17 @@ const movie: LibraryItem = {
 };
 
 describe("library manual release targets", () => {
+  test("opens library details from the full card without an overflow menu", () => {
+    const markup = renderToStaticMarkup(
+      LibraryCard({ item: movie, onManage: () => undefined }),
+    );
+
+    expect(markup).toContain('class="library-card__hit-area"');
+    expect(markup).toContain('aria-label="Open The Matrix details"');
+    expect(markup).not.toContain("Manage The Matrix");
+    expect(markup).not.toContain("lucide-ellipsis");
+  });
+
   test("shows downloaded and total library counts", () => {
     const markup = renderToStaticMarkup(
       LibrarySummary({

@@ -1923,6 +1923,7 @@ textarea:focus-visible {
   gap: 13px;
 }
 .library-card {
+  position: relative;
   min-width: 0;
   display: grid;
   grid-template-columns: 105px 1fr;
@@ -1937,6 +1938,25 @@ textarea:focus-visible {
 .library-card:hover {
   border-color: var(--border-strong);
   transform: translateY(-1px);
+}
+.library-card:focus-within {
+  border-color: var(--border-strong);
+  outline: 2px solid color-mix(in srgb, var(--accent) 80%, white);
+  outline-offset: 3px;
+  transform: translateY(-1px);
+}
+.library-card__hit-area {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.library-card__hit-area:focus-visible {
+  outline: 0;
 }
 .library-card__poster {
   min-height: 158px;
@@ -1975,11 +1995,6 @@ textarea:focus-visible {
   margin: 0;
   color: var(--text-muted);
   font-size: 11px;
-}
-.library-card__heading .icon-button {
-  width: 44px;
-  height: 44px;
-  margin: -5px -6px 0 0;
 }
 .library-card__progress {
   width: 100%;
