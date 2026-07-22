@@ -14,6 +14,7 @@ import type { MiddlewareHandler } from "hono";
 
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { cors } from "hono/cors";
 
 import { registerBackupRestoreRoutes } from "./backup-restore";
 import { finalizeOpenApiDocument } from "./openapi-contract";
@@ -395,6 +396,7 @@ export function createApiApp(
     },
   });
 
+  app.use("*", cors());
   app.use("*", requestContextMiddleware(dependencies));
   app.use("/api/v1/*", authenticationMiddleware(dependencies));
   app.use("/api/v1/*", requestBodyLimitMiddleware());
@@ -750,27 +752,7 @@ function requestContextMiddleware(
     context.header("referrer-policy", "no-referrer");
     context.header("cache-control", "no-store");
 
-    const origin = context.req.header("origin");
     const method = context.req.method.toUpperCase();
-    const isMutation = !["GET", "HEAD", "OPTIONS"].includes(method);
-    const expectedOrigin =
-      dependencies.config.allowedOrigin === undefined
-        ? new URL(context.req.url).origin
-        : new URL(dependencies.config.allowedOrigin).origin;
-    if (origin !== undefined && expectedOrigin !== origin) {
-      throw new AppError({
-        code: "forbidden",
-        message: "Request origin is not allowed",
-        status: 403,
-      });
-    }
-    if (isMutation && context.req.header("sec-fetch-site") === "cross-site") {
-      throw new AppError({
-        code: "forbidden",
-        message: "Cross-site mutations are not allowed",
-        status: 403,
-      });
-    }
     await next();
     dependencies.logger.info("http.request_completed", {
       requestId,

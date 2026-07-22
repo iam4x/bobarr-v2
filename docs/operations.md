@@ -101,10 +101,15 @@ for `/api/v1/events`, use a long read timeout, and allow request bodies up to
 512 MiB on `/api/v1/system/restore` if large database restores are needed.
 Bobarr applies its own streaming restore cap, limits ordinary API bodies to 1
 MiB and torrent metainfo to 10 MiB plus multipart framing, and keeps SSE
-connections exempt from Bun's normal idle timeout. Do not configure
-cross-origin access. Set
-`BOBARR_PUBLIC_URL` to the exact external HTTPS origin so mutation origin checks
-remain effective.
+connections exempt from Bun's normal idle timeout. API responses allow
+cross-origin access from any origin. Authenticated mutations remain protected by
+the session's CSRF token.
+
+The Compose stack defaults `BOBARR_COOKIE_SECURE` to `false` so sessions work
+when Bobarr is opened directly over HTTP, including through a private Tailscale
+IP. Set it to `true` whenever clients reach Bobarr over HTTPS. After changing
+this setting, recreate the Bobarr container and sign in again so the browser
+receives a new session cookie.
 
 Only publish Bobarr beyond the host. The provided stack binds Transmission's
 authenticated Web UI/RPC to `127.0.0.1:9091` for local diagnostics and Jackett's

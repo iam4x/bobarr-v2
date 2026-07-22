@@ -112,6 +112,11 @@ assert(
   "Bobarr must start alongside connectors so its degraded UI remains available",
 );
 assert(
+  bobarr.environment?.["BOBARR_COOKIE_SECURE"] ===
+    (process.env["BOBARR_COOKIE_SECURE"] ?? "false"),
+  "Bobarr's session cookie policy must match its HTTP or HTTPS deployment",
+);
+assert(
   bobarr.environment?.["BOBARR_JACKETT_URL"] === undefined &&
     bobarr.environment?.["BOBARR_TRANSMISSION_URL"] === undefined,
   "Base Compose connector URLs must remain configurable through Settings",

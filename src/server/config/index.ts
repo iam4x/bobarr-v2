@@ -36,7 +36,6 @@ export const BackendConfigSchema = z
       .min(300)
       .max(60 * 60 * 24 * 90),
     sessionCookieSecure: z.boolean(),
-    allowedOrigin: z.url().optional(),
     loginFailureLimit: z.number().int().min(3).max(20),
     loginLockSeconds: z
       .number()
@@ -71,8 +70,6 @@ export function parseBackendConfig(
       environment["BOBARR_SESSION_TTL_SECONDS"] ?? 60 * 60 * 24 * 30,
     ),
     sessionCookieSecure,
-    allowedOrigin:
-      environment["BOBARR_ALLOWED_ORIGIN"] ?? environment["BOBARR_PUBLIC_URL"],
     loginFailureLimit: Number(environment["BOBARR_LOGIN_FAILURE_LIMIT"] ?? 5),
     loginLockSeconds: Number(
       environment["BOBARR_LOGIN_LOCK_SECONDS"] ?? 15 * 60,

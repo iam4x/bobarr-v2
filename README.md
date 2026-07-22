@@ -39,7 +39,9 @@ administrator, then verify the services from Settings. Jackett's setup UI is
 deliberately exposed only on <http://127.0.0.1:9117>. Configure indexers and
 FlareSolverr there. Transmission's authenticated Web UI is available for local
 diagnostics only on <http://127.0.0.1:9091>; Bobarr remains the normal control
-surface.
+surface. The Compose default permits its session cookie over direct HTTP access,
+including a private Tailscale address. Set `BOBARR_COOKIE_SECURE=true` when
+serving Bobarr over HTTPS.
 
 All three media folders must live below the same `/media` mount if hardlink
 organization is enabled. This lets Transmission continue seeding without a
@@ -97,9 +99,10 @@ module boundaries and safety invariants.
 
 Bobarr supports one authenticated administrator. Passwords use Argon2id. Only a
 hash of each session token is stored, cookies are HttpOnly and SameSite, and
-same-origin checks protect mutations. Connector secrets are encrypted at rest
-with `/config/master.key` or `BOBARR_MASTER_KEY`. Tracker passkeys and complete
-magnet query strings are never returned to the browser or written to logs.
+CSRF tokens protect authenticated mutations. Connector secrets are encrypted at
+rest with `/config/master.key` or `BOBARR_MASTER_KEY`. Tracker passkeys and
+complete magnet query strings are never returned to the browser or written to
+logs.
 
 Treat `/config` and `/media` as sensitive. Put Bobarr behind HTTPS before
 exposing it outside a trusted network.

@@ -2,7 +2,7 @@ import type { BackendConfig } from "../config";
 import type { BackendRuntime } from "./initialize";
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, unlink } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -200,7 +200,9 @@ async function createFixture(): Promise<{
   moviesRoot: string;
   movieFile: string;
 }> {
-  const baseDirectory = await mkdtemp(join(tmpdir(), "bobarr-scan-review-"));
+  const baseDirectory = await realpath(
+    await mkdtemp(join(tmpdir(), "bobarr-scan-review-")),
+  );
   temporaryDirectories.push(baseDirectory);
   const moviesRoot = join(baseDirectory, "movies");
   const movieDirectory = join(moviesRoot, "Matrix (1999)");

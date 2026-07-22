@@ -59,6 +59,34 @@ describe("Bobarr backend API", () => {
     expect(document.paths?.["/api/v1/settings/secrets/{name}"]).toBeDefined();
   });
 
+  test("allows API requests and preflights from every origin", async () => {
+    const runtime = await createTestRuntime();
+    const origin = "http://100.64.0.1:3000";
+
+    const response = await runtime.app.request("/api/v1/setup/status", {
+      headers: { origin },
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+
+    const preflight = await runtime.app.request("/api/v1/setup", {
+      method: "OPTIONS",
+      headers: {
+        origin,
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type,x-csrf-token",
+      },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe("*");
+    expect(preflight.headers.get("access-control-allow-methods")).toContain(
+      "POST",
+    );
+    expect(preflight.headers.get("access-control-allow-headers")).toBe(
+      "content-type,x-csrf-token",
+    );
+  });
+
   test("documents CSRF requirements and public query and response contracts", async () => {
     const runtime = await createTestRuntime();
     const response = await runtime.app.request("/api/openapi.json");

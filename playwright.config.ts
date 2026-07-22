@@ -40,7 +40,6 @@ export default defineConfig({
         BOBARR_JACKETT_API_KEY: "bobarr-e2e-jackett-key",
         BOBARR_JACKETT_URL: `http://127.0.0.1:${fakeServicesPort}/jackett`,
         BOBARR_JOBS_DATABASE_PATH: `${e2eRoot}/config/jobs.sqlite`,
-        BOBARR_PUBLIC_URL: `http://127.0.0.1:${port}`,
         BOBARR_SHUTDOWN_TIMEOUT_MS: "4000",
         BOBARR_TMDB_URL: `http://127.0.0.1:${fakeServicesPort}/tmdb/3`,
         BOBARR_TRANSMISSION_URL: `http://127.0.0.1:${fakeServicesPort}/transmission/rpc`,

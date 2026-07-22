@@ -483,7 +483,7 @@ describe("existing library import", () => {
 });
 
 async function temporaryRoot(): Promise<string> {
-  const path = await mkdtemp(join(tmpdir(), "bobarr-library-"));
+  const path = await realpath(await mkdtemp(join(tmpdir(), "bobarr-library-")));
   temporaryDirectories.push(path);
   return path;
 }
