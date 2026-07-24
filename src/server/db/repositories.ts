@@ -1,6 +1,17 @@
 import type { BackendDatabase } from "./database";
 
-import { and, desc, eq, gte, inArray, lte, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 
 import {
   admins,
@@ -483,6 +494,43 @@ export class LibraryRepository {
       .where(and(eq(libraryItems.kind, kind), eq(libraryItems.tmdbId, tmdbId)))
       .get();
     return row === undefined ? undefined : mapLibraryItem(row);
+  }
+
+  recommendationSources(query: {
+    kind: "movie" | "series";
+    limit: number;
+    cursor: number;
+  }): { items: LibraryItem[]; total: number } {
+    const where = and(
+      eq(libraryItems.kind, query.kind),
+      isNull(libraryItems.parentId),
+      isNotNull(libraryItems.tmdbId),
+    );
+    const total = Number(
+      this.database.client
+        .select({ count: sql<number>`count(*)` })
+        .from(libraryItems)
+        .where(where)
+        .get()?.count ?? 0,
+    );
+    const limit = Math.min(Math.max(0, Math.trunc(query.limit)), total);
+    if (limit === 0) return { items: [], total };
+
+    const cursor = ((Math.trunc(query.cursor) % total) + total) % total;
+    const load = (offset: number, count: number) =>
+      this.database.client
+        .select()
+        .from(libraryItems)
+        .where(where)
+        .orderBy(desc(libraryItems.createdAt), desc(libraryItems.id))
+        .limit(count)
+        .offset(offset)
+        .all();
+    const rows = load(cursor, limit);
+    if (rows.length < limit) {
+      rows.push(...load(0, limit - rows.length));
+    }
+    return { items: rows.map(mapLibraryItem), total };
   }
 
   children(parentId: string): LibraryItem[] {

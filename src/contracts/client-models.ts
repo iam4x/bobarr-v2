@@ -77,6 +77,32 @@ export interface CatalogItem {
   acquisitionState?: AcquisitionState;
 }
 
+export interface CatalogRecommendationSource {
+  id: string;
+  tmdbId: number;
+  kind: "movie" | "series";
+  title: string;
+  year: number | null;
+  posterUrl: string | null;
+}
+
+export interface CatalogRecommendationGroup {
+  source: CatalogRecommendationSource;
+  items: CatalogItem[];
+}
+
+export interface CatalogRecommendationsResponse {
+  groups: CatalogRecommendationGroup[];
+  /** Backward-compatible flat projection for clients loaded before grouping. */
+  items: CatalogItem[];
+  page: 1;
+  totalPages: 1;
+  personalized: boolean;
+  totalItems: number;
+  sourceTotal: number;
+  nextCursor: number | null;
+}
+
 export interface CatalogSeason {
   tmdbId: number;
   name: string;

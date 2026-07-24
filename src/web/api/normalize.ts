@@ -3,6 +3,8 @@ import type {
   CalendarItem,
   CatalogItem,
   CatalogPage,
+  CatalogRecommendationGroup,
+  CatalogRecommendationsResponse,
   Download,
   Job,
   LibraryItem,
@@ -250,6 +252,154 @@ export function catalogPage(
   }
   const items = responseItems(response).map(normalizeCollectionItem);
   return { items, page: 1, totalPages: 1, totalItems: items.length };
+}
+
+function normalizedCatalogItems(value: unknown): CatalogItem[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!isRecord(item)) return [];
+    const kind = recordString(item, "kind");
+    const tmdbId = recordNumber(item, "tmdbId");
+    const title = recordString(item, "title");
+    if (
+      (kind !== "movie" && kind !== "series") ||
+      tmdbId === undefined ||
+      tmdbId <= 0 ||
+      title === undefined
+    ) {
+      return [];
+    }
+    return [
+      normalizeCollectionItem({
+        ...item,
+        id: recordString(item, "id") ?? `${kind}:${tmdbId}`,
+        overview: recordString(item, "overview") ?? "",
+        kind,
+        tmdbId,
+        title,
+      } as CatalogItem),
+    ];
+  });
+}
+
+function normalizedRecommendationSource(
+  value: unknown,
+): CatalogRecommendationGroup["source"] | undefined {
+  if (!isRecord(value)) return undefined;
+  const kind = recordString(value, "kind");
+  const tmdbId = recordNumber(value, "tmdbId");
+  const title = recordString(value, "title");
+  if (
+    (kind !== "movie" && kind !== "series") ||
+    tmdbId === undefined ||
+    tmdbId <= 0 ||
+    title === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    id: recordString(value, "id") ?? `library:${kind}:${tmdbId}`,
+    tmdbId,
+    kind,
+    title,
+    year: recordNumber(value, "year") ?? null,
+    posterUrl:
+      recordString(value, "posterUrl") ??
+      recordString(value, "posterPath") ??
+      null,
+  };
+}
+
+function normalizedRecommendationGroups(value: unknown): {
+  groups: CatalogRecommendationGroup[];
+  groupedPayload: boolean;
+} {
+  if (!Array.isArray(value)) return { groups: [], groupedPayload: false };
+  const groups = value.flatMap((group) => {
+    if (!isRecord(group)) return [];
+    const source = normalizedRecommendationSource(group["source"]);
+    const items = normalizedCatalogItems(
+      group["items"] ?? group["recommendations"],
+    );
+    return source && items.length > 0 ? [{ source, items }] : [];
+  });
+  return { groups, groupedPayload: true };
+}
+
+function legacyRecommendationGroups(
+  value: UnknownRecord,
+): CatalogRecommendationGroup[] {
+  const items = normalizedCatalogItems(value["items"] ?? value["results"]);
+  return (["movie", "series"] as const).flatMap((kind) => {
+    const kindItems = items.filter((item) => item.kind === kind);
+    if (kindItems.length === 0) return [];
+    return [
+      {
+        source: {
+          id: `legacy-library-mix:${kind}`,
+          tmdbId: kind === "movie" ? 1 : 2,
+          kind,
+          title: kind === "movie" ? "Your movie library" : "Your TV library",
+          year: null,
+          posterUrl: null,
+        },
+        items: kindItems,
+      },
+    ];
+  });
+}
+
+/**
+ * Accepts both the grouped recommendation contract and the pre-grouping flat
+ * catalog page. This keeps a rolling frontend/backend deployment or a hot
+ * React Query cache from crashing the Suggestions route.
+ */
+export function normalizeCatalogRecommendations(
+  value: unknown,
+): CatalogRecommendationsResponse {
+  if (!isRecord(value)) {
+    return {
+      groups: [],
+      items: [],
+      page: 1,
+      totalPages: 1,
+      personalized: false,
+      totalItems: 0,
+      sourceTotal: 0,
+      nextCursor: null,
+    };
+  }
+  const normalized = normalizedRecommendationGroups(value["groups"]);
+  const groups = normalized.groupedPayload
+    ? normalized.groups
+    : legacyRecommendationGroups(value);
+  const totalItems = groups.reduce(
+    (total, group) => total + group.items.length,
+    0,
+  );
+  const items = groups.flatMap((group) => group.items);
+  const nextCursor = recordNumber(value, "nextCursor");
+  return {
+    groups,
+    items,
+    page: 1,
+    totalPages: 1,
+    personalized:
+      normalized.groupedPayload &&
+      value["personalized"] === true &&
+      groups.length > 0,
+    totalItems,
+    sourceTotal:
+      recordNumber(value, "sourceTotal") ??
+      (normalized.groupedPayload ? groups.length : 0),
+    nextCursor:
+      normalized.groupedPayload &&
+      nextCursor !== undefined &&
+      Number.isSafeInteger(nextCursor) &&
+      nextCursor >= 0
+        ? nextCursor
+        : null,
+  };
 }
 
 export type CatalogResponse = CollectionResponse<CatalogItem>;

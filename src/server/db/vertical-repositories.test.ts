@@ -112,6 +112,100 @@ describe("core vertical-slice persistence", () => {
     }
   });
 
+  test("lists bounded recommendation sources with cursor wrapping", async () => {
+    const clock = new MutableClock(new Date("2026-07-21T12:00:00.000Z"));
+    const database = await openBackendDatabase(":memory:");
+    try {
+      const repositories = createRepositories(database, clock);
+      const oldest = repositories.media.create(
+        CreateLibraryItemRequestSchema.parse({
+          kind: "movie",
+          tmdbId: 101,
+          title: "Oldest matched movie",
+          monitorPolicy: "none",
+        }),
+      );
+      clock.advance(1_000);
+      const newestA = repositories.media.create(
+        CreateLibraryItemRequestSchema.parse({
+          kind: "movie",
+          tmdbId: 102,
+          title: "Newest matched movie A",
+        }),
+      );
+      const newestB = repositories.media.create(
+        CreateLibraryItemRequestSchema.parse({
+          kind: "movie",
+          tmdbId: 103,
+          title: "Newest matched movie B",
+          monitorPolicy: "none",
+        }),
+      );
+      repositories.media.create(
+        CreateLibraryItemRequestSchema.parse({
+          kind: "movie",
+          tmdbId: null,
+          title: "Unmatched movie",
+        }),
+      );
+      const series = repositories.media.create(
+        CreateLibraryItemRequestSchema.parse({
+          kind: "series",
+          tmdbId: 201,
+          title: "Matched series",
+        }),
+      );
+      repositories.media.create(
+        CreateLibraryItemRequestSchema.parse({
+          kind: "movie",
+          tmdbId: 104,
+          parentId: series.id,
+          title: "Nested movie-shaped record",
+        }),
+      );
+
+      const newest = [newestA, newestB].sort((left, right) =>
+        right.id.localeCompare(left.id),
+      );
+      const expected = [...newest, oldest];
+      const firstPage = repositories.media.recommendationSources({
+        kind: "movie",
+        limit: 2,
+        cursor: 0,
+      });
+      expect(firstPage.total).toBe(3);
+      expect(firstPage.items.map((item) => item.id)).toEqual(
+        expected.slice(0, 2).map((item) => item.id),
+      );
+
+      const wrapped = repositories.media.recommendationSources({
+        kind: "movie",
+        limit: 10,
+        cursor: 5,
+      });
+      expect(wrapped.items.map((item) => item.id)).toEqual([
+        oldest.id,
+        ...newest.map((item) => item.id),
+      ]);
+      expect(new Set(wrapped.items.map((item) => item.id)).size).toBe(3);
+      expect(
+        wrapped.items
+          .filter((item) => item.monitorPolicy === "none")
+          .map((item) => item.id),
+      ).toEqual([oldest.id, newestB.id]);
+
+      expect(
+        repositories.media.recommendationSources({
+          kind: "series",
+          limit: 4,
+          cursor: 8,
+        }),
+      ).toMatchObject({ items: [{ id: series.id }], total: 1 });
+    } finally {
+      database.close();
+    }
+  });
+
   test("keeps release sources protected and persists acquisition lifecycle records", async () => {
     const clock = new MutableClock(new Date("2026-07-21T12:00:00.000Z"));
     const database = await openBackendDatabase(":memory:");

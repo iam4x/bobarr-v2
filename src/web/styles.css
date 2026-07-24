@@ -2104,7 +2104,7 @@ textarea:focus-visible {
   line-height: 1;
 }
 .suggestions-tabs button.is-active .suggestions-tab__count {
-  color: #fff;
+  color: var(--bg);
   background: var(--accent);
 }
 .suggestions-toolbar__summary {
@@ -2116,6 +2116,111 @@ textarea:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 80%, white);
   outline-offset: 8px;
   border-radius: var(--radius-sm);
+}
+.suggestion-groups {
+  min-width: 0;
+  display: grid;
+  gap: 38px;
+}
+.suggestion-shelf {
+  min-width: 0;
+}
+.suggestion-shelf + .suggestion-shelf {
+  padding-top: 38px;
+  border-top: 1px solid var(--border);
+}
+.suggestion-shelf__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 17px;
+}
+.suggestion-shelf__source {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+}
+.suggestion-shelf__poster {
+  width: 50px;
+  aspect-ratio: 2 / 3;
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+}
+.suggestion-shelf__poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.suggestion-shelf__poster .poster-placeholder {
+  font-size: 14px;
+}
+.suggestion-shelf__copy {
+  min-width: 0;
+}
+.suggestion-shelf__copy .eyebrow {
+  margin-bottom: 5px;
+}
+.suggestion-shelf__copy h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+}
+.suggestion-shelf__copy p {
+  margin: 5px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.suggestion-shelf__controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.suggestion-shelf__controls[hidden] {
+  display: none;
+}
+.suggestion-shelf__controls .icon-button {
+  border-color: var(--border);
+  background: var(--bg-raised);
+}
+.suggestion-shelf__controls .icon-button:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.suggestion-shelf__rail {
+  min-width: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: clamp(145px, 14vw, 184px);
+  gap: 18px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  padding: 4px 4px 16px;
+  margin: -4px;
+  scroll-padding-inline: 4px;
+  scroll-snap-type: inline proximity;
+}
+.suggestion-shelf__rail > .media-card {
+  scroll-snap-align: start;
+}
+.suggestion-shelf--skeleton .suggestion-shelf__copy {
+  display: grid;
+  gap: 9px;
+}
+.suggestion-shelf--skeleton .suggestion-shelf__copy .skeleton {
+  display: block;
+  margin: 0;
+}
+.suggestions-empty-actions {
+  display: flex;
+  justify-content: center;
+  gap: 9px;
 }
 .discover-toolbar {
   position: relative;
@@ -3903,6 +4008,10 @@ textarea:focus-visible {
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 30px 21px;
   }
+  .suggestion-shelf__rail {
+    grid-auto-columns: 190px;
+    gap: 21px;
+  }
 }
 
 @media (max-width: 1100px) {
@@ -4397,6 +4506,39 @@ textarea:focus-visible {
     flex: 1;
     justify-content: center;
   }
+  .suggestion-groups {
+    gap: 29px;
+  }
+  .suggestion-shelf + .suggestion-shelf {
+    padding-top: 29px;
+  }
+  .suggestion-shelf__header {
+    align-items: start;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .suggestion-shelf__source {
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 11px;
+  }
+  .suggestion-shelf__poster {
+    width: 44px;
+    border-radius: 7px;
+  }
+  .suggestion-shelf__copy h2 {
+    font-size: 16px;
+    line-height: 1.3;
+  }
+  .suggestion-shelf__copy p {
+    font-size: 11px;
+  }
+  .suggestion-shelf__rail {
+    grid-auto-columns: minmax(124px, 31vw);
+    gap: 10px;
+    margin: -4px -17px 0;
+    padding: 4px 17px 16px;
+    scroll-padding-inline: 17px;
+  }
   .discover-toolbar {
     align-items: stretch;
     flex-direction: column;
@@ -4729,6 +4871,19 @@ textarea:focus-visible {
   }
   .segmented button {
     padding-inline: 11px;
+  }
+  .suggestion-shelf__header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .suggestion-shelf__controls {
+    justify-self: end;
+  }
+  .suggestions-empty-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+  .suggestions-empty-actions .button {
+    width: 100%;
   }
   .library-card {
     grid-template-columns: 82px 1fr;

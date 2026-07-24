@@ -49,6 +49,7 @@ import { aggregateChildAcquisitionState } from "../domain/media-state";
 import { deleteRecordedFile, UnsafeLibraryDeletionError } from "../library";
 
 const CatalogKindSchema = z.enum(["movie", "series"]);
+const MAX_RECOMMENDATION_CURSOR = 1_000_000;
 const CatalogRatingsSchema = z
   .object({
     imdb: z
@@ -93,6 +94,36 @@ const CatalogPageSchema = z.object({
   totalPages: z.number().int().positive(),
   totalItems: z.number().int().nonnegative(),
   personalized: z.boolean().optional(),
+});
+const CatalogRecommendationSourceSchema = z.object({
+  id: z.string(),
+  tmdbId: z.number().int().positive(),
+  kind: CatalogKindSchema,
+  title: z.string(),
+  year: z.number().int().nullable(),
+  posterUrl: z.string().nullable(),
+});
+const CatalogRecommendationGroupSchema = z.object({
+  source: CatalogRecommendationSourceSchema,
+  items: z.array(CatalogItemSchema),
+});
+const CatalogRecommendationsResponseSchema = z.object({
+  groups: z.array(CatalogRecommendationGroupSchema),
+  items: z.array(CatalogItemSchema),
+  page: z.literal(1),
+  totalPages: z.literal(1),
+  personalized: z.boolean(),
+  totalItems: z.number().int().nonnegative(),
+  sourceTotal: z.number().int().nonnegative(),
+  nextCursor: z.number().int().nonnegative().nullable(),
+});
+const CatalogRecommendationsQuerySchema = z.object({
+  cursor: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_RECOMMENDATION_CURSOR)
+    .default(0),
 });
 const CatalogSearchQuerySchema = z.object({
   query: z.string().trim().min(1).max(300),
@@ -541,82 +572,133 @@ export function registerProductRoutes(
   });
 
   app.get("/api/v1/catalog/recommendations", async (context) => {
+    const query = parse(CatalogRecommendationsQuerySchema, context.req.query());
     const settings =
       dependencies.repositories.settings.ensureDefaults().settings;
     const client = await requireIntegrations(dependencies).tmdb();
+    const sourceLimit = 3;
+    const itemLimit = 20;
     const options = {
       page: 1,
       language: settings.locale.language,
       region: settings.locale.region,
       signal: context.req.raw.signal,
     };
-    const monitored = (["movie", "series"] as const)
-      .flatMap((kind) => snapshotLibraryKind(kind, dependencies))
-      .filter((item) => item.monitorPolicy !== "none" && item.tmdbId !== null)
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-    const sources = monitored.slice(0, 6);
-    const sourceKey = sources
-      .map((item) => `${item.kind}:${item.tmdbId}`)
-      .sort()
-      .join(",");
-    const recommendations = await cachedTmdb(
-      dependencies,
-      "movie",
-      `recommendations:${sourceKey || "popular-mix"}`,
-      localeKey(settings),
-      15 * 60_000,
-      async () => {
-        const relatedPages = await Promise.all(
-          sources.map(async (source) => {
-            try {
-              return await client.recommendations(
-                toTmdbKind(source.kind as "movie" | "series"),
-                source.tmdbId!,
-                options,
-              );
-            } catch {
-              return null;
-            }
-          }),
-        );
-        const monitoredKeys = new Set(
-          monitored.map(
-            (item) =>
-              `${toTmdbKind(item.kind as "movie" | "series")}:${item.tmdbId}`,
-          ),
-        );
-        const related = uniqueCatalogItems(
-          relatedPages.flatMap((page) => page?.results ?? []),
-        ).filter(
-          (item) => !monitoredKeys.has(`${item.mediaType}:${item.tmdbId}`),
-        );
-        if (related.length > 0) {
-          return { results: related.slice(0, 30), personalized: true };
-        }
-        const [movies, series] = await integrationCall("tmdb", () =>
-          Promise.all([
-            client.popular("movie", options),
-            client.popular("tv", options),
-          ]),
-        );
-        return {
-          results: uniqueCatalogItems([
-            ...movies.results,
-            ...series.results,
-          ]).slice(0, 30),
-          personalized: false,
-        };
+    const movieSources = dependencies.repositories.media.recommendationSources({
+      kind: "movie",
+      limit: sourceLimit,
+      cursor: query.cursor,
+    });
+    const seriesSources = dependencies.repositories.media.recommendationSources(
+      {
+        kind: "series",
+        limit: sourceLimit,
+        cursor: query.cursor,
       },
     );
-    const items = recommendations.results.map((item) =>
-      catalogItem(item, dependencies),
+    const sources = [...movieSources.items, ...seriesSources.items].sort(
+      (left, right) =>
+        right.createdAt.localeCompare(left.createdAt) ||
+        right.id.localeCompare(left.id),
     );
+    const recommendationPages = await Promise.all(
+      sources.map(async (source) => {
+        try {
+          const page = await cachedTmdb(
+            dependencies,
+            source.kind,
+            `recommendations:${source.tmdbId}`,
+            localeKey(settings),
+            15 * 60_000,
+            () =>
+              integrationCall("tmdb", () =>
+                client.recommendations(
+                  toTmdbKind(source.kind as "movie" | "series"),
+                  source.tmdbId!,
+                  options,
+                ),
+              ),
+          );
+          return { source, items: page.results, error: undefined };
+        } catch (error) {
+          if (context.req.raw.signal.aborted) throw error;
+          return {
+            source,
+            items: [] as readonly TmdbCatalogItem[],
+            error,
+          };
+        }
+      }),
+    );
+    const failedPages = recommendationPages.filter(
+      (page) => page.error !== undefined,
+    );
+    if (
+      recommendationPages.length > 0 &&
+      failedPages.length === recommendationPages.length
+    ) {
+      throw failedPages[0]!.error;
+    }
+    const emitted = new Set<string>();
+    const positions = recommendationPages.map(() => 0);
+    const groups = recommendationPages.map(({ source }) => ({
+      source: {
+        id: source.id,
+        tmdbId: source.tmdbId!,
+        kind: source.kind as "movie" | "series",
+        title: source.title,
+        year: source.year,
+        posterUrl: source.posterUrl,
+      },
+      items: [] as ReturnType<typeof catalogItem>[],
+    }));
+
+    let addedInPass = true;
+    while (addedInPass) {
+      addedInPass = false;
+      for (const [index, page] of recommendationPages.entries()) {
+        const group = groups[index]!;
+        if (group.items.length >= itemLimit) continue;
+        while ((positions[index] ?? 0) < page.items.length) {
+          const position = positions[index] ?? 0;
+          const item = page.items[position]!;
+          positions[index] = position + 1;
+          const key = `${item.mediaType}:${item.tmdbId}`;
+          if (
+            emitted.has(key) ||
+            dependencies.repositories.media.getByTmdb(
+              toCatalogKind(item.mediaType),
+              item.tmdbId,
+            )
+          ) {
+            continue;
+          }
+          emitted.add(key);
+          group.items.push(
+            catalogItem(item, dependencies, { knownLibraryItem: null }),
+          );
+          addedInPass = true;
+          break;
+        }
+      }
+    }
+
+    const populatedGroups = groups.filter((group) => group.items.length > 0);
+    const items = populatedGroups.flatMap((group) => group.items);
+    const hasMoreSources =
+      movieSources.total > movieSources.items.length ||
+      seriesSources.total > seriesSources.items.length;
     return context.json({
+      groups: populatedGroups,
       items,
-      page: 1,
-      totalPages: 1,
+      page: 1 as const,
+      totalPages: 1 as const,
+      personalized: populatedGroups.length > 0,
       totalItems: items.length,
-      personalized: recommendations.personalized,
+      sourceTotal: movieSources.total + seriesSources.total,
+      nextCursor: hasMoreSources
+        ? (query.cursor + sourceLimit) % (MAX_RECOMMENDATION_CURSOR + 1)
+        : null,
     });
   });
 
@@ -1517,8 +1599,12 @@ function registerProductDocumentation(app: OpenAPIHono<ApiEnvironment>): void {
     path: "/api/v1/catalog/recommendations",
     tags: ["catalog"],
     security: secured,
+    request: { query: CatalogRecommendationsQuerySchema },
     responses: {
-      200: json(CatalogPageSchema, "Catalog recommendations"),
+      200: json(
+        CatalogRecommendationsResponseSchema,
+        "Library-based catalog recommendations grouped by source title",
+      ),
       ...productErrors,
     },
   });
@@ -1850,22 +1936,6 @@ function catalogPage(
   };
 }
 
-function uniqueCatalogItems(
-  items: readonly TmdbCatalogItem[],
-): TmdbCatalogItem[] {
-  const unique = new Map<string, TmdbCatalogItem>();
-  for (const item of items) {
-    const key = `${item.mediaType}:${item.tmdbId}`;
-    if (!unique.has(key)) unique.set(key, item);
-  }
-  return [...unique.values()].sort(
-    (left, right) =>
-      right.voteAverage - left.voteAverage ||
-      right.popularity - left.popularity ||
-      left.tmdbId - right.tmdbId,
-  );
-}
-
 async function cachedTmdb<T extends object>(
   dependencies: ApiDependencies,
   kind: MediaKind,
@@ -1953,12 +2023,16 @@ function localeKey(settings: {
   return `${settings.locale.language}-${settings.locale.region}`;
 }
 
-function catalogItem(item: TmdbCatalogItem, dependencies: ApiDependencies) {
+function catalogItem(
+  item: TmdbCatalogItem,
+  dependencies: ApiDependencies,
+  options?: { knownLibraryItem: LibraryItem | null },
+) {
   const kind = toCatalogKind(item.mediaType);
-  const monitored = dependencies.repositories.media.getByTmdb(
-    kind,
-    item.tmdbId,
-  );
+  const monitored =
+    options === undefined
+      ? dependencies.repositories.media.getByTmdb(kind, item.tmdbId)
+      : (options.knownLibraryItem ?? undefined);
   return {
     id: `${kind}:${item.tmdbId}`,
     tmdbId: item.tmdbId,
@@ -3027,25 +3101,6 @@ function magnetDisplayName(value: string): string {
   } catch {
     return "Manual download";
   }
-}
-
-function snapshotLibraryKind(
-  kind: "movie" | "series",
-  dependencies: ApiDependencies,
-): LibraryItem[] {
-  const items: LibraryItem[] = [];
-  let offset = 0;
-  while (true) {
-    const page = dependencies.repositories.media.list({
-      kind,
-      limit: 100,
-      offset,
-    });
-    items.push(...page.items);
-    offset += page.items.length;
-    if (page.items.length === 0 || offset >= page.total) break;
-  }
-  return items;
 }
 
 async function controlDownload(

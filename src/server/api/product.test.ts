@@ -1001,7 +1001,7 @@ describe("public product API", () => {
     ).toEqual([]);
   });
 
-  test("builds recommendations from monitored titles", async () => {
+  test("groups recommendations by monitored and imported library titles", async () => {
     const fixture = await createFixture();
     const session = await setup(fixture.runtime);
     await jsonRequest(
@@ -1011,6 +1011,116 @@ describe("public product API", () => {
       { tmdbId: 603, kind: "movie", monitorPolicy: "all" },
       session,
     );
+    fixture.runtime.repositories.media.create({
+      kind: "series",
+      tmdbId: 1399,
+      parentId: null,
+      seasonNumber: null,
+      episodeNumber: null,
+      title: "Game of Thrones",
+      year: 2011,
+      posterUrl: "https://image.tmdb.org/t/p/w500/got-poster.jpg",
+      status: "available",
+      monitorPolicy: "none",
+      releaseDate: null,
+      metadata: { imported: true },
+    });
+
+    const response = await fixture.runtime.app.request(
+      "/api/v1/catalog/recommendations",
+      { headers: { cookie: session.cookie } },
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      groups: Array<{
+        source: { tmdbId: number; title: string; kind: string };
+        items: Array<{ id: string; title: string }>;
+      }>;
+      items: Array<{ id: string; title: string }>;
+      page: number;
+      totalPages: number;
+      personalized: boolean;
+      totalItems: number;
+      sourceTotal: number;
+      nextCursor: number | null;
+    };
+    expect(body).toMatchObject({
+      personalized: true,
+      page: 1,
+      totalPages: 1,
+      totalItems: 2,
+      sourceTotal: 2,
+      nextCursor: null,
+    });
+    expect(body.items.map((item) => item.id).toSorted()).toEqual([
+      "movie:329865",
+      "series:94997",
+    ]);
+    expect(body.groups).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: expect.objectContaining({
+            tmdbId: 603,
+            title: "The Matrix",
+            kind: "movie",
+          }),
+          items: [
+            expect.objectContaining({
+              id: "movie:329865",
+              title: "Arrival",
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          source: expect.objectContaining({
+            tmdbId: 1399,
+            title: "Game of Thrones",
+            kind: "series",
+          }),
+          items: [
+            expect.objectContaining({
+              id: "series:94997",
+              title: "House of the Dragon",
+            }),
+          ],
+        }),
+      ]),
+    );
+    expect(
+      fixture.services.tmdbRequests.some(
+        (url) => url.pathname === "/3/movie/603/recommendations",
+      ),
+    ).toBe(true);
+    expect(
+      fixture.services.tmdbRequests.some(
+        (url) => url.pathname === "/3/tv/1399/recommendations",
+      ),
+    ).toBe(true);
+  });
+
+  test("does not recommend a title that is already in the library", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    for (const item of [
+      { tmdbId: 603, title: "The Matrix", year: 1999 },
+      { tmdbId: 329865, title: "Arrival", year: 2016 },
+    ]) {
+      fixture.runtime.repositories.media.create({
+        kind: "movie",
+        tmdbId: item.tmdbId,
+        parentId: null,
+        seasonNumber: null,
+        episodeNumber: null,
+        title: item.title,
+        year: item.year,
+        posterUrl: null,
+        status: "available",
+        monitorPolicy: "none",
+        releaseDate: null,
+        metadata: { imported: true },
+      });
+    }
 
     const response = await fixture.runtime.app.request(
       "/api/v1/catalog/recommendations",
@@ -1019,20 +1129,90 @@ describe("public product API", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      personalized: true,
-      items: [
-        {
-          id: "movie:329865",
-          title: "Arrival",
-          monitored: false,
-        },
-      ],
+      groups: [],
+      personalized: false,
+      totalItems: 0,
+      sourceTotal: 2,
+      nextCursor: null,
     });
-    expect(
-      fixture.services.tmdbRequests.some(
-        (url) => url.pathname === "/3/movie/603/recommendations",
-      ),
-    ).toBe(true);
+  });
+
+  test("bounds recommendation providers to three library sources per kind", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    fixture.services.emptyUnknownRecommendations = true;
+    for (const kind of ["movie", "series"] as const) {
+      for (let index = 1; index <= 8; index += 1) {
+        fixture.runtime.repositories.media.create({
+          kind,
+          tmdbId: (kind === "movie" ? 10_000 : 20_000) + index,
+          parentId: null,
+          seasonNumber: null,
+          episodeNumber: null,
+          title: `${kind} ${index}`,
+          year: 2020 + index,
+          posterUrl: null,
+          status: "available",
+          monitorPolicy: "none",
+          releaseDate: null,
+          metadata: { imported: true },
+        });
+      }
+    }
+    const expectedPaths = (["movie", "series"] as const).flatMap((kind) =>
+      fixture.runtime.repositories.media
+        .recommendationSources({ kind, limit: 3, cursor: 3 })
+        .items.map(
+          (item) =>
+            `/3/${kind === "series" ? "tv" : "movie"}/${item.tmdbId}/recommendations`,
+        ),
+    );
+
+    const response = await fixture.runtime.app.request(
+      "/api/v1/catalog/recommendations?cursor=3",
+      { headers: { cookie: session.cookie } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      groups: [],
+      sourceTotal: 16,
+      nextCursor: 6,
+    });
+    const requestedPaths = fixture.services.tmdbRequests
+      .filter((url) => url.pathname.endsWith("/recommendations"))
+      .map((url) => url.pathname);
+    expect(requestedPaths).toHaveLength(6);
+    expect(requestedPaths.toSorted()).toEqual(expectedPaths.toSorted());
+  });
+
+  test("returns an integration error when every recommendation source fails", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    fixture.runtime.repositories.media.create({
+      kind: "movie",
+      tmdbId: 999_999,
+      parentId: null,
+      seasonNumber: null,
+      episodeNumber: null,
+      title: "Unavailable recommendation source",
+      year: 2024,
+      posterUrl: null,
+      status: "available",
+      monitorPolicy: "none",
+      releaseDate: null,
+      metadata: { imported: true },
+    });
+
+    const response = await fixture.runtime.app.request(
+      "/api/v1/catalog/recommendations",
+      { headers: { cookie: session.cookie } },
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      error: { code: "integration_error" },
+    });
   });
 
   test("tracks future TV seasons and binds manual releases to the selected hierarchy", async () => {
@@ -2815,6 +2995,7 @@ class FakeProductServices {
   seasonAirYear: number | null = null;
   episodeAirDates: Array<string | null> | null = null;
   seasonPackUnavailable = false;
+  emptyUnknownRecommendations = false;
   private torrentSnapshot: Record<string, unknown> | null = null;
 
   replaceTorrentOwnership(labels: readonly string[]): void {
@@ -2978,6 +3159,40 @@ class FakeProductServices {
             vote_count: 18_000,
           },
         ],
+      });
+    }
+    if (url.pathname === "/3/tv/1399/recommendations") {
+      return Response.json({
+        page: 1,
+        total_pages: 1,
+        total_results: 1,
+        results: [
+          {
+            id: 94997,
+            name: "House of the Dragon",
+            original_name: "House of the Dragon",
+            overview: "The story of House Targaryen.",
+            original_language: "en",
+            first_air_date: "2022-08-21",
+            poster_path: "/house-of-the-dragon.jpg",
+            backdrop_path: "/house-of-the-dragon-backdrop.jpg",
+            genre_ids: [18, 10765],
+            popularity: 80,
+            vote_average: 8.3,
+            vote_count: 5_500,
+          },
+        ],
+      });
+    }
+    if (
+      this.emptyUnknownRecommendations &&
+      /^\/3\/(?:movie|tv)\/\d+\/recommendations$/.test(url.pathname)
+    ) {
+      return Response.json({
+        page: 1,
+        total_pages: 1,
+        total_results: 0,
+        results: [],
       });
     }
     if (url.pathname === "/3/tv/1399") {

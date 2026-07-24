@@ -14,7 +14,7 @@ test("opens every management view after setup or login", async ({ page }) => {
   const routes = [
     ["/search", "Find your next favorite"],
     ["/discover", "Discover something remarkable"],
-    ["/suggestions", "A few thoughtful suggestions"],
+    ["/suggestions", "Suggestions with a reason"],
     ["/library/movies", "Movies"],
     ["/library/shows", "Shows"],
     ["/calendar", "Coming to your screen"],

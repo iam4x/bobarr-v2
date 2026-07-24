@@ -1,6 +1,7 @@
 import type {
   CalendarItem,
   CatalogItem,
+  CatalogRecommendationsResponse,
   Job,
   LibraryItem,
   ReleaseCandidate,
@@ -8,7 +9,11 @@ import type {
 
 import { describe, expect, it } from "bun:test";
 
-import { catalogPage, collectionItems } from "./normalize";
+import {
+  catalogPage,
+  collectionItems,
+  normalizeCatalogRecommendations,
+} from "./normalize";
 
 const title: CatalogItem = {
   id: "media-1",
@@ -126,5 +131,129 @@ describe("API collection normalization", () => {
     expect(collectionItems({ candidates: [release] })[0]?.size).toBe(
       4_000_000_000,
     );
+  });
+});
+
+describe("catalog recommendation normalization", () => {
+  it("keeps a grouped response readable by the pre-grouping page normalizer", () => {
+    const response: CatalogRecommendationsResponse = {
+      groups: [
+        {
+          source: {
+            id: "library-1",
+            tmdbId: 603,
+            kind: "movie",
+            title: "The Matrix",
+            year: 1999,
+            posterUrl: null,
+          },
+          items: [title],
+        },
+      ],
+      items: [title],
+      page: 1,
+      totalPages: 1,
+      personalized: true,
+      totalItems: 1,
+      sourceTotal: 1,
+      nextCursor: null,
+    };
+
+    expect(catalogPage(response)).toEqual({
+      items: [title],
+      page: 1,
+      totalPages: 1,
+      totalItems: 1,
+    });
+  });
+
+  it("keeps valid grouped shelves and drops malformed groups", () => {
+    expect(
+      normalizeCatalogRecommendations({
+        groups: [
+          {
+            source: {
+              tmdbId: 603,
+              kind: "movie",
+              title: "The Matrix",
+              year: 1999,
+              posterPath: "/matrix.jpg",
+            },
+            items: [title],
+          },
+          {
+            source: { tmdbId: 2, kind: "movie", title: "Broken" },
+          },
+        ],
+        personalized: true,
+        sourceTotal: 2,
+        nextCursor: 3,
+      }),
+    ).toEqual({
+      groups: [
+        {
+          source: {
+            id: "library:movie:603",
+            tmdbId: 603,
+            kind: "movie",
+            title: "The Matrix",
+            year: 1999,
+            posterUrl: "/matrix.jpg",
+          },
+          items: [title],
+        },
+      ],
+      items: [title],
+      page: 1,
+      totalPages: 1,
+      personalized: true,
+      totalItems: 1,
+      sourceTotal: 2,
+      nextCursor: 3,
+    });
+  });
+
+  it("turns the legacy flat payload into safe generic shelves", () => {
+    const television: CatalogItem = {
+      ...title,
+      id: "series-2",
+      tmdbId: 2,
+      kind: "series",
+      title: "A Show",
+    };
+
+    const normalized = normalizeCatalogRecommendations({
+      items: [title, television],
+      personalized: true,
+      totalItems: 2,
+    });
+
+    expect(normalized).toMatchObject({
+      items: [title, television],
+      page: 1,
+      totalPages: 1,
+      personalized: false,
+      totalItems: 2,
+      sourceTotal: 0,
+      nextCursor: null,
+    });
+    expect(
+      normalized.groups.map((group) => ({
+        id: group.source.id,
+        kind: group.source.kind,
+        items: group.items.map((item) => item.id),
+      })),
+    ).toEqual([
+      {
+        id: "legacy-library-mix:movie",
+        kind: "movie",
+        items: ["media-1"],
+      },
+      {
+        id: "legacy-library-mix:series",
+        kind: "series",
+        items: ["series-2"],
+      },
+    ]);
   });
 });
