@@ -13,14 +13,6 @@ that are particularly good at tracker access and BitTorrent transport:
 Bobarr v2 is a greenfield build. It does not migrate the legacy PostgreSQL or
 Redis databases. Existing media can be adopted through the library scanner.
 
-## Current scope
-
-The v1 product is intentionally management-only: catalog search, movies and TV
-monitoring, automatic and manual release acquisition, download controls,
-library organization and scanning, calendar, activity, and settings. Playback,
-transcoding, multi-user permissions, notifications, subtitles, and automatic
-quality upgrades are outside this release.
-
 ## Quick start
 
 Requirements: Docker Engine with Compose v2.24 or newer, a TMDB v4 read-access
