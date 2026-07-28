@@ -220,6 +220,15 @@ describe("library manual release targets", () => {
     const markup = renderToStaticMarkup(
       createElement(MovieManagement, {
         item: imported,
+        downloadFiles: [
+          {
+            id: "file-1",
+            mediaId: imported.id,
+            name: "The Matrix (1999).mkv",
+            sizeBytes: 8_420_000_000,
+            downloadUrl: "/api/v1/library/movie-1/files/file-1/download",
+          },
+        ],
         policy: "none",
         saveBusy: false,
         retryBusy: false,
@@ -234,6 +243,10 @@ describe("library manual release targets", () => {
     expect(markup).toContain("Ready in your library");
     expect(markup).toContain("Choose replacement…");
     expect(markup).toContain("2160p · 1 file · 8.42 GB");
+    expect(markup).toContain("Download movie");
+    expect(markup).toContain(
+      'href="/api/v1/library/movie-1/files/file-1/download"',
+    );
     expect(markup).toContain("Remove from library…");
     expect(markup).not.toContain("Automatic monitoring");
     expect(markup).not.toContain("Retry automatic search");

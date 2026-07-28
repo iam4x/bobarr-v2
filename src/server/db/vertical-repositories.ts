@@ -343,6 +343,15 @@ export class LibraryFileRepository {
       .map(mapLibraryFile);
   }
 
+  get(id: string): LibraryFile | undefined {
+    const row = this.database.client
+      .select()
+      .from(libraryFiles)
+      .where(eq(libraryFiles.id, id))
+      .get();
+    return row ? mapLibraryFile(row) : undefined;
+  }
+
   delete(id: string): boolean {
     return (
       this.database.client

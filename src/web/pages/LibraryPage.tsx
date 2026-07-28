@@ -1,4 +1,7 @@
-import type { MonitorMediaPatch } from "../../contracts/api-routes";
+import type {
+  LibraryDownloadFile,
+  MonitorMediaPatch,
+} from "../../contracts/api-routes";
 import type { AcquisitionState, LibraryItem, MonitorPolicy } from "../types";
 
 import {
@@ -14,6 +17,7 @@ import {
   CircleAlert,
   CircleCheck,
   Clock3,
+  Download,
   EyeOff,
   Film,
   FolderOpen,
@@ -937,6 +941,7 @@ function seasonStateCopy(season: LibraryItem, now = Date.now()): string {
 
 function TvSeriesManagement({
   item,
+  downloadFiles,
   seasons,
   seasonsLoading,
   seasonsError,
@@ -954,6 +959,7 @@ function TvSeriesManagement({
   onRemove,
 }: {
   item: LibraryItem;
+  downloadFiles: LibraryDownloadFile[];
   seasons: LibraryItem[];
   seasonsLoading: boolean;
   seasonsError: Error | null;
@@ -1285,6 +1291,9 @@ function TvSeriesManagement({
                   const episodeNumber = episode.episodeNumber!;
                   const code = `S${String(selectedSeasonNumber).padStart(2, "0")}E${String(episodeNumber).padStart(2, "0")}`;
                   const still = imageUrl(episode.posterPath, "w342");
+                  const episodeFiles = downloadFiles.filter(
+                    (file) => file.mediaId === episode.id,
+                  );
                   return (
                     <article
                       className={`episode-row episode-row--${status.state}`}
@@ -1307,21 +1316,36 @@ function TvSeriesManagement({
                         <EpisodeStatusIcon status={status} />
                         {status.label}
                       </Badge>
-                      {status.needsAttention ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          aria-label={`Find a release for ${code} ${episode.title}`}
-                          onClick={() =>
-                            onManualSearch({
-                              season: selectedSeasonNumber!,
-                              episode: episodeNumber,
-                            })
-                          }
-                        >
-                          <Search size={14} /> Find release
-                        </Button>
+                      {episodeFiles.length > 0 || status.needsAttention ? (
+                        <div className="episode-row__actions">
+                          {episodeFiles.map((file) => (
+                            <a
+                              key={file.id}
+                              className="button button--secondary button--sm"
+                              href={file.downloadUrl}
+                              download={file.name}
+                              aria-label={`Download ${code} ${episode.title}${episodeFiles.length > 1 ? ` — ${file.name}` : ""}`}
+                            >
+                              <Download size={14} /> Download
+                            </a>
+                          ))}
+                          {status.needsAttention ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              aria-label={`Find a release for ${code} ${episode.title}`}
+                              onClick={() =>
+                                onManualSearch({
+                                  season: selectedSeasonNumber!,
+                                  episode: episodeNumber,
+                                })
+                              }
+                            >
+                              <Search size={14} /> Find release
+                            </Button>
+                          ) : null}
+                        </div>
                       ) : null}
                     </article>
                   );
@@ -1536,6 +1560,7 @@ function TvSeriesManagement({
 
 export function MovieManagement({
   item,
+  downloadFiles = [],
   policy,
   saveBusy,
   saveError,
@@ -1548,6 +1573,7 @@ export function MovieManagement({
   onRemove,
 }: {
   item: LibraryItem;
+  downloadFiles?: LibraryDownloadFile[];
   policy: MonitorPolicy;
   saveBusy: boolean;
   saveError?: string;
@@ -1689,6 +1715,28 @@ export function MovieManagement({
             <p className="movie-file-panel__meta">
               {storageDetails.join(" · ")}
             </p>
+          ) : null}
+
+          {downloadFiles.length > 0 ? (
+            <div
+              className="movie-file-panel__downloads"
+              aria-label="Movie downloads"
+            >
+              {downloadFiles.map((file) => (
+                <a
+                  key={file.id}
+                  className="button button--secondary button--sm"
+                  href={file.downloadUrl}
+                  download={file.name}
+                  title={file.name}
+                >
+                  <Download size={15} />{" "}
+                  {downloadFiles.length === 1
+                    ? "Download movie"
+                    : `Download ${file.name}`}
+                </a>
+              ))}
+            </div>
           ) : null}
 
           {activeDownload ? (
@@ -1893,6 +1941,16 @@ function ManageLibraryDialog({
       }),
     enabled: item?.kind === "series",
   });
+  const filesQuery = useQuery({
+    queryKey: ["library", "files", item?.id],
+    queryFn: ({ signal }) =>
+      api.get("listLibraryFiles", {
+        params: { id: itemId() },
+        signal,
+      }),
+    enabled: Boolean(item),
+  });
+  const downloadFiles = filesQuery.data?.files ?? [];
   const seasons = useMemo(
     () =>
       collectionItems(seasonQuery.data)
@@ -2128,6 +2186,7 @@ function ManageLibraryDialog({
       {!confirmRemove && !manualSearchOpen && item?.kind === "series" ? (
         <TvSeriesManagement
           item={item}
+          downloadFiles={downloadFiles}
           seasons={seasons}
           seasonsLoading={seasonQuery.isLoading}
           seasonsError={seasonQuery.error}
@@ -2151,6 +2210,7 @@ function ManageLibraryDialog({
       {!confirmRemove && !manualSearchOpen && item?.kind === "movie" ? (
         <MovieManagement
           item={item}
+          downloadFiles={downloadFiles}
           policy={policy}
           saveBusy={updateMutation.isPending}
           saveError={updateMutation.error?.message}

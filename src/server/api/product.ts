@@ -46,9 +46,24 @@ import {
 } from "../application";
 import { AppError, notFound } from "../core";
 import { aggregateChildAcquisitionState } from "../domain/media-state";
-import { deleteRecordedFile, UnsafeLibraryDeletionError } from "../library";
+import {
+  deleteRecordedFile,
+  resolveRecordedFileForRead,
+  UnsafeLibraryDeletionError,
+} from "../library";
 
 const CatalogKindSchema = z.enum(["movie", "series"]);
+const LibraryFileParamsSchema = z.object({
+  id: z.string().min(1),
+  fileId: z.string().min(1),
+});
+const LibraryDownloadFileSchema = z.object({
+  id: z.string().min(1),
+  mediaId: z.string().min(1),
+  name: z.string().min(1),
+  sizeBytes: z.number().int().nonnegative(),
+  downloadUrl: z.string().min(1),
+});
 const MAX_RECOMMENDATION_CURSOR = 1_000_000;
 const CatalogRatingsSchema = z
   .object({
@@ -1096,6 +1111,67 @@ export function registerProductRoutes(
     return context.json({ accepted: true, downloadId, jobIds }, 202);
   });
 
+  app.get("/api/v1/library/:id/files", async (context) => {
+    const id = parse(DownloadParamsSchema, context.req.param()).id;
+    const item = dependencies.repositories.media.get(id);
+    if (!item) throw notFound("Library item not found");
+    const settings =
+      dependencies.repositories.settings.ensureDefaults().settings.storage;
+    const libraryRoots = [settings.moviesPath, settings.televisionPath];
+    const readableRoots = [...libraryRoots, settings.downloadsPath];
+    const files = [];
+    for (const member of mediaTree(item, dependencies)) {
+      for (const file of dependencies.repositories.libraryFiles.listForMedia(
+        member.id,
+      )) {
+        const readable = await resolveRecordedFileForRead(
+          file.path,
+          libraryRoots,
+          readableRoots,
+        );
+        if (!readable) continue;
+        files.push({
+          id: file.id,
+          mediaId: file.mediaId,
+          name: readable.name,
+          sizeBytes: readable.sizeBytes,
+          downloadUrl: `/api/v1/library/${encodeURIComponent(id)}/files/${encodeURIComponent(file.id)}/download`,
+        });
+      }
+    }
+    return context.json({ files });
+  });
+
+  app.get("/api/v1/library/:id/files/:fileId/download", async (context) => {
+    const { id, fileId } = parse(LibraryFileParamsSchema, context.req.param());
+    const item = dependencies.repositories.media.get(id);
+    if (!item) throw notFound("Library item not found");
+    const mediaIds = new Set(
+      mediaTree(item, dependencies).map((member) => member.id),
+    );
+    const file = dependencies.repositories.libraryFiles.get(fileId);
+    if (!file || !mediaIds.has(file.mediaId)) {
+      throw notFound("Library file not found");
+    }
+    const settings =
+      dependencies.repositories.settings.ensureDefaults().settings.storage;
+    const libraryRoots = [settings.moviesPath, settings.televisionPath];
+    const readable = await resolveRecordedFileForRead(file.path, libraryRoots, [
+      ...libraryRoots,
+      settings.downloadsPath,
+    ]);
+    if (!readable) throw notFound("Library file not found on disk");
+    return new Response(Bun.file(readable.path), {
+      headers: {
+        "Content-Disposition": contentDisposition(readable.name),
+        "Content-Length": String(readable.sizeBytes),
+        "Content-Type":
+          Bun.file(readable.path).type || "application/octet-stream",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  });
+
   app.post("/api/v1/library/scan", async (context) => {
     const body = parse(
       z.object({ kind: CatalogKindSchema.optional() }),
@@ -1644,6 +1720,38 @@ function registerProductDocumentation(app: OpenAPIHono<ApiEnvironment>): void {
     responses: {
       200: json(LibraryItemSchema, "Updated existing monitored media"),
       201: json(LibraryItemSchema, "Monitored media"),
+      ...productErrors,
+    },
+  });
+  register({
+    method: "get",
+    path: "/api/v1/library/{id}/files",
+    tags: ["library"],
+    security: secured,
+    request: { params: DownloadParamsSchema },
+    responses: {
+      200: json(
+        z.object({ files: z.array(LibraryDownloadFileSchema) }),
+        "Recorded files currently available for direct download",
+      ),
+      ...productErrors,
+    },
+  });
+  register({
+    method: "get",
+    path: "/api/v1/library/{id}/files/{fileId}/download",
+    tags: ["library"],
+    security: secured,
+    request: { params: LibraryFileParamsSchema },
+    responses: {
+      200: {
+        description: "Recorded library file",
+        content: {
+          "application/octet-stream": {
+            schema: z.string().openapi({ format: "binary" }),
+          },
+        },
+      },
       ...productErrors,
     },
   });
@@ -3535,6 +3643,19 @@ function integrationLabel(key: IntegrationKey): string {
 
 function badRequest(message: string): AppError {
   return new AppError({ code: "bad_request", message, status: 400 });
+}
+
+function contentDisposition(filename: string): string {
+  const fallback =
+    filename
+      .replace(/[^\x20-\x7e]/g, "_")
+      .replace(/["\\]/g, "_")
+      .replace(/[\r\n]/g, "_") || "download";
+  const encoded = encodeURIComponent(filename).replace(
+    /[!'()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
 
 function conflictError(message: string): AppError {

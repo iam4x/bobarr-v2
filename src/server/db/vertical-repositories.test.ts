@@ -284,6 +284,8 @@ describe("core vertical-slice persistence", () => {
         }),
       );
       expect(repositories.libraryFiles.listForMedia(media.id)).toEqual([file]);
+      expect(repositories.libraryFiles.get(file.id)).toEqual(file);
+      expect(repositories.libraryFiles.get("missing-file")).toBeUndefined();
 
       const activity = repositories.activity.append({
         type: "download.organized",

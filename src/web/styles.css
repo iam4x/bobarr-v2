@@ -1386,6 +1386,19 @@ textarea:focus-visible {
   padding-top: 15px;
   border-top: 1px solid var(--border);
 }
+.movie-file-panel__downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 13px;
+}
+.movie-file-panel__downloads .button {
+  min-width: 148px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .movie-file-panel__action h4,
 .movie-file-panel__action p {
   margin: 0;
@@ -1737,7 +1750,13 @@ textarea:focus-visible {
   flex: 0 0 auto;
   white-space: nowrap;
 }
-.episode-row > .button {
+.episode-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.episode-row__actions .button {
   min-height: 36px;
   padding: 7px 10px;
   font-size: 11px;
@@ -4441,9 +4460,12 @@ textarea:focus-visible {
     width: 58px;
     height: 38px;
   }
-  .episode-row > .button {
+  .episode-row__actions {
     width: 100%;
     grid-column: 2 / -1;
+  }
+  .episode-row__actions .button {
+    flex: 1 1 auto;
   }
   .episode-summary {
     padding-inline: 11px;
@@ -4928,7 +4950,7 @@ textarea:focus-visible {
     text-align: center;
     white-space: normal;
   }
-  .episode-row > .button {
+  .episode-row__actions {
     grid-column: 1 / -1;
   }
 }

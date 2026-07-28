@@ -187,6 +187,14 @@ export interface DownloadFilesInput {
   priorityLow?: number[];
 }
 
+export interface LibraryDownloadFile {
+  id: string;
+  mediaId: string;
+  name: string;
+  sizeBytes: number;
+  downloadUrl: string;
+}
+
 type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 export interface ApiRoute<
@@ -269,6 +277,14 @@ export const apiRoutes = {
     never,
     { candidateId?: string } | undefined
   >()("POST", "/library/:id/replace"),
+  listLibraryFiles: route<{ files: LibraryDownloadFile[] }>()(
+    "GET",
+    "/library/:id/files",
+  ),
+  downloadLibraryFile: route<Blob>()(
+    "GET",
+    "/library/:id/files/:fileId/download",
+  ),
   scanLibrary: route<
     { accepted: true; jobId: string },
     never,

@@ -2750,6 +2750,150 @@ describe("public product API", () => {
     );
   });
 
+  test("lists and downloads only recorded library files that are present on disk", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    const baseDirectory = await mkdtemp(join(tmpdir(), "bobarr-product-"));
+    temporaryDirectories.push(baseDirectory);
+    const moviesPath = join(baseDirectory, "movies");
+    const televisionPath = join(baseDirectory, "tv");
+    const movieDirectory = join(moviesPath, "The Matrix (1999)");
+    const moviePath = join(movieDirectory, "The Matrix (1999).mkv");
+    await mkdir(movieDirectory, { recursive: true });
+    await Bun.write(moviePath, "recorded movie");
+    fixture.runtime.repositories.settings.update({
+      storage: {
+        ...fixture.runtime.repositories.settings.ensureDefaults().settings
+          .storage,
+        moviesPath,
+        televisionPath,
+      },
+    });
+    const movie = fixture.runtime.repositories.media.create(
+      CreateLibraryItemRequestSchema.parse({
+        kind: "movie",
+        tmdbId: 603,
+        title: "The Matrix",
+        year: 1999,
+        status: "available",
+        monitorPolicy: "none",
+        metadata: { imported: true },
+      }),
+    );
+    const recorded = fixture.runtime.repositories.libraryFiles.upsert(
+      CreateLibraryFileInputSchema.parse({
+        mediaId: movie.id,
+        downloadId: null,
+        path: moviePath,
+        sizeBytes: 14,
+        quality: null,
+        videoCodec: null,
+        audioCodec: null,
+        strategy: "copy",
+      }),
+    );
+    fixture.runtime.repositories.libraryFiles.upsert(
+      CreateLibraryFileInputSchema.parse({
+        mediaId: movie.id,
+        downloadId: null,
+        path: join(movieDirectory, "missing.mkv"),
+        sizeBytes: 100,
+        quality: null,
+        videoCodec: null,
+        audioCodec: null,
+        strategy: "copy",
+      }),
+    );
+
+    const listResponse = await fixture.runtime.app.request(
+      `/api/v1/library/${movie.id}/files`,
+      { headers: { cookie: session.cookie } },
+    );
+
+    expect(listResponse.status).toBe(200);
+    expect(await listResponse.json()).toEqual({
+      files: [
+        {
+          id: recorded.id,
+          mediaId: movie.id,
+          name: "The Matrix (1999).mkv",
+          sizeBytes: 14,
+          downloadUrl: `/api/v1/library/${movie.id}/files/${recorded.id}/download`,
+        },
+      ],
+    });
+
+    const downloadResponse = await fixture.runtime.app.request(
+      `/api/v1/library/${movie.id}/files/${recorded.id}/download`,
+      { headers: { cookie: session.cookie } },
+    );
+
+    expect(downloadResponse.status).toBe(200);
+    expect(downloadResponse.headers.get("content-disposition")).toContain(
+      'attachment; filename="The Matrix (1999).mkv"',
+    );
+    expect(downloadResponse.headers.get("content-type")).toBe(
+      "video/x-matroska",
+    );
+    expect(await downloadResponse.text()).toBe("recorded movie");
+  });
+
+  test("does not download a recorded path outside configured storage", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    const baseDirectory = await mkdtemp(join(tmpdir(), "bobarr-product-"));
+    temporaryDirectories.push(baseDirectory);
+    const moviesPath = join(baseDirectory, "movies");
+    const televisionPath = join(baseDirectory, "tv");
+    const outsidePath = join(baseDirectory, "private.mkv");
+    await mkdir(moviesPath, { recursive: true });
+    await mkdir(televisionPath, { recursive: true });
+    await Bun.write(outsidePath, "not library media");
+    fixture.runtime.repositories.settings.update({
+      storage: {
+        ...fixture.runtime.repositories.settings.ensureDefaults().settings
+          .storage,
+        moviesPath,
+        televisionPath,
+      },
+    });
+    const movie = fixture.runtime.repositories.media.create(
+      CreateLibraryItemRequestSchema.parse({
+        kind: "movie",
+        tmdbId: 603,
+        title: "The Matrix",
+        year: 1999,
+        status: "available",
+        monitorPolicy: "none",
+        metadata: { imported: true },
+      }),
+    );
+    const recorded = fixture.runtime.repositories.libraryFiles.upsert(
+      CreateLibraryFileInputSchema.parse({
+        mediaId: movie.id,
+        downloadId: null,
+        path: outsidePath,
+        sizeBytes: 17,
+        quality: null,
+        videoCodec: null,
+        audioCodec: null,
+        strategy: "copy",
+      }),
+    );
+
+    const listResponse = await fixture.runtime.app.request(
+      `/api/v1/library/${movie.id}/files`,
+      { headers: { cookie: session.cookie } },
+    );
+    expect(await listResponse.json()).toEqual({ files: [] });
+
+    const downloadResponse = await fixture.runtime.app.request(
+      `/api/v1/library/${movie.id}/files/${recorded.id}/download`,
+      { headers: { cookie: session.cookie } },
+    );
+    expect(downloadResponse.status).toBe(404);
+  });
+
   test("marks retained imported records unmonitored after deleting their files", async () => {
     const fixture = await createFixture();
     const session = await setup(fixture.runtime);
