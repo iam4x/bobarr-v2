@@ -2,6 +2,7 @@ import type { LibraryItem } from "../types";
 
 import { describe, expect, test } from "bun:test";
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -19,6 +20,7 @@ import {
   monitoringSeasonNumbers,
   MovieManagement,
   summarizeEpisodeStates,
+  TvSeriesManagement,
 } from "./LibraryPage";
 
 const movie: LibraryItem = {
@@ -117,6 +119,47 @@ describe("library manual release targets", () => {
     expect(markup).toContain("56 of 62 episodes ready");
     expect(markup).toContain('aria-label="The Expanse episode availability"');
     expect(markup).toContain("Next episode");
+  });
+
+  test("hides completed library health progress in show details", () => {
+    const markup = renderToStaticMarkup(
+      createElement(
+        QueryClientProvider,
+        { client: new QueryClient() },
+        createElement(TvSeriesManagement, {
+          item: {
+            ...movie,
+            id: "series-1",
+            tmdbId: 1399,
+            kind: "series",
+            title: "The Expanse",
+            acquisitionState: "available",
+            episodeProgress: { available: 62, total: 62 },
+          },
+          downloadFiles: [],
+          seasons: [],
+          seasonsLoading: false,
+          seasonsError: null,
+          policy: "all",
+          selectedSeasons: [],
+          includeFutureSeasons: false,
+          saveBusy: false,
+          onPolicyChange: () => undefined,
+          onSelectedSeasonsChange: () => undefined,
+          onIncludeFutureSeasonsChange: () => undefined,
+          onRetrySeasons: () => undefined,
+          onSave: () => undefined,
+          onManualSearch: () => undefined,
+          onRemove: () => undefined,
+        }),
+      ),
+    );
+
+    expect(markup).toContain("62 of 62 monitored episodes are ready");
+    expect(markup).not.toContain(
+      'aria-label="The Expanse overall episode availability"',
+    );
+    expect(markup).not.toContain('class="tv-overview__progress"');
   });
 
   test("uses concise recovery guidance for missing and failed media", () => {

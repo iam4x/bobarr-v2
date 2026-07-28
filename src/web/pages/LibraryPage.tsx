@@ -939,7 +939,7 @@ function seasonStateCopy(season: LibraryItem, now = Date.now()): string {
   return season.acquisitionState === "missing" ? "Missing episodes" : "Tracked";
 }
 
-function TvSeriesManagement({
+export function TvSeriesManagement({
   item,
   downloadFiles,
   seasons,
@@ -1170,7 +1170,7 @@ function TvSeriesManagement({
           <span className="tv-overview__eyebrow">Library health</span>
           <h3>{overviewTitle}</h3>
           <p>{overviewDescription}</p>
-          {!monitoringOff && overallTotal > 0 ? (
+          {!monitoringOff && overallTotal > 0 && overallPercent < 100 ? (
             <div className="tv-overview__progress">
               <ProgressBar
                 value={overallPercent}

@@ -22,6 +22,7 @@ import {
 } from "../application";
 import {
   aggregateChildAcquisitionState,
+  completedSeasonHasNoUpcomingEpisodes,
   organizedEpisodeNumbers,
 } from "../domain";
 import { importRecordedFiles, isPathContained, scanLibrary } from "../library";
@@ -765,22 +766,49 @@ function mediaStateForDownload(
   return null;
 }
 
-function updateMediaTreeState(
+export function updateMediaTreeState(
   mediaId: string,
   state: AcquisitionState,
   repositories: Repositories,
+  now = Date.now(),
 ): void {
   const item = repositories.media.updateState(mediaId, state);
   if (!item) return;
+  stopMonitoringCompletedSeason(item, repositories, now);
   let parentId = item.parentId;
   while (parentId) {
     const parent = repositories.media.get(parentId);
     if (!parent) return;
-    repositories.media.updateState(
+    const updatedParent = repositories.media.updateState(
       parent.id,
       aggregateChildAcquisitionState(repositories.media.children(parent.id)),
     );
+    if (updatedParent) {
+      stopMonitoringCompletedSeason(updatedParent, repositories, now);
+    }
     parentId = parent.parentId;
+  }
+}
+
+function stopMonitoringCompletedSeason(
+  item: LibraryItem,
+  repositories: Repositories,
+  now: number,
+): void {
+  if (
+    item.kind !== "season" ||
+    item.monitorPolicy === "none" ||
+    item.acquisitionState !== "available"
+  ) {
+    return;
+  }
+  const children = repositories.media.children(item.id);
+  if (!completedSeasonHasNoUpcomingEpisodes(children, now)) return;
+  repositories.media.updateMonitorPolicy(item.id, "none");
+  for (const episode of children) {
+    if (episode.kind === "episode") {
+      repositories.media.updateMonitorPolicy(episode.id, "none");
+    }
   }
 }
 

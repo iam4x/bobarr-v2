@@ -21,6 +21,29 @@ export function aggregateChildAcquisitionState(
   return states[0] ?? "missing";
 }
 
+export function completedSeasonHasNoUpcomingEpisodes(
+  children: readonly Pick<
+    LibraryItem,
+    "kind" | "acquisitionState" | "releaseDate"
+  >[],
+  now = Date.now(),
+): boolean {
+  const episodes = children.filter((child) => child.kind === "episode");
+  return (
+    episodes.length > 0 &&
+    episodes.every((episode) => {
+      if (
+        episode.acquisitionState !== "available" ||
+        episode.releaseDate === null
+      ) {
+        return false;
+      }
+      const releaseAt = Date.parse(episode.releaseDate);
+      return Number.isFinite(releaseAt) && releaseAt <= now;
+    })
+  );
+}
+
 export function organizedEpisodeNumbers(
   sourcePaths: readonly string[],
   seasonNumber: number | null,

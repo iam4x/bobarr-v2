@@ -625,7 +625,7 @@ export class LibraryRepository {
       .select()
       .from(libraryItems)
       .where(where)
-      .orderBy(desc(libraryItems.updatedAt), desc(libraryItems.id))
+      .orderBy(desc(libraryItems.createdAt), desc(libraryItems.id))
       .limit(query.limit)
       .offset(query.offset)
       .all();
