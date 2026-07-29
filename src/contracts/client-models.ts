@@ -47,6 +47,13 @@ export interface SetupStatus {
   setupRequired?: boolean;
 }
 
+export interface CatalogActor {
+  tmdbId: number;
+  name: string;
+  character: string | null;
+  profilePath: string | null;
+}
+
 export interface CatalogItem {
   id: string;
   tmdbId: number;
@@ -60,6 +67,7 @@ export interface CatalogItem {
   year?: number | null;
   voteAverage?: number | null;
   genres?: Array<{ id: number; name: string }>;
+  actors?: CatalogActor[];
   numberOfSeasons?: number | null;
   monitoredSeasonNumbers?: number[];
   ratings?: {

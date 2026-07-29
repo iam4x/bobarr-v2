@@ -82,6 +82,12 @@ const CatalogRatingsSchema = z
       .nullable(),
   })
   .openapi("CatalogRatings");
+const CatalogActorSchema = z.object({
+  tmdbId: z.number().int().positive(),
+  name: z.string().min(1),
+  character: z.string().nullable(),
+  profilePath: z.string().nullable(),
+});
 const CatalogItemSchema = z.object({
   id: z.string(),
   tmdbId: z.number().int().positive(),
@@ -97,6 +103,7 @@ const CatalogItemSchema = z.object({
   genres: z
     .array(z.object({ id: z.number().int(), name: z.string() }))
     .optional(),
+  actors: z.array(CatalogActorSchema).max(6).optional(),
   numberOfSeasons: z.number().int().nonnegative().nullable().optional(),
   monitoredSeasonNumbers: z.array(z.number().int().positive()).optional(),
   ratings: CatalogRatingsSchema.optional(),
@@ -195,6 +202,7 @@ const CatalogDiscoverQuerySchema = z
     sort: CatalogDiscoverSortSchema.default("popularity.desc"),
     page: z.coerce.number().int().min(1).max(500).default(1),
     genres: CatalogDiscoverGenresSchema.optional(),
+    actorId: z.coerce.number().int().positive().optional(),
     originCountry: z
       .string()
       .trim()
@@ -257,6 +265,13 @@ const CatalogDiscoverQuerySchema = z
         code: "custom",
         path: ["sort"],
         message: "Revenue sorting is available only for movies",
+      });
+    }
+    if (value.kind === "series" && value.actorId !== undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["actorId"],
+        message: "Actor discovery is available only for movies",
       });
     }
   });
@@ -470,6 +485,7 @@ export function registerProductRoutes(
                   genres: query.genres.split(",").map((genre) => Number(genre)),
                   genreMode: "any",
                 }),
+            ...(query.actorId === undefined ? {} : { castId: query.actorId }),
             ...(query.originCountry === undefined
               ? {}
               : { originCountry: query.originCountry }),
@@ -725,7 +741,7 @@ export function registerProductRoutes(
     const details = await cachedTmdb(
       dependencies,
       params.kind,
-      `details:${params.tmdbId}`,
+      catalogDetailsCacheId(params.tmdbId),
       localeKey(settings),
       24 * 60 * 60_000,
       () =>
@@ -783,7 +799,7 @@ export function registerProductRoutes(
     const details = await cachedTmdb(
       dependencies,
       input.kind,
-      `details:${input.tmdbId}`,
+      catalogDetailsCacheId(input.tmdbId),
       localeKey(settings),
       24 * 60 * 60_000,
       () =>
@@ -908,7 +924,7 @@ export function registerProductRoutes(
       const details = await cachedTmdb(
         dependencies,
         "series",
-        `details:${current.tmdbId}`,
+        catalogDetailsCacheId(current.tmdbId),
         localeKey(settings),
         24 * 60 * 60_000,
         () =>
@@ -2125,6 +2141,10 @@ function cacheId(namespace: string, value: unknown): string {
   return `${namespace}:${digest}`;
 }
 
+function catalogDetailsCacheId(tmdbId: number): string {
+  return `details:v2:${tmdbId}`;
+}
+
 function localeKey(settings: {
   locale: { language: string; region: string };
 }): string {
@@ -2183,6 +2203,9 @@ function catalogDetails(
   return {
     ...catalogItem(details, dependencies),
     genres: [...details.genres],
+    ...(details.mediaType === "movie"
+      ? { actors: details.actors.slice(0, 6) }
+      : {}),
     numberOfSeasons: details.numberOfSeasons,
     monitoredSeasonNumbers,
     ...(ratings
@@ -2960,7 +2983,7 @@ async function resolveReleaseContext(
         return cachedTmdb(
           dependencies,
           query.kind,
-          `details:${query.tmdbId}`,
+          catalogDetailsCacheId(query.tmdbId),
           localeKey(settings),
           24 * 60 * 60_000,
           () =>

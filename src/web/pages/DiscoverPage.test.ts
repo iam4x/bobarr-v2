@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   appliedDiscoverFilters,
   createDefaultDiscoverFilters,
+  discoverActorFromSearchParams,
   discoverFilterError,
   discoverQueryFor,
   removeDiscoverFilter,
@@ -70,6 +71,38 @@ describe("Discover filters", () => {
       discoverQueryFor("movie", { ...filters, genreIds: [878, 18, 878] }, 1)
         .genres,
     ).toBe("18,878");
+  });
+
+  test("builds and removes a deep-linked actor filter", () => {
+    const actor = discoverActorFromSearchParams(
+      new URLSearchParams("actorId=6384&actorName=Keanu+Reeves"),
+    );
+    expect(actor).toEqual({ tmdbId: 6384, name: "Keanu Reeves" });
+
+    const filters = {
+      ...createDefaultDiscoverFilters(),
+      actorId: actor!.tmdbId,
+      actorName: actor!.name,
+      genreIds: [878],
+    };
+    expect(discoverQueryFor("movie", filters, 3)).toMatchObject({
+      kind: "movie",
+      page: 3,
+      actorId: 6384,
+      genres: "878",
+    });
+    expect(appliedDiscoverFilters(filters, labels)[0]).toEqual({
+      key: "actor",
+      label: "Actor: Keanu Reeves",
+    });
+    expect(removeDiscoverFilter(filters, "actor")).toMatchObject({
+      actorId: null,
+      actorName: "",
+      genreIds: [878],
+    });
+    expect(
+      discoverActorFromSearchParams(new URLSearchParams("actorId=invalid")),
+    ).toBeUndefined();
   });
 
   test("normalizes kind-specific sorting and rejects reversed ranges", () => {

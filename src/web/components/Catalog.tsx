@@ -1,4 +1,4 @@
-import type { CatalogItem, CatalogSeason } from "../types";
+import type { CatalogActor, CatalogItem, CatalogSeason } from "../types";
 
 import {
   useMutation,
@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { BookmarkPlus, Calendar, Check, Search, Star } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 
 import { ReleaseSearchPanel } from "./ReleaseSearchPanel";
 import { Badge, Button, Dialog, InlineSpinner, SelectField } from "./ui";
@@ -147,6 +148,64 @@ export function ExternalRatings({
   );
 }
 
+export function actorDiscoverPath(
+  actor: Pick<CatalogActor, "tmdbId" | "name">,
+) {
+  const parameters = new URLSearchParams({
+    actorId: String(actor.tmdbId),
+    actorName: actor.name,
+  });
+  return `/discover?${parameters.toString()}`;
+}
+
+export function MovieCast({
+  actors,
+  onSelect,
+}: {
+  actors: readonly CatalogActor[] | undefined;
+  onSelect: (actor: CatalogActor) => void;
+}) {
+  const visibleActors = actors?.slice(0, 6) ?? [];
+  if (visibleActors.length === 0) return null;
+
+  return (
+    <section className="movie-cast" aria-label="Top cast">
+      <div className="movie-cast__heading">
+        <span className="eyebrow">Top cast</span>
+        <h3>Actors</h3>
+      </div>
+      <div className="movie-cast__grid">
+        {visibleActors.map((actor) => {
+          const profile = imageUrl(actor.profilePath, "w342");
+          return (
+            <button
+              type="button"
+              className="actor-card"
+              key={actor.tmdbId}
+              aria-label={`Discover movies with ${actor.name}`}
+              onClick={() => onSelect(actor)}
+            >
+              <span className="actor-card__portrait">
+                {profile ? (
+                  <img src={profile} alt="" loading="lazy" />
+                ) : (
+                  <span className="actor-card__placeholder" aria-hidden="true">
+                    {initials(actor.name)}
+                  </span>
+                )}
+              </span>
+              <span className="actor-card__copy">
+                <strong>{actor.name}</strong>
+                {actor.character ? <small>{actor.character}</small> : null}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function MediaDetailDialog({
   selected,
   onClose,
@@ -154,6 +213,7 @@ export function MediaDetailDialog({
   selected: CatalogItem | null;
   onClose: () => void;
 }) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showReleases, setShowReleases] = useState(false);
   const [message, setMessage] = useState<string>();
@@ -383,6 +443,16 @@ export function MediaDetailDialog({
               ) : null}
             </div>
           </div>
+
+          {item.kind === "movie" ? (
+            <MovieCast
+              actors={item.actors}
+              onSelect={(actor) => {
+                onClose();
+                navigate(actorDiscoverPath(actor));
+              }}
+            />
+          ) : null}
 
           {message ? (
             <div className="notice notice--success" role="status">

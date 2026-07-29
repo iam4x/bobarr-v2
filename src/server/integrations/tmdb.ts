@@ -55,8 +55,16 @@ export interface CatalogCountry {
   nativeName: string;
 }
 
+export interface CatalogActor {
+  tmdbId: number;
+  name: string;
+  character: string | null;
+  profilePath: string | null;
+}
+
 export interface CatalogDetails extends CatalogItem {
   genres: readonly CatalogGenre[];
+  actors: readonly CatalogActor[];
   runtimeMinutes: number | null;
   status: string | null;
   tagline: string | null;
@@ -104,6 +112,7 @@ export interface CatalogSearchOptions extends CatalogQueryOptions {
 export interface DiscoverOptions extends CatalogQueryOptions {
   genres?: readonly number[];
   genreMode?: "all" | "any";
+  castId?: number;
   originCountry?: string;
   originalLanguage?: string;
   dateFrom?: string;
@@ -299,6 +308,9 @@ export function createTmdbClient(options: TmdbClientOptions): TmdbClient {
           ),
         );
       }
+      if (queryOptions.castId !== undefined) {
+        parameters.set("with_cast", String(positiveId(queryOptions.castId)));
+      }
       if (
         queryOptions.genreMode !== undefined &&
         queryOptions.genreMode !== "all" &&
@@ -401,6 +413,8 @@ export function createTmdbClient(options: TmdbClientOptions): TmdbClient {
       const parameters = languageParameters(queryOptions.language);
       if (mediaType === "tv") {
         parameters.set("append_to_response", "external_ids");
+      } else {
+        parameters.set("append_to_response", "credits");
       }
       const payload = await request(
         `${validateMediaType(mediaType)}/${positiveId(tmdbId)}`,
@@ -579,6 +593,7 @@ function parseCatalogDetails(
   return {
     ...base,
     genres,
+    actors: parseCatalogActors(value),
     runtimeMinutes: nullableNumber(
       value[mediaType === "movie" ? "runtime" : "episode_run_time"],
     ),
@@ -591,6 +606,55 @@ function parseCatalogDetails(
     numberOfEpisodes:
       mediaType === "tv" ? nullableNumber(value["number_of_episodes"]) : null,
   };
+}
+
+function parseCatalogActors(value: Record<string, unknown>): CatalogActor[] {
+  const credits = isRecord(value["credits"]) ? value["credits"] : undefined;
+  if (!Array.isArray(credits?.["cast"])) return [];
+
+  const actors = credits["cast"].flatMap((member, index) => {
+    if (!isRecord(member)) return [];
+    const tmdbId = asFiniteNumber(member["id"]);
+    const name = asString(member["name"]);
+    if (
+      tmdbId === undefined ||
+      !Number.isSafeInteger(tmdbId) ||
+      tmdbId <= 0 ||
+      !name
+    ) {
+      return [];
+    }
+    const billedOrder = asFiniteNumber(member["order"]);
+    return [
+      {
+        actor: {
+          tmdbId,
+          name,
+          character: nullableString(member["character"]),
+          profilePath: nullableString(member["profile_path"]),
+        },
+        billedOrder:
+          billedOrder !== undefined &&
+          Number.isSafeInteger(billedOrder) &&
+          billedOrder >= 0
+            ? billedOrder
+            : index,
+        sourceOrder: index,
+      },
+    ];
+  });
+  actors.sort(
+    (left, right) =>
+      left.billedOrder - right.billedOrder ||
+      left.sourceOrder - right.sourceOrder,
+  );
+
+  const seen = new Set<number>();
+  return actors.flatMap(({ actor }) => {
+    if (seen.has(actor.tmdbId)) return [];
+    seen.add(actor.tmdbId);
+    return [actor];
+  });
 }
 
 function parseTvSeason(value: unknown): TvSeason {

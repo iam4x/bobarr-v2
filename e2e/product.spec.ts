@@ -83,6 +83,53 @@ test("searches while typing and reuses session-cached TMDB results", async ({
   expect(firstTitleRequests).toBe(1);
 });
 
+test("discovers movies from actors in catalog and library details", async ({
+  page,
+}, testInfo) => {
+  await authenticate(page);
+  const title = `E2E Actor Discovery ${testInfo.project.name}`;
+
+  await searchAndOpen(page, title);
+  const actorRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return (
+      url.pathname === "/api/v1/catalog/discover" &&
+      url.searchParams.get("actorId") === "6384"
+    );
+  });
+  await page
+    .getByRole("button", { name: "Discover movies with E2E Actor" })
+    .click();
+  await actorRequest;
+  await expect(page).toHaveURL(
+    /\/discover\?actorId=6384&actorName=E2E\+Actor$/,
+  );
+  await expect(page.getByLabel("Applied filters")).toContainText(
+    "Actor: E2E Actor",
+  );
+
+  await searchAndOpen(page, title);
+  await page.getByRole("button", { name: "Add & search manually" }).click();
+  await page.goto("/library/movies");
+  const card = page.locator(".library-card").filter({ hasText: title });
+  await card.getByRole("button", { name: `Open ${title} details` }).click();
+  await page
+    .getByRole("button", { name: "Discover movies with E2E Actor" })
+    .click();
+  await expect(page).toHaveURL(
+    /\/discover\?actorId=6384&actorName=E2E\+Actor$/,
+  );
+  const library = await apiJson<{
+    items: Array<{ id: string; title: string }>;
+  }>(page, "/api/v1/library?limit=100");
+  const addedMovie = library.items.find((item) => item.title === title);
+  expect(addedMovie).toBeDefined();
+  await apiJson(page, `/api/v1/library/${addedMovie!.id}`, {
+    method: "DELETE",
+    body: { deleteLibraryRecord: true },
+  });
+});
+
 test("builds, applies, and removes responsive Discover filters", async ({
   page,
 }) => {

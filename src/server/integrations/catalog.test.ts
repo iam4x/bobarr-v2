@@ -124,6 +124,7 @@ describe("TMDB adapter", () => {
       region: "FR",
       genres: [18, 878, 18],
       genreMode: "any",
+      castId: 6384,
       originCountry: "ca",
       originalLanguage: "fr",
       year: 2024,
@@ -148,6 +149,7 @@ describe("TMDB adapter", () => {
     expect(movie.get("page")).toBe("2");
     expect(movie.get("region")).toBe("FR");
     expect(movie.get("with_genres")).toBe("18|878");
+    expect(movie.get("with_cast")).toBe("6384");
     expect(movie.get("with_origin_country")).toBe("CA");
     expect(movie.get("with_original_language")).toBe("fr");
     expect(movie.get("primary_release_year")).toBe("2024");
@@ -295,6 +297,69 @@ describe("TMDB adapter", () => {
     expect(requestedUrl?.searchParams.get("append_to_response")).toBe(
       "external_ids",
     );
+  });
+
+  test("loads ordered, unique movie actors through appended credits", async () => {
+    let requestedUrl: URL | undefined;
+    const client = createTmdbClient({
+      apiKey: "key",
+      fetch: async (input) => {
+        requestedUrl = new URL(String(input));
+        return Response.json({
+          id: 603,
+          title: "The Matrix",
+          original_title: "The Matrix",
+          release_date: "1999-03-30",
+          genres: [{ id: 878, name: "Science Fiction" }],
+          credits: {
+            cast: [
+              {
+                id: 2,
+                name: "Second Actor",
+                character: "",
+                profile_path: null,
+                order: 2,
+              },
+              {
+                id: 1,
+                name: "Lead Actor",
+                character: "The One",
+                profile_path: "/lead.jpg",
+                order: 0,
+              },
+              {
+                id: 1,
+                name: "Lead Actor",
+                character: "Duplicate",
+                profile_path: "/duplicate.jpg",
+                order: 3,
+              },
+              { id: "invalid", name: "Invalid Actor", order: 1 },
+            ],
+          },
+        });
+      },
+    });
+
+    const details = await client.details("movie", 603);
+
+    expect(requestedUrl?.searchParams.get("append_to_response")).toBe(
+      "credits",
+    );
+    expect(details.actors).toEqual([
+      {
+        tmdbId: 1,
+        name: "Lead Actor",
+        character: "The One",
+        profilePath: "/lead.jpg",
+      },
+      {
+        tmdbId: 2,
+        name: "Second Actor",
+        character: null,
+        profilePath: null,
+      },
+    ]);
   });
 });
 

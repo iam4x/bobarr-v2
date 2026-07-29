@@ -100,6 +100,33 @@ describe("library manual release targets", () => {
     expect(markup).toContain("+1");
   });
 
+  test("shows actor discovery cards in movie management", () => {
+    const markup = renderToStaticMarkup(
+      createElement(MovieManagement, {
+        item: movie,
+        actors: [
+          {
+            tmdbId: 6384,
+            name: "Keanu Reeves",
+            character: "Neo",
+            profilePath: null,
+          },
+        ],
+        policy: "all",
+        saveBusy: false,
+        retryBusy: false,
+        onPolicyChange: () => undefined,
+        onSave: () => undefined,
+        onRetry: () => undefined,
+        onManualSearch: () => undefined,
+        onRemove: () => undefined,
+      }),
+    );
+
+    expect(markup).toContain('aria-label="Discover movies with Keanu Reeves"');
+    expect(markup).toContain("Neo");
+  });
+
   test("shows television availability and the next air date", () => {
     const markup = renderToStaticMarkup(
       LibraryCard({

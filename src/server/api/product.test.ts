@@ -100,6 +100,7 @@ describe("public product API", () => {
         "sort",
         "page",
         "genres",
+        "actorId",
         "originCountry",
         "originalLanguage",
         "year",
@@ -184,6 +185,10 @@ describe("public product API", () => {
       "/api/v1/catalog/discover?kind=movie&sort=vote_average.desc&voteCountMin=0",
       { headers: { cookie: session.cookie } },
     );
+    const actorResponse = await fixture.runtime.app.request(
+      "/api/v1/catalog/discover?kind=movie&actorId=6384",
+      { headers: { cookie: session.cookie } },
+    );
     const discoverRequests = fixture.services.tmdbRequests.filter((request) =>
       request.pathname.startsWith("/3/discover/"),
     );
@@ -208,6 +213,8 @@ describe("public product API", () => {
     expect(series.has("region")).toBe(false);
     expect(explicitZeroResponse.status).toBe(200);
     expect(movie.get("vote_count.gte")).toBe("0");
+    expect(actorResponse.status).toBe(200);
+    expect(discoverRequests[2]?.searchParams.get("with_cast")).toBe("6384");
   });
 
   test("rejects contradictory Discover filters before calling TMDB", async () => {
@@ -227,6 +234,10 @@ describe("public product API", () => {
       "/api/v1/catalog/discover?kind=series&sort=revenue.desc",
       { headers: { cookie: session.cookie } },
     );
+    const seriesActorResponse = await fixture.runtime.app.request(
+      "/api/v1/catalog/discover?kind=series&actorId=6384",
+      { headers: { cookie: session.cookie } },
+    );
     const emptyVoteCountResponse = await fixture.runtime.app.request(
       "/api/v1/catalog/discover?sort=vote_average.desc&voteCountMin=",
       { headers: { cookie: session.cookie } },
@@ -235,6 +246,7 @@ describe("public product API", () => {
     expect(runtimeResponse.status).toBe(422);
     expect(dateResponse.status).toBe(422);
     expect(sortResponse.status).toBe(422);
+    expect(seriesActorResponse.status).toBe(422);
     expect(emptyVoteCountResponse.status).toBe(422);
     expect(fixture.services.tmdbRequests).toHaveLength(before);
   });
@@ -282,6 +294,14 @@ describe("public product API", () => {
     expect(second.status).toBe(200);
     expect(await first.json()).toMatchObject({
       id: "movie:603",
+      actors: [
+        {
+          tmdbId: 6384,
+          name: "Keanu Reeves",
+          character: "Neo",
+          profilePath: "/keanu.jpg",
+        },
+      ],
       ratings: {
         imdb: { value: 8.7, scale: 10, votes: 2_107_348 },
         rottenTomatoes: { value: 83, scale: 100 },
@@ -3280,6 +3300,17 @@ class FakeProductServices {
         status: "Released",
         tagline: "Welcome to the Real World.",
         imdb_id: "tt0133093",
+        credits: {
+          cast: [
+            {
+              id: 6384,
+              name: "Keanu Reeves",
+              character: "Neo",
+              profile_path: "/keanu.jpg",
+              order: 0,
+            },
+          ],
+        },
       });
     }
     if (url.pathname === "/3/movie/603/recommendations") {

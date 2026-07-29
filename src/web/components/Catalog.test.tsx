@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { ExternalRatings, seasonYearLabel } from "./Catalog";
+import {
+  actorDiscoverPath,
+  ExternalRatings,
+  MovieCast,
+  seasonYearLabel,
+} from "./Catalog";
 
 describe("catalog external ratings", () => {
   test("renders compact ratings with full accessible labels", () => {
@@ -28,6 +33,33 @@ describe("catalog external ratings", () => {
         <ExternalRatings ratings={{ imdb: null, rottenTomatoes: null }} />,
       ),
     ).toBe("");
+  });
+});
+
+describe("movie cast", () => {
+  test("renders at most six accessible actor cards with profile fallbacks", () => {
+    const actors = Array.from({ length: 7 }, (_, index) => ({
+      tmdbId: index + 1,
+      name: `Actor ${index + 1}`,
+      character: index === 0 ? "The Lead" : null,
+      profilePath: index === 1 ? "/actor-2.jpg" : null,
+    }));
+    const markup = renderToStaticMarkup(
+      <MovieCast actors={actors} onSelect={() => undefined} />,
+    );
+
+    expect(markup).toContain('aria-label="Top cast"');
+    expect(markup).toContain('aria-label="Discover movies with Actor 1"');
+    expect(markup).toContain("The Lead");
+    expect(markup).toContain("/w342/actor-2.jpg");
+    expect(markup).toContain("Actor 6");
+    expect(markup).not.toContain("Actor 7");
+  });
+
+  test("builds a deep-linkable actor Discover URL", () => {
+    expect(actorDiscoverPath({ tmdbId: 6384, name: "Keanu Reeves" })).toBe(
+      "/discover?actorId=6384&actorName=Keanu+Reeves",
+    );
   });
 });
 

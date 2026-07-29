@@ -2,7 +2,12 @@ import type {
   LibraryDownloadFile,
   MonitorMediaPatch,
 } from "../../contracts/api-routes";
-import type { AcquisitionState, LibraryItem, MonitorPolicy } from "../types";
+import type {
+  AcquisitionState,
+  CatalogActor,
+  LibraryItem,
+  MonitorPolicy,
+} from "../types";
 
 import {
   useInfiniteQuery,
@@ -32,10 +37,11 @@ import {
   Tv,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 
 import { api } from "../api/client";
 import { collectionItems } from "../api/normalize";
+import { actorDiscoverPath, MovieCast } from "../components/Catalog";
 import { Page } from "../components/Page";
 import {
   type ManualReleaseTarget,
@@ -1560,6 +1566,7 @@ export function TvSeriesManagement({
 
 export function MovieManagement({
   item,
+  actors,
   downloadFiles = [],
   policy,
   saveBusy,
@@ -1570,9 +1577,11 @@ export function MovieManagement({
   onSave,
   onRetry,
   onManualSearch,
+  onActorSelect,
   onRemove,
 }: {
   item: LibraryItem;
+  actors?: CatalogActor[];
   downloadFiles?: LibraryDownloadFile[];
   policy: MonitorPolicy;
   saveBusy: boolean;
@@ -1583,6 +1592,7 @@ export function MovieManagement({
   onSave: () => void;
   onRetry: () => void;
   onManualSearch: () => void;
+  onActorSelect?: (actor: CatalogActor) => void;
   onRemove: () => void;
 }) {
   const [settingsOpen, setSettingsOpen] = useState(!libraryItemHasFile(item));
@@ -1672,6 +1682,11 @@ export function MovieManagement({
           ) : null}
         </div>
       </section>
+
+      <MovieCast
+        actors={actors}
+        onSelect={onActorSelect ?? (() => undefined)}
+      />
 
       <div className="movie-management__layout">
         <section
@@ -1910,6 +1925,7 @@ function ManageLibraryDialog({
   item: LibraryItem | null;
   onClose: () => void;
 }) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [policy, setPolicy] = useState<MonitorPolicy>(
     item?.monitorPolicy === "future"
@@ -1949,6 +1965,15 @@ function ManageLibraryDialog({
         signal,
       }),
     enabled: Boolean(item),
+  });
+  const movieDetailsQuery = useQuery({
+    queryKey: ["catalog", "detail", "movie", item?.tmdbId],
+    queryFn: ({ signal }) =>
+      api.get("catalogDetails", {
+        params: { kind: "movie", tmdbId: item!.tmdbId! },
+        signal,
+      }),
+    enabled: item?.kind === "movie" && isPositiveSafeInteger(item.tmdbId),
   });
   const downloadFiles = filesQuery.data?.files ?? [];
   const seasons = useMemo(
@@ -2210,6 +2235,7 @@ function ManageLibraryDialog({
       {!confirmRemove && !manualSearchOpen && item?.kind === "movie" ? (
         <MovieManagement
           item={item}
+          actors={movieDetailsQuery.data?.actors}
           downloadFiles={downloadFiles}
           policy={policy}
           saveBusy={updateMutation.isPending}
@@ -2222,6 +2248,10 @@ function ManageLibraryDialog({
           onManualSearch={() => {
             setManualSearchTarget(undefined);
             setManualSearchOpen(true);
+          }}
+          onActorSelect={(actor) => {
+            onClose();
+            navigate(actorDiscoverPath(actor));
           }}
           onRemove={beginRemoval}
         />

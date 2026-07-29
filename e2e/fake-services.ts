@@ -246,6 +246,20 @@ function detailsPayload(item: FakeMedia): Record<string, unknown> {
     imdb_id: item.kind === "movie" ? "tt1234567" : null,
     number_of_seasons: item.kind === "tv" ? 2 : undefined,
     number_of_episodes: numberOfEpisodes,
+    credits:
+      item.kind === "movie"
+        ? {
+            cast: [
+              {
+                id: 6384,
+                name: "E2E Actor",
+                character: "The Lead",
+                profile_path: null,
+                order: 0,
+              },
+            ],
+          }
+        : undefined,
   };
 }
 
