@@ -2,6 +2,16 @@ import { initializeBackend } from "./server/api";
 import { parseShutdownTimeout, settleByDeadline } from "./server/core";
 import { DEFAULT_RESTORE_MAX_BYTES } from "./server/operations";
 import indexHtml from "./web/index.html";
+import icon192 from "./web/pwa/app-icon-192.png" with { type: "file" };
+import icon512 from "./web/pwa/app-icon-512.png" with { type: "file" };
+import appleTouchIcon from "./web/pwa/apple-touch-icon.png" with { type: "file" };
+import { NO_CACHE_HEADERS, SERVICE_WORKER_SOURCE } from "./web/pwa/config";
+
+for (const file of indexHtml.files ?? []) {
+  file.headers["cache-control"] = NO_CACHE_HEADERS["cache-control"];
+  file.headers["expires"] = NO_CACHE_HEADERS.expires;
+  file.headers["pragma"] = NO_CACHE_HEADERS.pragma;
+}
 
 const port = parsePort(process.env["PORT"]);
 const hostname = process.env["HOST"] ?? "0.0.0.0";
@@ -39,6 +49,26 @@ const server = Bun.serve({
       return runtime.app.fetch(request);
     },
     "/api/*": (request) => runtime.app.fetch(request),
+    "/service-worker.js": () =>
+      new Response(SERVICE_WORKER_SOURCE, {
+        headers: {
+          ...NO_CACHE_HEADERS,
+          "content-type": "text/javascript; charset=utf-8",
+          "service-worker-allowed": "/",
+        },
+      }),
+    "/pwa/icon-192.png": () =>
+      new Response(Bun.file(icon192), {
+        headers: { ...NO_CACHE_HEADERS, "content-type": "image/png" },
+      }),
+    "/pwa/icon-512.png": () =>
+      new Response(Bun.file(icon512), {
+        headers: { ...NO_CACHE_HEADERS, "content-type": "image/png" },
+      }),
+    "/pwa/apple-touch-icon.png": () =>
+      new Response(Bun.file(appleTouchIcon), {
+        headers: { ...NO_CACHE_HEADERS, "content-type": "image/png" },
+      }),
     "/*": indexHtml,
   },
   error(error) {
