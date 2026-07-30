@@ -13,6 +13,7 @@ import {
   LogOut,
   Network,
   RefreshCw,
+  RotateCcw,
   Save,
   ShieldCheck,
   SlidersHorizontal,
@@ -65,10 +66,31 @@ const settingsSchema = z.object({
   scanLibrary: z.string().min(1),
   backup: z.string().min(1),
   backupRetention: z.coerce.number().int().min(1).max(365),
+  loginLockEnabled: z.boolean(),
 });
+
+const credentialsSchema = z
+  .object({
+    username: z
+      .string()
+      .trim()
+      .min(3, "Use at least 3 characters.")
+      .max(64)
+      .regex(
+        /^[a-zA-Z0-9._-]+$/,
+        "Use letters, numbers, dots, underscores, or dashes.",
+      ),
+    password: z.string().max(256),
+    confirmation: z.string().max(256),
+  })
+  .refine((value) => value.password === value.confirmation, {
+    path: ["confirmation"],
+    message: "Passwords do not match.",
+  });
 
 type SettingsForm = z.input<typeof settingsSchema>;
 type ParsedSettingsForm = z.output<typeof settingsSchema>;
+type CredentialsForm = z.infer<typeof credentialsSchema>;
 
 const emptySettings: AppSettings = {
   locale: { language: "en", region: "US" },
@@ -97,6 +119,9 @@ const emptySettings: AppSettings = {
     scanLibrary: "0 4 * * *",
     backup: "0 2 * * *",
     backupRetention: 14,
+  },
+  security: {
+    loginLockEnabled: true,
   },
 };
 
@@ -127,6 +152,7 @@ function toForm(settings: AppSettings): SettingsForm {
     scanLibrary: settings.schedules.scanLibrary,
     backup: settings.schedules.backup,
     backupRetention: settings.schedules.backupRetention,
+    loginLockEnabled: settings.security.loginLockEnabled,
   };
 }
 
@@ -170,6 +196,9 @@ function fromForm(value: ParsedSettingsForm): AppSettings {
       scanLibrary: value.scanLibrary,
       backup: value.backup,
       backupRetention: value.backupRetention,
+    },
+    security: {
+      loginLockEnabled: value.loginLockEnabled,
     },
   };
 }
@@ -232,6 +261,10 @@ export function SettingsPage() {
     queryKey: ["settings"],
     queryFn: ({ signal }) => api.get("getSettings", { signal }),
   });
+  const sessionQuery = useQuery({
+    queryKey: ["auth", "session"],
+    queryFn: ({ signal }) => api.get("currentSession", { signal }),
+  });
   const statusQuery = useQuery({
     queryKey: ["system", "status"],
     queryFn: async ({ signal }) =>
@@ -250,10 +283,21 @@ export function SettingsPage() {
     clearErrors,
     formState: { errors, isDirty },
   } = useForm<SettingsForm>({ defaultValues: toForm(emptySettings) });
+  const credentialsForm = useForm<CredentialsForm>({
+    defaultValues: { username: "", password: "", confirmation: "" },
+  });
 
   useEffect(() => {
     if (settingsQuery.data) reset(toForm(settingsQuery.data));
   }, [reset, settingsQuery.data]);
+  useEffect(() => {
+    const username =
+      sessionQuery.data?.admin?.username ??
+      sessionQuery.data?.administrator?.username;
+    if (username) {
+      credentialsForm.reset({ username, password: "", confirmation: "" });
+    }
+  }, [credentialsForm, sessionQuery.data]);
 
   const saveMutation = useMutation({
     mutationFn: (value: ParsedSettingsForm) =>
@@ -320,6 +364,28 @@ export function SettingsPage() {
       navigate("/login", { replace: true });
     },
   });
+  const resetLoginLockMutation = useMutation({
+    mutationFn: () => api.post("resetLoginLock"),
+    onSuccess: () => setNotice("Temporary sign-in lock and failures reset."),
+  });
+  const updateCredentialsMutation = useMutation({
+    mutationFn: (value: CredentialsForm) =>
+      api.patch("updateAdminCredentials", {
+        body: {
+          username: value.username,
+          ...(value.password ? { password: value.password } : {}),
+        },
+      }),
+    onSuccess: (result) => {
+      credentialsForm.reset({
+        username: result.username,
+        password: "",
+        confirmation: "",
+      });
+      setNotice("Administrator login updated.");
+      void queryClient.invalidateQueries({ queryKey: ["auth", "session"] });
+    },
+  });
 
   const integration = (key: IntegrationKey) =>
     statusQuery.data?.integrations.find((item) => item.key === key);
@@ -338,6 +404,24 @@ export function SettingsPage() {
       return;
     }
     saveMutation.mutate(parsed.data);
+  };
+  const submitCredentials = (value: CredentialsForm) => {
+    credentialsForm.clearErrors();
+    const parsed = credentialsSchema.safeParse(value);
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        const field = issue.path[0];
+        if (
+          field === "username" ||
+          field === "password" ||
+          field === "confirmation"
+        ) {
+          credentialsForm.setError(field, { message: issue.message });
+        }
+      }
+      return;
+    }
+    updateCredentialsMutation.mutate(parsed.data);
   };
   let backupListContent = (
     <p className="settings-muted">No verified backups yet.</p>
@@ -389,7 +473,7 @@ export function SettingsPage() {
       description="Connections, acquisition preferences, storage, and maintenance."
       wide
     >
-      <form className="settings-layout" onSubmit={handleSubmit(submitSettings)}>
+      <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
           <a href="#connections">
             <Network size={16} /> Connections
@@ -405,6 +489,9 @@ export function SettingsPage() {
           </a>
           <a href="#maintenance">
             <Database size={16} /> Maintenance
+          </a>
+          <a href="#security">
+            <ShieldCheck size={16} /> Security
           </a>
         </nav>
 
@@ -779,6 +866,93 @@ export function SettingsPage() {
             </div>
           </section>
 
+          <section className="settings-section" id="security">
+            <header>
+              <span className="settings-section__icon">
+                <ShieldCheck size={20} />
+              </span>
+              <div>
+                <h2>Sign-in security</h2>
+                <p>Control temporary protection after password failures.</p>
+              </div>
+            </header>
+            <form
+              className="security-credentials"
+              onSubmit={credentialsForm.handleSubmit(submitCredentials)}
+            >
+              <div className="form-grid">
+                <Field
+                  label="Administrator username"
+                  autoComplete="username"
+                  error={credentialsForm.formState.errors.username?.message}
+                  {...credentialsForm.register("username")}
+                />
+                <Field
+                  label="New password"
+                  type="password"
+                  autoComplete="new-password"
+                  hint="Leave blank to keep the current password."
+                  error={credentialsForm.formState.errors.password?.message}
+                  {...credentialsForm.register("password")}
+                />
+                <Field
+                  label="Confirm new password"
+                  type="password"
+                  autoComplete="new-password"
+                  error={credentialsForm.formState.errors.confirmation?.message}
+                  {...credentialsForm.register("confirmation")}
+                />
+              </div>
+              {updateCredentialsMutation.isError ? (
+                <p className="field__error">
+                  {updateCredentialsMutation.error.message}
+                </p>
+              ) : null}
+              <Button
+                type="submit"
+                variant="secondary"
+                busy={updateCredentialsMutation.isPending}
+                disabled={!credentialsForm.formState.isDirty}
+              >
+                <KeyRound size={16} /> Update login
+              </Button>
+            </form>
+            <div className="maintenance-actions">
+              <label className="security-setting">
+                <input type="checkbox" {...register("loginLockEnabled")} />
+                <span>
+                  <strong>Temporarily lock sign-in</strong>
+                  <small>
+                    Block new sign-ins for a short time after repeated password
+                    failures.
+                  </small>
+                </span>
+              </label>
+              <div>
+                <RotateCcw size={20} />
+                <span>
+                  <strong>Reset sign-in lock</strong>
+                  <small>
+                    Clear the current lock and all recorded failed attempts.
+                  </small>
+                </span>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  busy={resetLoginLockMutation.isPending}
+                  onClick={() => resetLoginLockMutation.mutate()}
+                >
+                  Reset
+                </Button>
+              </div>
+            </div>
+            {resetLoginLockMutation.isError ? (
+              <p className="field__error">
+                {resetLoginLockMutation.error.message}
+              </p>
+            ) : null}
+          </section>
+
           <div className="settings-savebar">
             <span>
               {isDirty
@@ -786,15 +960,16 @@ export function SettingsPage() {
                 : "Settings are up to date."}
             </span>
             <Button
-              type="submit"
+              type="button"
               busy={saveMutation.isPending}
               disabled={!isDirty}
+              onClick={handleSubmit(submitSettings)}
             >
               <Save size={17} /> Save settings
             </Button>
           </div>
         </div>
-      </form>
+      </div>
       <Dialog
         open={restoreDialogOpen}
         onClose={() => {

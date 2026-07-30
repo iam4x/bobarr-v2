@@ -19,9 +19,9 @@ if (process.stdin.isTTY) {
 }
 
 const password = (await Bun.stdin.text()).replace(/\r?\n$/, "");
-if (password.length < 12 || password.length > 256) {
+if (password.length < 1 || password.length > 256) {
   throw new TypeError(
-    "The new administrator password must be 12–256 characters",
+    "The new administrator password must be 1–256 characters",
   );
 }
 

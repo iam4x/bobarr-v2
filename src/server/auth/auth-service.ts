@@ -3,6 +3,7 @@ import type {
   CurrentSession,
   LoginRequest,
   SetupRequest,
+  UpdateAdminCredentialsRequest,
 } from "../../contracts";
 import type { BackendConfig } from "../config";
 import type { Clock } from "../core";
@@ -47,6 +48,7 @@ export class AuthService {
     private readonly passwordHasher: PasswordHasher,
     private readonly dummyPasswordHash: string,
     private readonly clock: Clock,
+    private readonly loginLockEnabled: () => boolean,
   ) {}
 
   static async create(options: {
@@ -55,6 +57,7 @@ export class AuthService {
     passwordHasher?: PasswordHasher;
     clock?: Clock;
     dummyPasswordHash?: string;
+    loginLockEnabled?: () => boolean;
   }): Promise<AuthService> {
     const passwordHasher = options.passwordHasher ?? bunPasswordHasher;
     const dummyPasswordHash =
@@ -66,6 +69,7 @@ export class AuthService {
       passwordHasher,
       dummyPasswordHash,
       options.clock ?? systemClock,
+      options.loginLockEnabled ?? (() => true),
     );
   }
 
@@ -112,12 +116,15 @@ export class AuthService {
     }
 
     const admin = this.repository.getAdminByUsername(input.username);
+    const loginLockEnabled = this.loginLockEnabled();
     if (admin === undefined) {
       const now = this.clock.now().getTime();
       const throttleKey = unknownThrottleKey(input.username, metadata);
       const throttle = this.unknownLoginAttempts.get(throttleKey);
-      if (throttle && throttle.lockedUntil > now) throw accountLocked();
+      if (loginLockEnabled && throttle && throttle.lockedUntil > now)
+        throw accountLocked();
       await this.passwordHasher.verify(input.password, this.dummyPasswordHash);
+      if (!loginLockEnabled) throw invalidCredentials();
       const previousFailures =
         throttle && (throttle.lockedUntil === 0 || throttle.lockedUntil > now)
           ? throttle.failures
@@ -139,7 +146,11 @@ export class AuthService {
     }
 
     const now = this.clock.now().getTime();
-    if (admin.lockedUntil !== null && admin.lockedUntil > now) {
+    if (
+      loginLockEnabled &&
+      admin.lockedUntil !== null &&
+      admin.lockedUntil > now
+    ) {
       throw accountLocked();
     }
 
@@ -148,6 +159,7 @@ export class AuthService {
       admin.passwordHash,
     );
     if (!valid) {
+      if (!loginLockEnabled) throw invalidCredentials();
       const failure = this.repository.recordFailedLogin(
         admin.id,
         this.config.loginFailureLimit,
@@ -204,6 +216,31 @@ export class AuthService {
 
   logout(sessionId: string): void {
     this.repository.revokeSession(sessionId, this.clock.now().getTime());
+  }
+
+  resetLoginLock(adminId: number): void {
+    this.repository.resetLoginLock(adminId, this.clock.now().getTime());
+    this.unknownLoginAttempts.clear();
+  }
+
+  async updateAdminCredentials(
+    adminId: number,
+    input: UpdateAdminCredentialsRequest,
+  ): Promise<{ username: string }> {
+    const passwordHash =
+      input.password === undefined
+        ? undefined
+        : await this.passwordHasher.hash(input.password);
+    const admin = this.repository.updateAdminCredentials(
+      adminId,
+      {
+        username: input.username,
+        ...(passwordHash === undefined ? {} : { passwordHash }),
+      },
+      this.clock.now().getTime(),
+    );
+    this.unknownLoginAttempts.clear();
+    return { username: admin.username };
   }
 
   private issueSession(

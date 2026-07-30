@@ -171,6 +171,41 @@ export class AuthRepository {
       .run();
   }
 
+  resetLoginLock(adminId: number, now: number): void {
+    this.database.client
+      .update(admins)
+      .set({
+        failedLoginCount: 0,
+        lockedUntil: null,
+        updatedAt: now,
+      })
+      .where(eq(admins.id, adminId))
+      .run();
+  }
+
+  updateAdminCredentials(
+    adminId: number,
+    input: { username: string; passwordHash?: string },
+    now: number,
+  ): AdminRow {
+    const admin = this.database.client
+      .update(admins)
+      .set({
+        username: input.username,
+        ...(input.passwordHash === undefined
+          ? {}
+          : { passwordHash: input.passwordHash }),
+        failedLoginCount: 0,
+        lockedUntil: null,
+        updatedAt: now,
+      })
+      .where(eq(admins.id, adminId))
+      .returning()
+      .get();
+    if (!admin) throw new Error("Administrator disappeared during update");
+    return admin;
+  }
+
   createSession(record: NewSessionRecord): SessionRow {
     return this.database.client
       .insert(sessions)
@@ -282,6 +317,7 @@ export class SettingsRepository {
       },
       storage: { ...current.settings.storage, ...patch.storage },
       schedules: { ...current.settings.schedules, ...patch.schedules },
+      security: { ...current.settings.security, ...patch.security },
     });
     const now = this.clock.now().getTime();
     this.database.client

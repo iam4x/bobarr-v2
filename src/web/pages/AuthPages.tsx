@@ -24,7 +24,7 @@ const loginSchema = z.object({
 const setupSchema = z
   .object({
     username: z.string().trim().min(3, "Use at least 3 characters.").max(64),
-    password: z.string().min(12, "Use at least 12 characters."),
+    password: z.string().min(1, "Enter a password."),
     confirmation: z.string(),
   })
   .refine((value) => value.password === value.confirmation, {
@@ -198,10 +198,8 @@ export function SetupPage() {
     handleSubmit,
     setError,
     clearErrors,
-    watch,
     formState: { errors },
   } = useForm<SetupForm>();
-  const password = watch("password", "");
   const setupMutation = useMutation({
     mutationFn: ({ username, password: nextPassword }: SetupForm) =>
       api.post("setup", {
@@ -264,15 +262,10 @@ export function SetupPage() {
           label="Password"
           type="password"
           autoComplete="new-password"
-          hint="At least 12 characters"
+          hint="Any non-empty password"
           error={errors.password?.message}
           {...register("password")}
         />
-        <div className="password-meter" aria-label="Password length">
-          <span
-            style={{ width: `${Math.min(100, (password.length / 16) * 100)}%` }}
-          />
-        </div>
         <Field
           label="Confirm password"
           type="password"

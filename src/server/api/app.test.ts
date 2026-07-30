@@ -452,6 +452,75 @@ describe("Bobarr backend API", () => {
         .requiredTerms,
     ).toEqual(["proper", "x265"]);
   });
+
+  test("configures and resets the temporary sign-in lock", async () => {
+    const runtime = await createTestRuntime();
+    const setupResponse = await jsonRequest(runtime, "/api/v1/setup", "POST", {
+      username: "admin",
+      password: "a-correct-horse-battery-staple",
+    });
+    const session = AuthSessionSchema.parse(await setupResponse.json());
+    const cookie = extractCookie(setupResponse);
+    const authenticatedHeaders = {
+      cookie,
+      "x-csrf-token": session.csrfToken,
+    };
+
+    const updated = await jsonRequest(
+      runtime,
+      "/api/v1/settings",
+      "PATCH",
+      { security: { loginLockEnabled: false } },
+      authenticatedHeaders,
+    );
+    expect(updated.status).toBe(200);
+    expect(await updated.json()).toMatchObject({
+      security: { loginLockEnabled: false },
+    });
+
+    runtime.repositories.auth.recordFailedLogin(
+      session.admin.id,
+      1,
+      Date.now() + 60_000,
+      Date.now(),
+    );
+    const resetResponse = await jsonRequest(
+      runtime,
+      "/api/v1/settings/security/login-lock/reset",
+      "POST",
+      undefined,
+      authenticatedHeaders,
+    );
+    expect(resetResponse.status).toBe(200);
+    expect(await resetResponse.json()).toEqual({ reset: true });
+    expect(runtime.repositories.auth.getAdmin()).toMatchObject({
+      failedLoginCount: 0,
+      lockedUntil: null,
+    });
+
+    const credentialsResponse = await jsonRequest(
+      runtime,
+      "/api/v1/settings/security/admin",
+      "PATCH",
+      { username: "local-admin", password: "1" },
+      authenticatedHeaders,
+    );
+    expect(credentialsResponse.status).toBe(200);
+    expect(await credentialsResponse.json()).toEqual({
+      username: "local-admin",
+    });
+
+    const loginResponse = await jsonRequest(
+      runtime,
+      "/api/v1/auth/login",
+      "POST",
+      { username: "local-admin", password: "1" },
+    );
+    expect(loginResponse.status).toBe(200);
+    expect(await loginResponse.json()).toMatchObject({
+      admin: { username: "local-admin" },
+    });
+  });
 });
 
 async function createTestRuntime(): Promise<BackendRuntime> {

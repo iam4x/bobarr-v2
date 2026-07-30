@@ -80,6 +80,13 @@ export const AppSettingsSchema = z
         backup: "0 2 * * *",
         backupRetention: 14,
       }),
+    security: z
+      .object({
+        loginLockEnabled: z.boolean().default(true),
+      })
+      .default({
+        loginLockEnabled: true,
+      }),
   })
   .strict()
   .openapi("AppSettings");

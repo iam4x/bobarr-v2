@@ -133,6 +133,9 @@ export async function initializeBackend(
       repository: repositories.auth,
       config,
       clock,
+      loginLockEnabled: () =>
+        repositories.settings.ensureDefaults().settings.security
+          .loginLockEnabled,
     });
     const integrations = createIntegrationResolver({
       environment,

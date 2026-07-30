@@ -13,7 +13,7 @@ export const UsernameSchema = z
   )
   .openapi("Username");
 
-export const PasswordSchema = z.string().min(12).max(256).openapi("Password");
+export const PasswordSchema = z.string().min(1).max(256).openapi("Password");
 
 export const SetupRequestSchema = z
   .object({
@@ -68,8 +68,31 @@ export const LogoutResponseSchema = z
   })
   .openapi("LogoutResponse");
 
+export const ResetLoginLockResponseSchema = z
+  .object({
+    reset: z.literal(true),
+  })
+  .openapi("ResetLoginLockResponse");
+
+export const UpdateAdminCredentialsRequestSchema = z
+  .object({
+    username: UsernameSchema,
+    password: PasswordSchema.optional(),
+  })
+  .strict()
+  .openapi("UpdateAdminCredentialsRequest");
+
+export const UpdateAdminCredentialsResponseSchema = z
+  .object({
+    username: UsernameSchema,
+  })
+  .openapi("UpdateAdminCredentialsResponse");
+
 export type SetupRequest = z.infer<typeof SetupRequestSchema>;
 export type LoginRequest = z.infer<typeof LoginRequestSchema>;
+export type UpdateAdminCredentialsRequest = z.infer<
+  typeof UpdateAdminCredentialsRequestSchema
+>;
 export type Admin = z.infer<typeof AdminSchema>;
 export type AuthSession = z.infer<typeof AuthSessionSchema>;
 export type CurrentSession = z.infer<typeof CurrentSessionSchema>;

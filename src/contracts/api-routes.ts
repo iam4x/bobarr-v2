@@ -248,6 +248,15 @@ export const apiRoutes = {
     "PATCH",
     "/settings",
   ),
+  resetLoginLock: route<{ reset: true }>()(
+    "POST",
+    "/settings/security/login-lock/reset",
+  ),
+  updateAdminCredentials: route<
+    { username: string },
+    never,
+    { username: string; password?: string }
+  >()("PATCH", "/settings/security/admin"),
   systemStatus: route<SystemStatus>()("GET", "/system"),
   listLibrary: route<
     LibraryApiPage,

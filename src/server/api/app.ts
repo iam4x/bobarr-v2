@@ -46,6 +46,7 @@ import {
   LibraryQuerySchema,
   LoginRequestSchema,
   LogoutResponseSchema,
+  ResetLoginLockResponseSchema,
   SecretListResponseSchema,
   SecretMetadataSchema,
   SecretParamsSchema,
@@ -55,6 +56,8 @@ import {
   SetupStatusSchema,
   SystemStatusSchema,
   UpdateSettingsRequestSchema,
+  UpdateAdminCredentialsRequestSchema,
+  UpdateAdminCredentialsResponseSchema,
 } from "../../contracts";
 import { AppError, notFound, systemClock } from "../core";
 import { durableJobToContract, validateCronExpression } from "../jobs";
@@ -212,6 +215,33 @@ const routes = {
     request: { body: jsonBody(UpdateSettingsRequestSchema) },
     responses: {
       200: jsonResponse(AppSettingsSchema, "Updated application settings"),
+      default: errorResponse,
+    },
+  }),
+  resetLoginLock: createRoute({
+    method: "post",
+    path: "/api/v1/settings/security/login-lock/reset",
+    tags: ["settings"],
+    security: [{ sessionCookie: [] }],
+    responses: {
+      200: jsonResponse(
+        ResetLoginLockResponseSchema,
+        "Cleared administrator sign-in failures and temporary locks",
+      ),
+      default: errorResponse,
+    },
+  }),
+  updateAdminCredentials: createRoute({
+    method: "patch",
+    path: "/api/v1/settings/security/admin",
+    tags: ["settings"],
+    security: [{ sessionCookie: [] }],
+    request: { body: jsonBody(UpdateAdminCredentialsRequestSchema) },
+    responses: {
+      200: jsonResponse(
+        UpdateAdminCredentialsResponseSchema,
+        "Updated administrator sign-in credentials",
+      ),
       default: errorResponse,
     },
   }),
@@ -498,6 +528,17 @@ export function createApiApp(
       integrationKeysForSettings(patch),
     );
     return context.json(withoutSecretInputs(updated.settings), 200);
+  });
+  app.openapi(routes.resetLoginLock, (context) => {
+    dependencies.auth.resetLoginLock(context.get("auth").adminId);
+    return context.json({ reset: true as const }, 200);
+  });
+  app.openapi(routes.updateAdminCredentials, async (context) => {
+    const result = await dependencies.auth.updateAdminCredentials(
+      context.get("auth").adminId,
+      context.req.valid("json"),
+    );
+    return context.json(result, 200);
   });
   app.openapi(routes.listSecrets, (context) =>
     context.json({ secrets: dependencies.secrets.list() }, 200),

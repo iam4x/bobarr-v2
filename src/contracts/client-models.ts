@@ -352,6 +352,9 @@ export interface AppSettings {
     backup: string;
     backupRetention: number;
   };
+  security: {
+    loginLockEnabled: boolean;
+  };
 }
 
 export interface ReleaseCandidate {

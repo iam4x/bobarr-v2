@@ -3820,6 +3820,41 @@ textarea:focus-visible {
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
 }
+.security-setting {
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.security-credentials {
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+.security-credentials .form-grid {
+  margin-bottom: 12px;
+}
+.security-setting input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+.security-setting span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.security-setting strong {
+  font-size: 13px;
+}
+.security-setting small {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
 .maintenance-actions > div:last-child {
   border-bottom: 0;
 }

@@ -71,9 +71,51 @@ describe("authentication throttling", () => {
     ).rejects.toMatchObject({ code: "account_locked" });
     expect(fixture.passwordHasher.verifyCalls).toBe(3);
   });
+
+  test("does not lock or record failures when temporary locking is disabled", async () => {
+    const fixture = await createFixture({ loginLockEnabled: false });
+    await fixture.service.setup({
+      username: "admin",
+      password: "correct-horse-battery-staple",
+    });
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await expect(
+        fixture.service.login({
+          username: "admin",
+          password: "incorrect-password",
+        }),
+      ).rejects.toMatchObject({ code: "unauthorized" });
+    }
+
+    expect(fixture.repositories.auth.getAdmin()).toMatchObject({
+      failedLoginCount: 0,
+      lockedUntil: null,
+    });
+  });
+
+  test("updates the administrator username and accepts a simple password", async () => {
+    const fixture = await createFixture();
+    const grant = await fixture.service.setup({
+      username: "admin",
+      password: "initial",
+    });
+
+    await expect(
+      fixture.service.updateAdminCredentials(grant.response.admin.id, {
+        username: "local-admin",
+        password: "1",
+      }),
+    ).resolves.toEqual({ username: "local-admin" });
+    await expect(
+      fixture.service.login({ username: "local-admin", password: "1" }),
+    ).resolves.toMatchObject({
+      response: { admin: { username: "local-admin" } },
+    });
+  });
 });
 
-async function createFixture() {
+async function createFixture(options: { loginLockEnabled?: boolean } = {}) {
   const database = await openBackendDatabase(":memory:");
   databases.push(database);
   const now = Date.parse("2026-07-21T12:00:00.000Z");
@@ -97,6 +139,7 @@ async function createFixture() {
     passwordHasher,
     dummyPasswordHash: "hash:dummy-password",
     clock,
+    loginLockEnabled: () => options.loginLockEnabled ?? true,
   });
   return { service, repositories, passwordHasher, now };
 }
