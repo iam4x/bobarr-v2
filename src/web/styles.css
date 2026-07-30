@@ -1107,11 +1107,14 @@ textarea:focus-visible {
 }
 .movie-cast__grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 9px;
 }
 .actor-card {
   min-width: 0;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
   overflow: hidden;
   padding: 0;
   border: 1px solid var(--border);
@@ -1135,6 +1138,7 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 .actor-card__portrait {
+  width: 64px;
   aspect-ratio: 3 / 4;
   display: grid;
   place-items: center;
@@ -4258,7 +4262,7 @@ textarea:focus-visible {
 
 @media (max-width: 760px) {
   :root {
-    --mobile-header: 58px;
+    --mobile-header: calc(58px + env(safe-area-inset-top, 0px));
     --mobile-nav: 69px;
   }
   body {
@@ -4279,7 +4283,9 @@ textarea:focus-visible {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 17px;
+    padding: env(safe-area-inset-top, 0px)
+      max(17px, env(safe-area-inset-right, 0px)) 0
+      max(17px, env(safe-area-inset-left, 0px));
     border-bottom: 1px solid var(--border);
     background: rgba(9, 11, 16, 0.9);
     backdrop-filter: blur(16px);
@@ -4484,7 +4490,13 @@ textarea:focus-visible {
     padding: 27px 19px;
   }
   .movie-cast__grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .actor-card {
+    grid-template-columns: 54px minmax(0, 1fr);
+  }
+  .actor-card__portrait {
+    width: 54px;
   }
   .media-detail__manual-search-controls {
     grid-template-columns: minmax(0, 1fr);
@@ -4990,9 +5002,6 @@ textarea:focus-visible {
 }
 
 @media (max-width: 420px) {
-  .movie-cast__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .poster-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 22px 12px;
