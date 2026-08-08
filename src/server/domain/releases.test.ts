@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { inspectRelease, rankReleases, scoreRelease } from "./releases";
+import {
+  inspectRelease,
+  normalizeReleaseTitle,
+  rankReleases,
+  scoreRelease,
+} from "./releases";
 
 describe("release normalization and scoring", () => {
   test("extracts common release metadata", () => {
@@ -17,6 +22,45 @@ describe("release normalization and scoring", () => {
       episode: 3,
       releaseGroup: "GRP",
     });
+  });
+
+  test("folds Latin ligatures and non-decomposing letters to ASCII", () => {
+    const examples = [
+      ["cœur", "coeur"],
+      ["encyclopædia", "encyclopaedia"],
+      ["Straße", "strasse"],
+      ["smørrebrød", "smorrebrod"],
+      ["Łódź", "lodz"],
+      ["Þingvellir", "thingvellir"],
+      ["Ĳsselmeer", "ijsselmeer"],
+      ["oﬃce", "office"],
+    ] as const;
+
+    for (const [title, expected] of examples) {
+      expect(normalizeReleaseTitle(title)).toBe(expected);
+    }
+  });
+
+  test("matches French ligatures with ASCII release titles", () => {
+    const result = scoreRelease(
+      {
+        id: "lost-bus",
+        title:
+          "The.Lost.Bus.Au.Coeur.Des.Flammes.2025.MULTI.VFF.1080p.WEBRip.EAC3.5.1.x265-TyHD",
+        sizeBytes: 2_000_000_000,
+        seeders: 20,
+      },
+      {
+        kind: "movie",
+        title: "The Lost Bus - Au cœur des flammes",
+        year: 2025,
+      },
+    );
+
+    expect(result.eligible).toBe(true);
+    expect(result.exclusions).not.toContain(
+      "release title does not match the requested media",
+    );
   });
 
   test("excludes wrong media identity and blocked terms", () => {

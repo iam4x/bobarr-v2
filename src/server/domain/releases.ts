@@ -105,15 +105,47 @@ const DEFAULT_SOURCE_ORDER: readonly ReleaseSource[] = [
   "cam",
 ];
 
+/** Latin letters and historical ligatures that Unicode NFKD does not fold. */
+const LATIN_ASCII_FOLD: Readonly<Record<string, string>> = {
+  æ: "ae",
+  œ: "oe",
+  ß: "ss",
+  ø: "o",
+  ł: "l",
+  đ: "d",
+  ð: "d",
+  þ: "th",
+  ħ: "h",
+  ı: "i",
+  ŋ: "n",
+  ŧ: "t",
+  ſ: "s",
+  ƒ: "f",
+  ꜳ: "aa",
+  ꜵ: "ao",
+  ꜷ: "au",
+  ꜹ: "av",
+  ꜻ: "av",
+  ꜽ: "ay",
+  ꝏ: "oo",
+  ꝡ: "vy",
+  ꜩ: "tz",
+  ꞛ: "oe",
+};
+
 export function normalizeReleaseTitle(value: string): string {
   return value
     .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\p{Mark}+/gu, "")
+    .toLowerCase()
+    .replace(
+      /[^\p{ASCII}]/gu,
+      (character) => LATIN_ASCII_FOLD[character] ?? character,
+    )
     .replace(/&/g, " and ")
     .replace(/[’']/g, "")
     .replace(/[^a-z\d]+/gi, " ")
     .trim()
-    .toLowerCase()
     .replace(/\s+/g, " ");
 }
 
