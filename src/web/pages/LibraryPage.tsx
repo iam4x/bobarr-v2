@@ -1572,6 +1572,7 @@ export function TvSeriesManagement({
 export function MovieManagement({
   item,
   actors,
+  actorsLoading = false,
   trailer,
   downloadFiles = [],
   policy,
@@ -1588,6 +1589,7 @@ export function MovieManagement({
 }: {
   item: LibraryItem;
   actors?: CatalogActor[];
+  actorsLoading?: boolean;
   trailer?: CatalogTrailer | null;
   downloadFiles?: LibraryDownloadFile[];
   policy: MonitorPolicy;
@@ -1697,6 +1699,7 @@ export function MovieManagement({
 
       <MovieCast
         actors={actors}
+        loading={actorsLoading}
         onSelect={onActorSelect ?? (() => undefined)}
       />
 
@@ -2248,6 +2251,9 @@ function ManageLibraryDialog({
         <MovieManagement
           item={item}
           actors={movieDetailsQuery.data?.actors}
+          actorsLoading={
+            isPositiveSafeInteger(item.tmdbId) && movieDetailsQuery.isLoading
+          }
           trailer={movieDetailsQuery.data?.trailer}
           downloadFiles={downloadFiles}
           policy={policy}

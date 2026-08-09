@@ -170,49 +170,74 @@ export function actorDiscoverPath(
   return `/discover?${parameters.toString()}`;
 }
 
+const MOVIE_CAST_SKELETON_COUNT = 6;
+
 export function MovieCast({
   actors,
+  loading = false,
   onSelect,
 }: {
   actors: readonly CatalogActor[] | undefined;
+  loading?: boolean;
   onSelect: (actor: CatalogActor) => void;
 }) {
-  const visibleActors = actors?.slice(0, 6) ?? [];
-  if (visibleActors.length === 0) return null;
+  const visibleActors = actors?.slice(0, MOVIE_CAST_SKELETON_COUNT) ?? [];
+  if (!loading && visibleActors.length === 0) return null;
 
   return (
-    <section className="movie-cast" aria-label="Top cast">
+    <section
+      className="movie-cast"
+      aria-label="Top cast"
+      aria-busy={loading || undefined}
+    >
       <div className="movie-cast__heading">
         <span className="eyebrow">Top cast</span>
         <h3>Actors</h3>
       </div>
       <div className="movie-cast__grid">
-        {visibleActors.map((actor) => {
-          const profile = imageUrl(actor.profilePath, "w342");
-          return (
-            <button
-              type="button"
-              className="actor-card"
-              key={actor.tmdbId}
-              aria-label={`Discover movies with ${actor.name}`}
-              onClick={() => onSelect(actor)}
-            >
-              <span className="actor-card__portrait">
-                {profile ? (
-                  <img src={profile} alt="" loading="lazy" />
-                ) : (
-                  <span className="actor-card__placeholder" aria-hidden="true">
-                    {initials(actor.name)}
+        {loading
+          ? Array.from({ length: MOVIE_CAST_SKELETON_COUNT }, (_, index) => (
+              <div
+                className="actor-card actor-card--skeleton"
+                key={`cast-skeleton-${index}`}
+                aria-hidden="true"
+              >
+                <span className="skeleton actor-card__portrait" />
+                <span className="actor-card__copy">
+                  <span className="skeleton skeleton--line" />
+                  <span className="skeleton skeleton--line-short" />
+                </span>
+              </div>
+            ))
+          : visibleActors.map((actor) => {
+              const profile = imageUrl(actor.profilePath, "w342");
+              return (
+                <button
+                  type="button"
+                  className="actor-card"
+                  key={actor.tmdbId}
+                  aria-label={`Discover movies with ${actor.name}`}
+                  onClick={() => onSelect(actor)}
+                >
+                  <span className="actor-card__portrait">
+                    {profile ? (
+                      <img src={profile} alt="" loading="lazy" />
+                    ) : (
+                      <span
+                        className="actor-card__placeholder"
+                        aria-hidden="true"
+                      >
+                        {initials(actor.name)}
+                      </span>
+                    )}
                   </span>
-                )}
-              </span>
-              <span className="actor-card__copy">
-                <strong>{actor.name}</strong>
-                {actor.character ? <small>{actor.character}</small> : null}
-              </span>
-            </button>
-          );
-        })}
+                  <span className="actor-card__copy">
+                    <strong>{actor.name}</strong>
+                    {actor.character ? <small>{actor.character}</small> : null}
+                  </span>
+                </button>
+              );
+            })}
       </div>
     </section>
   );
@@ -508,6 +533,10 @@ export function MediaDetailDialog({
           {item.kind === "movie" ? (
             <MovieCast
               actors={item.actors}
+              loading={
+                detailQuery.isFetching &&
+                !Array.isArray(detailQuery.data?.actors)
+              }
               onSelect={(actor) => {
                 onClose();
                 navigate(actorDiscoverPath(actor));

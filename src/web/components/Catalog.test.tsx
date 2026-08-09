@@ -61,6 +61,17 @@ describe("movie cast", () => {
       "/discover?actorId=6384&actorName=Keanu+Reeves",
     );
   });
+
+  test("reserves six skeleton actor cards while cast is loading", () => {
+    const markup = renderToStaticMarkup(
+      <MovieCast loading actors={undefined} onSelect={() => undefined} />,
+    );
+
+    expect(markup).toContain('aria-label="Top cast"');
+    expect(markup).toContain('aria-busy="true"');
+    expect(markup.match(/actor-card--skeleton/g)?.length).toBe(6);
+    expect(markup).not.toContain("Discover movies with");
+  });
 });
 
 describe("season year labels", () => {

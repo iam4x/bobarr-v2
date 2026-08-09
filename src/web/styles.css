@@ -1163,6 +1163,28 @@ textarea:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+.actor-card--skeleton {
+  pointer-events: none;
+  cursor: default;
+}
+.actor-card--skeleton:hover {
+  transform: none;
+  border-color: var(--border);
+  background: var(--bg-raised);
+}
+.actor-card--skeleton .actor-card__copy .skeleton--line,
+.actor-card--skeleton .actor-card__copy .skeleton--line-short {
+  margin-top: 0;
+}
+.actor-card--skeleton .actor-card__copy .skeleton--line {
+  width: 78%;
+  height: 12px;
+}
+.actor-card--skeleton .actor-card__copy .skeleton--line-short {
+  width: 55%;
+  height: 10px;
+  margin-top: 6px;
+}
 .actor-card__portrait {
   width: 64px;
   aspect-ratio: 3 / 4;
