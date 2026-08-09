@@ -9,13 +9,17 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  EyeOff,
   RotateCcw,
+  Search,
   SlidersHorizontal,
+  Sparkles,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 
+import { DiscoverForYouStrip, DiscoverSearchJump } from "./MovieLibraryExtras";
 import { api } from "../api/client";
 import { catalogPage } from "../api/normalize";
 import { MediaDetailDialog, MediaGrid } from "../components/Catalog";
@@ -47,6 +51,7 @@ export interface DiscoverFilters {
   runtimeMax: string;
   ratingMin: string;
   voteCountMin: string;
+  hideOwned: boolean;
 }
 
 interface FilterLabels {
@@ -159,6 +164,7 @@ export function createDefaultDiscoverFilters(): DiscoverFilters {
     runtimeMax: "",
     ratingMin: "",
     voteCountMin: "",
+    hideOwned: true,
   };
 }
 
@@ -186,6 +192,7 @@ export function discoverQueryFor(
     runtimeMax: optionalNumber(filters.runtimeMax),
     ratingMin: optionalNumber(filters.ratingMin),
     voteCountMin: minimumVotes,
+    hideOwned: filters.hideOwned || undefined,
   };
 }
 
@@ -316,6 +323,9 @@ export function appliedDiscoverFilters(
       label: `${effectiveVotes.toLocaleString("en-US")}+ votes`,
     });
   }
+  if (!filters.hideOwned) {
+    applied.push({ key: "hideOwned", label: "Showing owned titles" });
+  }
   return applied;
 }
 
@@ -346,6 +356,9 @@ export function removeDiscoverFilter(
       voteCountMin: filters.sort === HIGHEST_RATED_SORT ? "0" : "",
     };
   }
+  if (key === "hideOwned") {
+    return { ...filters, hideOwned: true };
+  }
   if (
     key === "originCountry" ||
     key === "originalLanguage" ||
@@ -357,21 +370,138 @@ export function removeDiscoverFilter(
   return filters;
 }
 
+export function discoverFiltersFromSearchParams(
+  searchParams: URLSearchParams,
+): Partial<DiscoverFilters> & { kind?: DiscoverKind; page?: number } {
+  const kind = searchParams.get("kind");
+  const page = Number(searchParams.get("page"));
+  const sort = searchParams.get("sort") as CatalogDiscoverSort | null;
+  const genres = searchParams.get("genres");
+  const genreIds = genres
+    ? genres
+        .split(",")
+        .map((value) => Number(value))
+        .filter((value) => Number.isSafeInteger(value) && value > 0)
+    : undefined;
+  const hideOwned = searchParams.get("hideOwned");
+  const actor = discoverActorFromSearchParams(searchParams);
+  return {
+    ...(kind === "movie" || kind === "series" ? { kind } : {}),
+    ...(Number.isSafeInteger(page) && page > 0 ? { page } : {}),
+    ...(sort ? { sort } : {}),
+    ...(genreIds && genreIds.length > 0 ? { genreIds } : {}),
+    ...(actor ? { actorId: actor.tmdbId, actorName: actor.name } : {}),
+    ...(searchParams.get("originCountry")
+      ? { originCountry: searchParams.get("originCountry")! }
+      : {}),
+    ...(searchParams.get("originalLanguage")
+      ? { originalLanguage: searchParams.get("originalLanguage")! }
+      : {}),
+    ...(searchParams.get("year") ? { year: searchParams.get("year")! } : {}),
+    ...(searchParams.get("dateFrom")
+      ? { dateFrom: searchParams.get("dateFrom")! }
+      : {}),
+    ...(searchParams.get("dateTo")
+      ? { dateTo: searchParams.get("dateTo")! }
+      : {}),
+    ...(searchParams.get("runtimeMin")
+      ? { runtimeMin: searchParams.get("runtimeMin")! }
+      : {}),
+    ...(searchParams.get("runtimeMax")
+      ? { runtimeMax: searchParams.get("runtimeMax")! }
+      : {}),
+    ...(searchParams.get("ratingMin")
+      ? { ratingMin: searchParams.get("ratingMin")! }
+      : {}),
+    ...(searchParams.get("voteCountMin")
+      ? { voteCountMin: searchParams.get("voteCountMin")! }
+      : {}),
+    ...discoverHideOwnedFromParam(hideOwned),
+  };
+}
+
+function discoverHideOwnedFromParam(
+  hideOwned: string | null,
+): Pick<DiscoverFilters, "hideOwned"> | object {
+  if (hideOwned === "0" || hideOwned === "false") return { hideOwned: false };
+  if (hideOwned === "1" || hideOwned === "true") return { hideOwned: true };
+  return {};
+}
+
+export function writeDiscoverSearchParams(
+  previous: URLSearchParams,
+  kind: DiscoverKind,
+  filters: DiscoverFilters,
+  page: number,
+): URLSearchParams {
+  const next = new URLSearchParams();
+  const defaults = createDefaultDiscoverFilters();
+  if (kind !== "movie") next.set("kind", kind);
+  if (page > 1) next.set("page", String(page));
+  if (filters.sort !== defaults.sort) next.set("sort", filters.sort);
+  if (filters.genreIds.length) {
+    next.set(
+      "genres",
+      [...new Set(filters.genreIds)]
+        .sort((left, right) => left - right)
+        .join(","),
+    );
+  }
+  if (filters.actorId !== null) {
+    next.set("actorId", String(filters.actorId));
+    if (filters.actorName) next.set("actorName", filters.actorName);
+  }
+  if (filters.originCountry) next.set("originCountry", filters.originCountry);
+  if (filters.originalLanguage)
+    next.set("originalLanguage", filters.originalLanguage);
+  if (filters.year) next.set("year", filters.year);
+  if (filters.dateFrom) next.set("dateFrom", filters.dateFrom);
+  if (filters.dateTo) next.set("dateTo", filters.dateTo);
+  if (filters.runtimeMin) next.set("runtimeMin", filters.runtimeMin);
+  if (filters.runtimeMax) next.set("runtimeMax", filters.runtimeMax);
+  if (filters.ratingMin) next.set("ratingMin", filters.ratingMin);
+  if (filters.voteCountMin) next.set("voteCountMin", filters.voteCountMin);
+  if (!filters.hideOwned) next.set("hideOwned", "0");
+  // Preserve unrelated params such as future deep links.
+  for (const [key, value] of previous.entries()) {
+    if (!next.has(key) && key.startsWith("utm_")) next.set(key, value);
+  }
+  return next;
+}
+
 export function DiscoverPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const routeState = discoverFiltersFromSearchParams(searchParams);
   const routeActor = discoverActorFromSearchParams(searchParams);
-  const [kind, setKind] = useState<DiscoverKind>("movie");
-  const [page, setPage] = useState(1);
+  const [kind, setKind] = useState<DiscoverKind>(routeState.kind ?? "movie");
+  const [page, setPage] = useState(routeState.page ?? 1);
   const [selected, setSelected] = useState<CatalogItem | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [catalogSearch, setCatalogSearch] = useState("");
   const [filters, setFilters] = useState<DiscoverFilters>(() => ({
     ...createDefaultDiscoverFilters(),
-    actorId: routeActor?.tmdbId ?? null,
-    actorName: routeActor?.name ?? "",
+    ...routeState,
+    actorId: routeActor?.tmdbId ?? routeState.actorId ?? null,
+    actorName: routeActor?.name ?? routeState.actorName ?? "",
   }));
   const [draft, setDraft] = useState<DiscoverFilters>(filters);
   const filterAnchorRef = useRef<HTMLDivElement>(null);
   const filterMenuRef = useRef<HTMLElement>(null);
+  const showForYou =
+    page === 1 &&
+    filters.sort === "popularity.desc" &&
+    filters.genreIds.length === 0 &&
+    filters.actorId === null &&
+    !filters.year &&
+    !filters.dateFrom &&
+    !filters.dateTo &&
+    !filters.originCountry &&
+    !filters.originalLanguage &&
+    !filters.runtimeMin &&
+    !filters.runtimeMax &&
+    !filters.ratingMin &&
+    !filters.voteCountMin;
 
   const genresQuery = useQuery({
     queryKey: ["catalog", "genres", kind],
@@ -437,6 +567,33 @@ export function DiscoverPage() {
     if (routeActor) setKind("movie");
     setPage(1);
   }, [routeActor?.name, routeActor?.tmdbId]);
+
+  useEffect(() => {
+    const genres = searchParams.get("genres");
+    if (!genres || routeActor) return;
+    const genreIds = genres
+      .split(",")
+      .map((value) => Number(value))
+      .filter((value) => Number.isSafeInteger(value) && value > 0);
+    if (genreIds.length === 0) return;
+    setFilters((current) =>
+      current.genreIds.join(",") === genreIds.join(",")
+        ? current
+        : { ...current, genreIds },
+    );
+    setDraft((current) =>
+      current.genreIds.join(",") === genreIds.join(",")
+        ? current
+        : { ...current, genreIds },
+    );
+  }, [routeActor, searchParams]);
+
+  useEffect(() => {
+    setSearchParams(
+      (previous) => writeDiscoverSearchParams(previous, kind, filters, page),
+      { replace: true },
+    );
+  }, [filters, kind, page, setSearchParams]);
 
   useEffect(() => {
     if (!filtersOpen) return;
@@ -543,9 +700,38 @@ export function DiscoverPage() {
     <Page
       eyebrow="Explore"
       title="Discover something remarkable"
-      description="Popular, acclaimed, and newly released titles from around the world."
+      description="Search, get suggestions, or browse popular and acclaimed titles in one place."
       wide
     >
+      <div className="discover-entry">
+        <DiscoverSearchJump
+          value={catalogSearch}
+          onChange={setCatalogSearch}
+          onSubmit={() => {
+            const query = catalogSearch.trim();
+            if (query.length < 2) return;
+            navigate(
+              `/search?q=${encodeURIComponent(query)}${
+                kind === "series" ? "&kind=series" : ""
+              }`,
+            );
+          }}
+        />
+        <div className="discover-entry__links">
+          <Link className="button button--secondary button--sm" to="/search">
+            <Search size={15} /> Advanced search
+          </Link>
+          <Link
+            className="button button--secondary button--sm"
+            to="/suggestions"
+          >
+            <Sparkles size={15} /> Suggestions
+          </Link>
+        </div>
+      </div>
+
+      {showForYou ? <DiscoverForYouStrip onSelect={setSelected} /> : null}
+
       <div className="discover-toolbar">
         <SegmentedControl
           label="Media type"
@@ -556,6 +742,21 @@ export function DiscoverPage() {
           ]}
           onChange={changeKind}
         />
+        <Button
+          type="button"
+          variant={filters.hideOwned ? "secondary" : "ghost"}
+          size="sm"
+          aria-pressed={filters.hideOwned}
+          onClick={() => {
+            const next = { ...filters, hideOwned: !filters.hideOwned };
+            setFilters(next);
+            setDraft(next);
+            setPage(1);
+          }}
+        >
+          <EyeOff size={16} aria-hidden="true" />
+          {filters.hideOwned ? "Hide owned" : "Show owned"}
+        </Button>
         <div className="discover-filter-anchor" ref={filterAnchorRef}>
           <Button
             type="button"

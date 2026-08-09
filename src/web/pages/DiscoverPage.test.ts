@@ -71,6 +71,15 @@ describe("Discover filters", () => {
       discoverQueryFor("movie", { ...filters, genreIds: [878, 18, 878] }, 1)
         .genres,
     ).toBe("18,878");
+    expect(
+      discoverQueryFor("movie", createDefaultDiscoverFilters(), 1).hideOwned,
+    ).toBe(true);
+    expect(
+      appliedDiscoverFilters(
+        { ...createDefaultDiscoverFilters(), hideOwned: false },
+        labels,
+      ),
+    ).toContainEqual({ key: "hideOwned", label: "Showing owned titles" });
   });
 
   test("builds and removes a deep-linked actor filter", () => {

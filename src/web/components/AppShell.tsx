@@ -33,8 +33,8 @@ interface NavigationItem {
 }
 
 const primaryNavigation: NavigationItem[] = [
-  { label: "Search", to: "/search", icon: Search },
   { label: "Discover", to: "/discover", icon: Compass },
+  { label: "Search", to: "/search", icon: Search },
   { label: "Suggestions", to: "/suggestions", icon: Sparkles },
 ];
 

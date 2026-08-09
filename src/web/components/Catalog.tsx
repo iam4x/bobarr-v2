@@ -15,12 +15,13 @@ import {
   BookmarkPlus,
   Calendar,
   Check,
+  Library,
   Play,
   Search,
   Star,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 
 import { ReleaseSearchPanel } from "./ReleaseSearchPanel";
 import { Badge, Button, Dialog, InlineSpinner, SelectField } from "./ui";
@@ -298,6 +299,7 @@ export function MediaDetailDialog({
   const queryClient = useQueryClient();
   const [showReleases, setShowReleases] = useState(false);
   const [message, setMessage] = useState<string>();
+  const [addedLibraryId, setAddedLibraryId] = useState<string>();
   const [selectedSeason, setSelectedSeason] = useState<number>();
   const [seasonSelection, setSeasonSelection] = useState<number[]>([]);
   const [seasonSelectionReady, setSeasonSelectionReady] = useState(false);
@@ -341,10 +343,11 @@ export function MediaDetailDialog({
                 includeFutureSeasons,
               },
       }),
-    onSuccess: (_libraryItem, { acquisitionMode }) => {
+    onSuccess: (libraryItem, { acquisitionMode }) => {
       if (seasonSelection.length > 0) {
         setSelectedSeason(Math.max(...seasonSelection));
       }
+      setAddedLibraryId(libraryItem.id);
       if (acquisitionMode === "manual") {
         setShowReleases(true);
         setMessage(
@@ -367,6 +370,7 @@ export function MediaDetailDialog({
     setIncludeFutureSeasons(false);
     setShowReleases(false);
     setMessage(undefined);
+    setAddedLibraryId(undefined);
   }, [selected?.kind, selected?.tmdbId]);
 
   useEffect(() => {
@@ -399,6 +403,11 @@ export function MediaDetailDialog({
   }, [detailQuery.data, selectedSeason]);
 
   const item = detailQuery.data ?? selected;
+  const libraryId = item?.libraryId ?? addedLibraryId;
+  const libraryPath =
+    item?.kind === "series"
+      ? `/library/shows${libraryId ? `?item=${libraryId}` : ""}`
+      : `/library/movies${libraryId ? `?item=${libraryId}` : ""}`;
   const seasonQueries = useQueries({
     queries: Array.from(
       { length: item?.kind === "series" ? (item.numberOfSeasons ?? 0) : 0 },
@@ -547,7 +556,30 @@ export function MediaDetailDialog({
           {message ? (
             <div className="notice notice--success" role="status">
               <Check size={17} />
-              {message}
+              <div className="media-detail__added">
+                <p>{message}</p>
+                {libraryId ? (
+                  <div className="media-detail__added-actions">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        setMessage(undefined);
+                      }}
+                    >
+                      Keep browsing
+                    </Button>
+                    <Link
+                      className="button button--primary button--sm"
+                      to={libraryPath}
+                      onClick={onClose}
+                    >
+                      <Library size={15} /> Open in library
+                    </Link>
+                  </div>
+                ) : null}
+              </div>
             </div>
           ) : null}
           {monitorMutation.isError ? (
@@ -648,33 +680,37 @@ export function MediaDetailDialog({
           ) : null}
 
           <div className="media-detail__actions">
-            <Button
-              type="button"
-              busy={
-                monitorMutation.isPending &&
-                monitorMutation.variables?.acquisitionMode === "automatic"
-              }
-              disabled={
-                monitorMutation.isPending ||
-                Boolean(item.monitored) ||
-                (item.kind === "series" &&
-                  (item.numberOfSeasons ?? 0) > 0 &&
-                  seasonSelection.length === 0)
-              }
-              onClick={() =>
-                monitorMutation.mutate({
-                  item,
-                  acquisitionMode: "automatic",
-                })
-              }
-            >
-              {item.monitored ? (
-                <Check size={17} />
-              ) : (
-                <BookmarkPlus size={17} />
-              )}
-              {item.monitored ? "In library" : "Add to library"}
-            </Button>
+            {item.monitored || libraryId ? (
+              <Link
+                className="button button--primary button--md"
+                to={libraryPath}
+                onClick={onClose}
+              >
+                <Library size={17} /> Open in library
+              </Link>
+            ) : (
+              <Button
+                type="button"
+                busy={
+                  monitorMutation.isPending &&
+                  monitorMutation.variables?.acquisitionMode === "automatic"
+                }
+                disabled={
+                  monitorMutation.isPending ||
+                  (item.kind === "series" &&
+                    (item.numberOfSeasons ?? 0) > 0 &&
+                    seasonSelection.length === 0)
+                }
+                onClick={() =>
+                  monitorMutation.mutate({
+                    item,
+                    acquisitionMode: "automatic",
+                  })
+                }
+              >
+                <BookmarkPlus size={17} /> Add to library
+              </Button>
+            )}
             {!hasManualSeasonPicker ? manualSearchButton : null}
           </div>
 
