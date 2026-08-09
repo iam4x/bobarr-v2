@@ -23,12 +23,12 @@ import {
   CircleAlert,
   CircleCheck,
   Clock3,
+  Compass,
   Download,
   EyeOff,
   Film,
   FolderOpen,
   ListVideo,
-  Play,
   RefreshCw,
   ScanSearch,
   Search,
@@ -37,9 +37,29 @@ import {
   Trash2,
   Tv,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router";
 
+import {
+  createDefaultLibraryBrowseFilters,
+  LIBRARY_QUALITY_OPTIONS,
+  LIBRARY_RATING_OPTIONS,
+  LIBRARY_SORT_OPTIONS,
+  libraryAvailabilityParam,
+  libraryBrowseFromSearchParams,
+  libraryBrowseIsDefault,
+  libraryNeedsAttentionCount,
+  optionalBrowseNumber,
+  writeLibraryBrowseSearchParams,
+  type LibraryBrowseFilters,
+  type LibraryFilter,
+  type LibraryViewMode,
+} from "./libraryBrowsing";
+import {
+  LibraryAttentionStrip,
+  MovieLibraryEmptyGuidance,
+  MovieLibraryShelves,
+} from "./MovieLibraryExtras";
 import { api } from "../api/client";
 import { collectionItems } from "../api/normalize";
 import {
@@ -77,7 +97,6 @@ import {
   toPercent,
 } from "../lib/format";
 
-type LibraryFilter = "all" | "available" | "missing" | "active" | "failed";
 type ManualReleaseAction = "search" | "replace";
 const LIBRARY_PAGE_SIZE = 50;
 
@@ -91,6 +110,8 @@ export function libraryPlaceholderData<T>(
 
 export function LibrarySummary({
   summary,
+  filter,
+  onFilterChange,
 }: {
   summary: {
     total: number;
@@ -99,24 +120,53 @@ export function LibrarySummary({
     missing: number;
     failed: number;
   };
+  filter?: LibraryFilter;
+  onFilterChange?: (filter: LibraryFilter) => void;
 }) {
+  const renderValue = (key: LibraryFilter, value: number) => {
+    if (!onFilterChange) return value;
+    return (
+      <button
+        type="button"
+        className={filter === key ? "is-active" : undefined}
+        aria-pressed={filter === key}
+        onClick={() => onFilterChange(filter === key ? "all" : key)}
+      >
+        {value}
+      </button>
+    );
+  };
+
   return (
     <dl className="library-summary" aria-label="Library summary">
       <div>
         <dt>Downloaded</dt>
-        <dd>{summary.downloaded}</dd>
+        <dd>{renderValue("available", summary.downloaded)}</dd>
       </div>
       <div>
         <dt>Active</dt>
-        <dd>{summary.active}</dd>
+        <dd>{renderValue("active", summary.active)}</dd>
       </div>
       <div>
         <dt>Missing</dt>
-        <dd>{summary.missing}</dd>
+        <dd>{renderValue("missing", summary.missing)}</dd>
       </div>
       <div>
         <dt>Total</dt>
-        <dd>{summary.total}</dd>
+        <dd>
+          {onFilterChange ? (
+            <button
+              type="button"
+              className={filter === "all" ? "is-active" : undefined}
+              aria-pressed={filter === "all"}
+              onClick={() => onFilterChange("all")}
+            >
+              {summary.total}
+            </button>
+          ) : (
+            summary.total
+          )}
+        </dd>
       </div>
     </dl>
   );
@@ -130,15 +180,6 @@ function acquisitionTone(
   if (["searching", "queued", "downloading", "organizing"].includes(state))
     return "info";
   return "neutral";
-}
-
-function isFilterMatch(item: LibraryItem, filter: LibraryFilter): boolean {
-  if (filter === "all") return true;
-  if (filter === "active")
-    return ["searching", "queued", "downloading", "organizing"].includes(
-      item.acquisitionState,
-    );
-  return item.acquisitionState === filter;
 }
 
 function isPositiveSafeInteger(value: unknown): value is number {
@@ -481,9 +522,13 @@ export function libraryManualReleaseAction(
 export function LibraryCard({
   item,
   onManage,
+  onGenreSelect,
+  viewMode = "detailed",
 }: {
   item: LibraryItem;
   onManage: (item: LibraryItem) => void;
+  onGenreSelect?: (genreId: number) => void;
+  viewMode?: LibraryViewMode;
 }) {
   const poster = imageUrl(item.posterPath, "w342");
   const rating =
@@ -519,11 +564,12 @@ export function LibraryCard({
   ].filter((detail): detail is string => Boolean(detail));
   const visibleGenres = item.genres?.slice(0, 2) ?? [];
   const remainingGenres = Math.max(0, (item.genres?.length ?? 0) - 2);
+  const showOpsDetails = viewMode === "detailed";
   const cardTitle = locationPath
     ? `${item.title} · ${locationLabel}: ${locationPath}`
     : `Open ${item.title} details`;
   return (
-    <article className="library-card">
+    <article className={`library-card library-card--${viewMode}`}>
       <div className="library-card__poster">
         {poster ? (
           <img src={poster} alt="" loading="lazy" />
@@ -537,6 +583,7 @@ export function LibraryCard({
             <h3>{item.title}</h3>
             <p>
               {mediaYear(item)} · {item.kind === "movie" ? "Movie" : "Series"}
+              {storage?.quality ? ` · ${storage.quality}` : ""}
             </p>
           </div>
           {rating && rating.value > 0 ? (
@@ -562,9 +609,23 @@ export function LibraryCard({
           </Badge>
           {visibleGenres.length > 0 ? (
             <span className="library-card__genres" aria-label="Genres">
-              {visibleGenres.map((genre) => (
-                <span key={genre.id}>{genre.name}</span>
-              ))}
+              {visibleGenres.map((genre) =>
+                onGenreSelect ? (
+                  <button
+                    type="button"
+                    key={genre.id}
+                    className="library-card__genre"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onGenreSelect(genre.id);
+                    }}
+                  >
+                    {genre.name}
+                  </button>
+                ) : (
+                  <span key={genre.id}>{genre.name}</span>
+                ),
+              )}
               {remainingGenres > 0 ? <span>+{remainingGenres}</span> : null}
             </span>
           ) : null}
@@ -583,20 +644,22 @@ export function LibraryCard({
               value={downloadPercent}
               label={`${item.title} download progress`}
             />
-            <div className="library-card__download-stats">
-              {activeDownload.totalBytes > 0 ? (
-                <span>
-                  {formatBytes(activeDownload.downloadedBytes)} of{" "}
-                  {formatBytes(activeDownload.totalBytes)}
-                </span>
-              ) : null}
-              {activeDownload.downloadRate > 0 ? (
-                <span>{formatRate(activeDownload.downloadRate)}</span>
-              ) : null}
-              {activeDownload.etaSeconds !== null ? (
-                <span>ETA {formatEta(activeDownload.etaSeconds)}</span>
-              ) : null}
-            </div>
+            {showOpsDetails ? (
+              <div className="library-card__download-stats">
+                {activeDownload.totalBytes > 0 ? (
+                  <span>
+                    {formatBytes(activeDownload.downloadedBytes)} of{" "}
+                    {formatBytes(activeDownload.totalBytes)}
+                  </span>
+                ) : null}
+                {activeDownload.downloadRate > 0 ? (
+                  <span>{formatRate(activeDownload.downloadRate)}</span>
+                ) : null}
+                {activeDownload.etaSeconds !== null ? (
+                  <span>ETA {formatEta(activeDownload.etaSeconds)}</span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -622,7 +685,7 @@ export function LibraryCard({
           </div>
         ) : null}
 
-        {locationPath ? (
+        {showOpsDetails && locationPath ? (
           <div className="library-card__location" title={locationPath}>
             <FolderOpen size={14} aria-hidden="true" />
             <span>
@@ -631,7 +694,7 @@ export function LibraryCard({
             </span>
           </div>
         ) : null}
-        {storageDetails.length > 0 ? (
+        {showOpsDetails && storageDetails.length > 0 ? (
           <p className="library-card__storage-meta">
             {storageDetails.join(" · ")}
           </p>
@@ -1585,6 +1648,7 @@ export function MovieManagement({
   onRetry,
   onManualSearch,
   onActorSelect,
+  onBrowseSimilar,
   onRemove,
 }: {
   item: LibraryItem;
@@ -1602,6 +1666,7 @@ export function MovieManagement({
   onRetry: () => void;
   onManualSearch: () => void;
   onActorSelect?: (actor: CatalogActor) => void;
+  onBrowseSimilar?: () => void;
   onRemove: () => void;
 }) {
   const [settingsOpen, setSettingsOpen] = useState(!libraryItemHasFile(item));
@@ -1680,11 +1745,23 @@ export function MovieManagement({
             </Badge>
           </div>
           <p>{overviewCopy}</p>
-          <WatchTrailerButton
-            trailer={trailer}
-            title={item.title}
-            className="movie-overview__trailer"
-          />
+          <div className="movie-overview__actions">
+            <WatchTrailerButton
+              trailer={trailer}
+              title={item.title}
+              className="movie-overview__trailer"
+            />
+            {onBrowseSimilar ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={onBrowseSimilar}
+              >
+                <Compass size={15} /> More like this
+              </Button>
+            ) : null}
+          </div>
           {activeDownload ? (
             <div className="movie-overview__progress">
               <ProgressBar
@@ -2272,6 +2349,15 @@ function ManageLibraryDialog({
             onClose();
             navigate(actorDiscoverPath(actor));
           }}
+          onBrowseSimilar={() => {
+            const genreId = item.genres?.[0]?.id;
+            onClose();
+            if (genreId) {
+              navigate(`/discover?kind=movie&genres=${genreId}&hideOwned=1`);
+              return;
+            }
+            navigate("/suggestions");
+          }}
           onRemove={beginRemoval}
         />
       ) : null}
@@ -2281,19 +2367,48 @@ function ManageLibraryDialog({
 
 export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
   const queryClient = useQueryClient();
-  const [filter, setFilter] = useState<LibraryFilter>("all");
-  const [search, setSearch] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const routeBrowse = libraryBrowseFromSearchParams(searchParams);
+  const [browse, setBrowse] = useState<LibraryBrowseFilters>(() => ({
+    ...createDefaultLibraryBrowseFilters(),
+    ...routeBrowse,
+    viewMode:
+      kind === "movie"
+        ? (routeBrowse.viewMode ?? "poster")
+        : (routeBrowse.viewMode ?? "detailed"),
+  }));
+  const [search, setSearch] = useState(routeBrowse.search ?? "");
   const [selected, setSelected] = useState<LibraryItem | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   const normalizedSearch = search.trim();
+  const availability = libraryAvailabilityParam(browse.filter);
+  const ratingMin = optionalBrowseNumber(browse.ratingMin);
+  const year = optionalBrowseNumber(browse.year);
   const libraryQuery = useInfiniteQuery({
-    queryKey: ["library", kind, normalizedSearch],
+    queryKey: [
+      "library",
+      kind,
+      normalizedSearch,
+      browse.filter,
+      browse.sort,
+      browse.genreId,
+      browse.year,
+      browse.ratingMin,
+      browse.quality,
+    ],
     queryFn: ({ pageParam, signal }) =>
       api.get("listLibrary", {
         query: {
           kind,
           limit: LIBRARY_PAGE_SIZE,
           offset: pageParam,
+          sort: browse.sort,
           ...(normalizedSearch === "" ? {} : { search: normalizedSearch }),
+          ...(availability === undefined ? {} : { availability }),
+          ...(browse.genreId === null ? {} : { genreId: browse.genreId }),
+          ...(year === undefined ? {} : { year }),
+          ...(ratingMin === undefined ? {} : { ratingMin }),
+          ...(browse.quality === "" ? {} : { quality: browse.quality }),
         },
         signal,
       }),
@@ -2305,18 +2420,102 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
       return nextOffset < lastPage.page.total ? nextOffset : undefined;
     },
   });
+  const genresQuery = useQuery({
+    queryKey: ["catalog", "genres", kind],
+    queryFn: ({ signal }) =>
+      api.get("catalogGenres", { query: { kind }, signal }),
+    staleTime: 24 * 60 * 60_000,
+    enabled: kind === "movie",
+  });
   const scanMutation = useMutation({
     mutationFn: () => api.post("scanLibrary", { body: { kind } }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["jobs"] }),
   });
   const items = useMemo(
     () =>
-      (
-        libraryQuery.data?.pages.flatMap((page) => collectionItems(page)) ?? []
-      ).filter((item) => isFilterMatch(item, filter)),
-    [filter, libraryQuery.data],
+      libraryQuery.data?.pages.flatMap((page) => collectionItems(page)) ?? [],
+    [libraryQuery.data],
   );
+  const summary = libraryQuery.data?.pages[0]?.summary;
   const isMovies = kind === "movie";
+  const browsingDefault = libraryBrowseIsDefault(browse, search);
+  const focusItemId = routeBrowse.itemId;
+
+  useEffect(() => {
+    setSearchParams(
+      (previous) =>
+        writeLibraryBrowseSearchParams(
+          previous,
+          browse,
+          search,
+          previous.get("item"),
+        ),
+      { replace: true },
+    );
+  }, [browse, search, setSearchParams]);
+
+  const focusedItemQuery = useQuery({
+    queryKey: ["library", "item", focusItemId],
+    queryFn: async ({ signal }) => {
+      const item = await api.get("getLibraryItem", {
+        params: { id: focusItemId! },
+        signal,
+      });
+      return collectionItems({ items: [item] })[0]!;
+    },
+    enabled: Boolean(focusItemId) && selected?.id !== focusItemId,
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    if (!focusItemId || selected?.id === focusItemId) return;
+    const match =
+      items.find((item) => item.id === focusItemId) ?? focusedItemQuery.data;
+    if (match) setSelected(match);
+  }, [focusItemId, focusedItemQuery.data, items, selected?.id]);
+
+  function openLibraryItem(item: LibraryItem): void {
+    setSelected(item);
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.set("item", item.id);
+        return next;
+      },
+      { replace: true },
+    );
+  }
+
+  function closeLibraryItem(): void {
+    setSelected(null);
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.delete("item");
+        return next;
+      },
+      { replace: true },
+    );
+  }
+
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!node || !libraryQuery.hasNextPage) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void libraryQuery.fetchNextPage();
+        }
+      },
+      { rootMargin: "240px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [libraryQuery.hasNextPage, libraryQuery.fetchNextPage, items.length]);
+
+  function updateBrowse(patch: Partial<LibraryBrowseFilters>): void {
+    setBrowse((current) => ({ ...current, ...patch }));
+  }
 
   return (
     <Page
@@ -2324,7 +2523,7 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
       title={isMovies ? "Movies" : "Shows"}
       description={
         isMovies
-          ? "Tracked films, downloads, and organized files in one place."
+          ? "Browse, filter, and keep every film acquisition on track."
           : "Every monitored season and episode, without the spreadsheet."
       }
       actions={
@@ -2347,10 +2546,25 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
           <Tv size={17} /> Shows
         </Link>
       </div>
-      {libraryQuery.data?.pages[0] ? (
-        <LibrarySummary summary={libraryQuery.data.pages[0].summary} />
+      {summary ? (
+        <LibrarySummary
+          summary={summary}
+          filter={browse.filter}
+          onFilterChange={(filter) => updateBrowse({ filter })}
+        />
+      ) : null}
+      {summary && libraryNeedsAttentionCount(summary) > 0 ? (
+        <LibraryAttentionStrip
+          missing={summary.missing}
+          failed={summary.failed}
+          onShowMissing={() => updateBrowse({ filter: "missing" })}
+          onShowFailed={() => updateBrowse({ filter: "failed" })}
+        />
       ) : null}
       <ScanReviewPanel kind={kind} />
+      {isMovies && browsingDefault && (summary?.total ?? 0) > 0 ? (
+        <MovieLibraryShelves enabled onSelect={openLibraryItem} />
+      ) : null}
       <div className="library-toolbar">
         <div className="mini-search">
           <Search size={17} />
@@ -2363,7 +2577,7 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
         </div>
         <SegmentedControl
           label="Availability"
-          value={filter}
+          value={browse.filter}
           options={[
             { value: "all", label: "All" },
             { value: "available", label: "Available" },
@@ -2371,9 +2585,104 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
             { value: "active", label: "Active" },
             { value: "failed", label: "Failed" },
           ]}
-          onChange={setFilter}
+          onChange={(filter) => updateBrowse({ filter })}
+        />
+        <SegmentedControl
+          label="View"
+          value={browse.viewMode}
+          options={[
+            { value: "poster", label: "Poster" },
+            { value: "detailed", label: "Detailed" },
+          ]}
+          onChange={(viewMode) => updateBrowse({ viewMode })}
         />
       </div>
+      {isMovies ? (
+        <div className="library-browse-filters" aria-label="Browse filters">
+          <SelectField
+            label="Sort"
+            value={browse.sort}
+            onChange={(event) =>
+              updateBrowse({
+                sort: event.target.value as LibraryBrowseFilters["sort"],
+              })
+            }
+          >
+            {LIBRARY_SORT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField
+            label="Genre"
+            value={browse.genreId ?? ""}
+            onChange={(event) =>
+              updateBrowse({
+                genreId: event.target.value ? Number(event.target.value) : null,
+              })
+            }
+          >
+            <option value="">Any genre</option>
+            {(genresQuery.data?.items ?? []).map((genre) => (
+              <option key={genre.id} value={genre.id}>
+                {genre.name}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField
+            label="Year"
+            value={browse.year}
+            onChange={(event) => updateBrowse({ year: event.target.value })}
+          >
+            <option value="">Any year</option>
+            {Array.from({ length: 30 }, (_, index) => 2026 - index).map(
+              (value) => (
+                <option key={value} value={String(value)}>
+                  {value}
+                </option>
+              ),
+            )}
+          </SelectField>
+          <SelectField
+            label="Rating"
+            value={browse.ratingMin}
+            onChange={(event) =>
+              updateBrowse({ ratingMin: event.target.value })
+            }
+          >
+            {LIBRARY_RATING_OPTIONS.map((option) => (
+              <option key={option.value || "any"} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField
+            label="Quality"
+            value={browse.quality}
+            onChange={(event) => updateBrowse({ quality: event.target.value })}
+          >
+            {LIBRARY_QUALITY_OPTIONS.map((option) => (
+              <option key={option.value || "any"} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </SelectField>
+          {!browsingDefault ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setBrowse(createDefaultLibraryBrowseFilters());
+                setSearch("");
+              }}
+            >
+              Clear filters
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       {scanMutation.isSuccess ? (
         <div className="notice notice--success" role="status">
           <ScanSearch size={17} />
@@ -2392,22 +2701,36 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
           onRetry={() => void libraryQuery.refetch()}
         />
       ) : null}
-      {libraryQuery.data && items.length === 0 ? (
+      {libraryQuery.data &&
+      items.length === 0 &&
+      isMovies &&
+      browsingDefault ? (
+        <MovieLibraryEmptyGuidance
+          onScan={() => scanMutation.mutate()}
+          scanBusy={scanMutation.isPending}
+        />
+      ) : null}
+      {libraryQuery.data &&
+      items.length === 0 &&
+      !(isMovies && browsingDefault) ? (
         <EmptyState
           title={
-            search || filter !== "all"
+            !browsingDefault
               ? "No matching titles"
               : `No ${isMovies ? "movies" : "shows"} yet`
           }
           description={
-            search || filter !== "all"
+            !browsingDefault
               ? "Change your filters to see more of your library."
               : "Find a title and add it to start automatic monitoring."
           }
           action={
-            !search && filter === "all" ? (
-              <Link className="button button--primary button--md" to="/search">
-                <Play size={16} /> Find a title
+            browsingDefault ? (
+              <Link
+                className="button button--primary button--md"
+                to="/discover"
+              >
+                <Compass size={16} /> Find a title
               </Link>
             ) : undefined
           }
@@ -2415,35 +2738,42 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
       ) : null}
       {items.length ? (
         <>
-          <div className="library-grid">
+          <div
+            className={`library-grid library-grid--${browse.viewMode}`}
+            aria-label={
+              browse.viewMode === "poster" ? "Poster wall" : "Library"
+            }
+          >
             {items.map((item) => (
               <LibraryCard
                 key={item.id}
                 item={item}
-                onManage={(next) => {
-                  setSelected(next);
-                }}
+                viewMode={browse.viewMode}
+                onGenreSelect={
+                  isMovies ? (genreId) => updateBrowse({ genreId }) : undefined
+                }
+                onManage={openLibraryItem}
               />
             ))}
           </div>
-          {libraryQuery.hasNextPage ? (
-            <div className="load-more-row">
+          <div ref={loadMoreRef} className="load-more-row">
+            {libraryQuery.hasNextPage ? (
               <Button
                 type="button"
                 variant="secondary"
                 busy={libraryQuery.isFetchingNextPage}
                 onClick={() => void libraryQuery.fetchNextPage()}
               >
-                Load more
+                {libraryQuery.isFetchingNextPage ? "Loading…" : "Load more"}
               </Button>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </>
       ) : null}
       <ManageLibraryDialog
         key={selected?.id}
         item={selected}
-        onClose={() => setSelected(null)}
+        onClose={closeLibraryItem}
       />
     </Page>
   );
