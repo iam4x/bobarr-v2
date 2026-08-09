@@ -12,3 +12,13 @@ export const bunPasswordHasher: PasswordHasher = {
     }),
   verify: (password, hash) => Bun.password.verify(password, hash, "argon2id"),
 };
+
+/** Deterministic no-cost hasher for `environment: "test"` fixtures. */
+export const testPasswordHasher: PasswordHasher = {
+  async hash(password) {
+    return `test-hash:${password}`;
+  },
+  async verify(password, hash) {
+    return hash === `test-hash:${password}`;
+  },
+};

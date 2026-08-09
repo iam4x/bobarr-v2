@@ -1,9 +1,13 @@
 import type { FetchLike } from "./http";
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, jest, test } from "bun:test";
 
 import { IntegrationError } from "./http";
 import { createOmdbClient } from "./omdb";
+
+afterEach(() => {
+  jest.useRealTimers();
+});
 
 describe("OMDb adapter", () => {
   test("normalizes IMDb and Rotten Tomatoes ratings", async () => {
@@ -85,6 +89,7 @@ describe("OMDb adapter", () => {
   });
 
   test("bounds requests with a timeout and marks transport errors retryable", async () => {
+    jest.useFakeTimers();
     const fetcher: FetchLike = (_input, init) =>
       new Promise((_resolve, reject) => {
         const signal = init?.signal;
@@ -96,12 +101,14 @@ describe("OMDb adapter", () => {
     const client = createOmdbClient({
       apiKey: "key",
       fetch: fetcher,
-      timeoutMs: 5,
+      timeoutMs: 5_000,
     });
 
-    const error = await client
+    const pending = client
       .ratings("tt0133093")
       .catch((cause: unknown) => cause);
+    jest.advanceTimersByTime(5_000);
+    const error = await pending;
     expect(error).toBeInstanceOf(IntegrationError);
     expect(error).toMatchObject({
       integration: "omdb",

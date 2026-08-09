@@ -19,9 +19,15 @@ import {
 import { createEncryptionKey, type BackendConfig } from "../config";
 
 const runtimes: BackendRuntime[] = [];
+const nativeFetch = globalThis.fetch;
+let fetchStubbed = false;
 
 afterEach(async () => {
   await Promise.all(runtimes.splice(0).map((runtime) => runtime.close()));
+  if (fetchStubbed) {
+    globalThis.fetch = nativeFetch;
+    fetchStubbed = false;
+  }
 });
 
 describe("Bobarr backend API", () => {
@@ -524,6 +530,13 @@ describe("Bobarr backend API", () => {
 });
 
 async function createTestRuntime(): Promise<BackendRuntime> {
+  // Default settings include a Transmission URL. Without a stub, /api/v1/system
+  // spends hundreds of milliseconds on a real DNS/connect attempt.
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    throw new Error(`Unexpected network request in app.test: ${String(input)}`);
+  }) as unknown as typeof fetch;
+  fetchStubbed = true;
+
   const config: BackendConfig = {
     environment: "test",
     version: "test",

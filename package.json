@@ -11,7 +11,7 @@
     "start": "bun --cwd dist index.js",
     "build": "bun scripts/build.ts",
     "admin:reset": "bun scripts/reset-admin.ts",
-    "test": "bun test --path-ignore-patterns 'e2e/**'",
+    "test": "bun test",
     "test:e2e": "playwright test",
     "dev": "bun --hot src/index.ts",
     "lint": "oxlint --type-check",

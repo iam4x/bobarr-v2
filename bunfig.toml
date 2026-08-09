@@ -3,3 +3,7 @@ minimumReleaseAge = 172800
 
 [serve.static]
 plugins = ["bun-plugin-tailwind"]
+
+[test]
+# Playwright owns e2e/*.spec.ts; bun:test must not load those files.
+pathIgnorePatterns = ["e2e/**"]

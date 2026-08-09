@@ -18,7 +18,12 @@ import {
   ensureMonitoredSeasons,
   seasonUsesEpisodeAcquisition,
 } from "./product";
-import { AuthService, SecretVault } from "../auth";
+import {
+  AuthService,
+  SecretVault,
+  testPasswordHasher,
+  type PasswordHasher,
+} from "../auth";
 import { loadBackendConfig, type BackendConfig } from "../config";
 import {
   DEFAULT_GRACEFUL_SHUTDOWN_MS,
@@ -52,6 +57,7 @@ export interface InitializeBackendOptions {
   environment?: Record<string, string | undefined>;
   clock?: Clock;
   logger?: Logger;
+  passwordHasher?: PasswordHasher;
   prepareDownloadDirectory?: (path: string) => Promise<void>;
 }
 
@@ -133,6 +139,9 @@ export async function initializeBackend(
       repository: repositories.auth,
       config,
       clock,
+      passwordHasher:
+        options.passwordHasher ??
+        (config.environment === "test" ? testPasswordHasher : undefined),
       loginLockEnabled: () =>
         repositories.settings.ensureDefaults().settings.security
           .loginLockEnabled,
