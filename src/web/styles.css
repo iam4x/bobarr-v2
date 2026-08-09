@@ -2778,9 +2778,17 @@ textarea:focus-visible {
   gap: 8px;
 }
 .library-shelves {
+  min-width: 0;
+  max-width: 100%;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 22px;
   margin: 0 0 24px;
+}
+.library-shelf {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 .library-shelf__header h3 {
   margin: 0 0 4px;
@@ -2793,6 +2801,8 @@ textarea:focus-visible {
 }
 .library-shelf__rail,
 .discover-foryou__rail {
+  min-width: 0;
+  max-width: 100%;
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: 132px;
@@ -2800,9 +2810,11 @@ textarea:focus-visible {
   margin-top: 12px;
   padding-bottom: 4px;
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
   scroll-snap-type: x mandatory;
 }
 .library-shelf-card {
+  min-width: 0;
   display: grid;
   gap: 8px;
   padding: 0;
@@ -2853,18 +2865,6 @@ textarea:focus-visible {
   flex-wrap: wrap;
   justify-content: center;
   gap: 10px;
-}
-.library-grid--poster {
-  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
-}
-.library-card--poster {
-  grid-template-columns: 1fr;
-}
-.library-card--poster .library-card__poster {
-  aspect-ratio: 2 / 3;
-}
-.library-card--poster .library-card__body {
-  padding: 12px 12px 14px;
 }
 .library-card__genre {
   position: relative;
@@ -2926,6 +2926,8 @@ textarea:focus-visible {
   font-size: 15px;
 }
 .discover-foryou {
+  min-width: 0;
+  max-width: 100%;
   margin: 0 0 22px;
   padding: 16px 0 4px;
 }

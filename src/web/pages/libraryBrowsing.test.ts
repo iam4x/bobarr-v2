@@ -25,10 +25,9 @@ describe("library browsing helpers", () => {
       year: "1999",
       ratingMin: "8",
       quality: "1080p",
-      viewMode: "detailed" as const,
     };
     const params = writeLibraryBrowseSearchParams(
-      new URLSearchParams(),
+      new URLSearchParams("view=poster"),
       filters,
       "matrix",
       "item-1",
@@ -40,7 +39,6 @@ describe("library browsing helpers", () => {
       year: "1999",
       ratingMin: "8",
       quality: "1080p",
-      view: "detailed",
       q: "matrix",
       item: "item-1",
     });
@@ -51,7 +49,6 @@ describe("library browsing helpers", () => {
       year: "1999",
       ratingMin: "8",
       quality: "1080p",
-      viewMode: "detailed",
       search: "matrix",
       itemId: "item-1",
     });

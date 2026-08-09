@@ -53,7 +53,6 @@ import {
   writeLibraryBrowseSearchParams,
   type LibraryBrowseFilters,
   type LibraryFilter,
-  type LibraryViewMode,
 } from "./libraryBrowsing";
 import {
   LibraryAttentionStrip,
@@ -523,12 +522,10 @@ export function LibraryCard({
   item,
   onManage,
   onGenreSelect,
-  viewMode = "detailed",
 }: {
   item: LibraryItem;
   onManage: (item: LibraryItem) => void;
   onGenreSelect?: (genreId: number) => void;
-  viewMode?: LibraryViewMode;
 }) {
   const poster = imageUrl(item.posterPath, "w342");
   const rating =
@@ -564,12 +561,11 @@ export function LibraryCard({
   ].filter((detail): detail is string => Boolean(detail));
   const visibleGenres = item.genres?.slice(0, 2) ?? [];
   const remainingGenres = Math.max(0, (item.genres?.length ?? 0) - 2);
-  const showOpsDetails = viewMode === "detailed";
   const cardTitle = locationPath
     ? `${item.title} · ${locationLabel}: ${locationPath}`
     : `Open ${item.title} details`;
   return (
-    <article className={`library-card library-card--${viewMode}`}>
+    <article className="library-card">
       <div className="library-card__poster">
         {poster ? (
           <img src={poster} alt="" loading="lazy" />
@@ -583,7 +579,6 @@ export function LibraryCard({
             <h3>{item.title}</h3>
             <p>
               {mediaYear(item)} · {item.kind === "movie" ? "Movie" : "Series"}
-              {storage?.quality ? ` · ${storage.quality}` : ""}
             </p>
           </div>
           {rating && rating.value > 0 ? (
@@ -644,22 +639,20 @@ export function LibraryCard({
               value={downloadPercent}
               label={`${item.title} download progress`}
             />
-            {showOpsDetails ? (
-              <div className="library-card__download-stats">
-                {activeDownload.totalBytes > 0 ? (
-                  <span>
-                    {formatBytes(activeDownload.downloadedBytes)} of{" "}
-                    {formatBytes(activeDownload.totalBytes)}
-                  </span>
-                ) : null}
-                {activeDownload.downloadRate > 0 ? (
-                  <span>{formatRate(activeDownload.downloadRate)}</span>
-                ) : null}
-                {activeDownload.etaSeconds !== null ? (
-                  <span>ETA {formatEta(activeDownload.etaSeconds)}</span>
-                ) : null}
-              </div>
-            ) : null}
+            <div className="library-card__download-stats">
+              {activeDownload.totalBytes > 0 ? (
+                <span>
+                  {formatBytes(activeDownload.downloadedBytes)} of{" "}
+                  {formatBytes(activeDownload.totalBytes)}
+                </span>
+              ) : null}
+              {activeDownload.downloadRate > 0 ? (
+                <span>{formatRate(activeDownload.downloadRate)}</span>
+              ) : null}
+              {activeDownload.etaSeconds !== null ? (
+                <span>ETA {formatEta(activeDownload.etaSeconds)}</span>
+              ) : null}
+            </div>
           </div>
         ) : null}
 
@@ -685,7 +678,7 @@ export function LibraryCard({
           </div>
         ) : null}
 
-        {showOpsDetails && locationPath ? (
+        {locationPath ? (
           <div className="library-card__location" title={locationPath}>
             <FolderOpen size={14} aria-hidden="true" />
             <span>
@@ -694,7 +687,7 @@ export function LibraryCard({
             </span>
           </div>
         ) : null}
-        {showOpsDetails && storageDetails.length > 0 ? (
+        {storageDetails.length > 0 ? (
           <p className="library-card__storage-meta">
             {storageDetails.join(" · ")}
           </p>
@@ -2372,10 +2365,6 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
   const [browse, setBrowse] = useState<LibraryBrowseFilters>(() => ({
     ...createDefaultLibraryBrowseFilters(),
     ...routeBrowse,
-    viewMode:
-      kind === "movie"
-        ? (routeBrowse.viewMode ?? "poster")
-        : (routeBrowse.viewMode ?? "detailed"),
   }));
   const [search, setSearch] = useState(routeBrowse.search ?? "");
   const [selected, setSelected] = useState<LibraryItem | null>(null);
@@ -2587,15 +2576,6 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
           ]}
           onChange={(filter) => updateBrowse({ filter })}
         />
-        <SegmentedControl
-          label="View"
-          value={browse.viewMode}
-          options={[
-            { value: "poster", label: "Poster" },
-            { value: "detailed", label: "Detailed" },
-          ]}
-          onChange={(viewMode) => updateBrowse({ viewMode })}
-        />
       </div>
       {isMovies ? (
         <div className="library-browse-filters" aria-label="Browse filters">
@@ -2738,17 +2718,11 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
       ) : null}
       {items.length ? (
         <>
-          <div
-            className={`library-grid library-grid--${browse.viewMode}`}
-            aria-label={
-              browse.viewMode === "poster" ? "Poster wall" : "Library"
-            }
-          >
+          <div className="library-grid" aria-label="Library">
             {items.map((item) => (
               <LibraryCard
                 key={item.id}
                 item={item}
-                viewMode={browse.viewMode}
                 onGenreSelect={
                   isMovies ? (genreId) => updateBrowse({ genreId }) : undefined
                 }

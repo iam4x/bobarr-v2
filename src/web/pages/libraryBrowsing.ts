@@ -1,7 +1,6 @@
 import type { LibraryAvailability, LibrarySort } from "../../contracts/library";
 
 export type LibraryFilter = "all" | LibraryAvailability;
-export type LibraryViewMode = "poster" | "detailed";
 
 export interface LibraryBrowseFilters {
   filter: LibraryFilter;
@@ -10,7 +9,6 @@ export interface LibraryBrowseFilters {
   year: string;
   ratingMin: string;
   quality: string;
-  viewMode: LibraryViewMode;
 }
 
 export const LIBRARY_SORT_OPTIONS: Array<{
@@ -51,7 +49,6 @@ export function createDefaultLibraryBrowseFilters(): LibraryBrowseFilters {
     year: "",
     ratingMin: "",
     quality: "",
-    viewMode: "poster",
   };
 }
 
@@ -92,7 +89,6 @@ export function libraryBrowseFromSearchParams(
   const year = searchParams.get("year") ?? "";
   const ratingMin = searchParams.get("ratingMin") ?? "";
   const quality = searchParams.get("quality") ?? "";
-  const viewMode = searchParams.get("view");
   const search = searchParams.get("q") ?? undefined;
   const itemId = searchParams.get("item") ?? undefined;
 
@@ -118,7 +114,6 @@ export function libraryBrowseFromSearchParams(
     ...(year ? { year } : {}),
     ...(ratingMin ? { ratingMin } : {}),
     ...(quality ? { quality } : {}),
-    ...(viewMode === "poster" || viewMode === "detailed" ? { viewMode } : {}),
     ...(search === undefined ? {} : { search }),
     ...(itemId ? { itemId } : {}),
   };
@@ -151,8 +146,7 @@ export function writeLibraryBrowseSearchParams(
   if (!filters.quality) next.delete("quality");
   else next.set("quality", filters.quality);
 
-  if (filters.viewMode === defaults.viewMode) next.delete("view");
-  else next.set("view", filters.viewMode);
+  next.delete("view");
 
   const normalizedSearch = search.trim();
   if (!normalizedSearch) next.delete("q");
