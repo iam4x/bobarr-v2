@@ -287,6 +287,15 @@ export const apiRoutes = {
     | undefined
   >()("GET", "/library"),
   getLibraryItem: route<LibraryItem>()("GET", "/library/:id"),
+  listRecentEpisodeAcquisitions: route<
+    {
+      items: Array<{
+        episode: LibraryItem;
+        series: LibraryItem;
+      }>;
+    },
+    { limit?: number } | undefined
+  >()("GET", "/library/recent-episodes"),
   monitorMedia: route<LibraryItem, never, MonitorMediaInput>()(
     "POST",
     "/library",

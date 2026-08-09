@@ -44,6 +44,8 @@ import {
   LibraryItemSchema,
   LibraryListResponseSchema,
   LibraryQuerySchema,
+  RecentEpisodeAcquisitionsQuerySchema,
+  RecentEpisodeAcquisitionsResponseSchema,
   LoginRequestSchema,
   LogoutResponseSchema,
   ResetLoginLockResponseSchema,
@@ -304,6 +306,20 @@ const routes = {
     request: { query: LibraryQuerySchema },
     responses: {
       200: jsonResponse(LibraryListResponseSchema, "Library page"),
+      default: errorResponse,
+    },
+  }),
+  listRecentEpisodeAcquisitions: createRoute({
+    method: "get",
+    path: "/api/v1/library/recent-episodes",
+    tags: ["library"],
+    security: [{ sessionCookie: [] }],
+    request: { query: RecentEpisodeAcquisitionsQuerySchema },
+    responses: {
+      200: jsonResponse(
+        RecentEpisodeAcquisitionsResponseSchema,
+        "Recently acquired episodes with their series",
+      ),
       default: errorResponse,
     },
   }),
@@ -612,6 +628,17 @@ export function createApiApp(
   });
   // Static scan-review paths must be registered before `/library/{id}`.
   registerScanReviewRoutes(app, dependencies);
+  app.openapi(routes.listRecentEpisodeAcquisitions, (context) => {
+    const query = context.req.valid("query");
+    return context.json(
+      {
+        items: dependencies.repositories.library.recentEpisodeAcquisitions(
+          query.limit,
+        ),
+      },
+      200,
+    );
+  });
   app.openapi(routes.listLibrary, async (context) => {
     const query = context.req.valid("query");
     const result = dependencies.repositories.library.list(query);

@@ -163,6 +163,25 @@ export const LibraryListResponseSchema = z
   })
   .openapi("LibraryListResponse");
 
+export const RecentEpisodeAcquisitionSchema = z
+  .object({
+    episode: LibraryItemSchema,
+    series: LibraryItemSchema,
+  })
+  .openapi("RecentEpisodeAcquisition");
+
+export const RecentEpisodeAcquisitionsQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(50).default(12),
+  })
+  .openapi("RecentEpisodeAcquisitionsQuery");
+
+export const RecentEpisodeAcquisitionsResponseSchema = z
+  .object({
+    items: z.array(RecentEpisodeAcquisitionSchema),
+  })
+  .openapi("RecentEpisodeAcquisitionsResponse");
+
 export const DeleteLibraryItemResponseSchema = z
   .object({ deleted: z.boolean() })
   .openapi("DeleteLibraryItemResponse");
@@ -177,6 +196,12 @@ export type CreateLibraryItemRequest = z.infer<
   typeof CreateLibraryItemRequestSchema
 >;
 export type LibraryQuery = z.infer<typeof LibraryQuerySchema>;
+export type RecentEpisodeAcquisition = z.infer<
+  typeof RecentEpisodeAcquisitionSchema
+>;
+export type RecentEpisodeAcquisitionsQuery = z.infer<
+  typeof RecentEpisodeAcquisitionsQuerySchema
+>;
 export {
   AcquisitionStateSchema,
   MediaKindSchema,

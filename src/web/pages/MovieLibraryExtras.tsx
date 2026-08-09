@@ -1,13 +1,7 @@
 import type { CatalogItem, LibraryItem } from "../types";
 
 import { useQuery } from "@tanstack/react-query";
-import {
-  AlertTriangle,
-  Compass,
-  Film,
-  ScanSearch,
-  Sparkles,
-} from "lucide-react";
+import { AlertTriangle, Film, ScanSearch, Sparkles, Tv } from "lucide-react";
 import { Link } from "react-router";
 
 import { api } from "../api/client";
@@ -16,16 +10,37 @@ import {
   normalizeCatalogRecommendations,
 } from "../api/normalize";
 import { Button, EmptyState, InlineSpinner } from "../components/ui";
-import { imageUrl, initials, mediaYear } from "../lib/format";
+import {
+  formatRelativeDate,
+  imageUrl,
+  initials,
+  mediaYear,
+} from "../lib/format";
 
 const SHELF_LIMIT = 12;
+
+function episodeCode(item: LibraryItem): string {
+  const season = item.seasonNumber;
+  const episode = item.episodeNumber;
+  if (
+    typeof season !== "number" ||
+    typeof episode !== "number" ||
+    !Number.isSafeInteger(season) ||
+    !Number.isSafeInteger(episode)
+  ) {
+    return "Episode";
+  }
+  return `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`;
+}
 
 function ShelfCard({
   item,
   onSelect,
+  subtitle,
 }: {
   item: LibraryItem;
   onSelect: (item: LibraryItem) => void;
+  subtitle?: string;
 }) {
   const poster = imageUrl(item.posterPath, "w342");
   return (
@@ -45,10 +60,51 @@ function ShelfCard({
       <span className="library-shelf-card__copy">
         <strong>{item.title}</strong>
         <small>
-          {mediaYear(item)}
-          {item.voteAverage || item.rating?.value
-            ? ` · ${(item.rating?.value ?? item.voteAverage ?? 0).toFixed(1)}`
-            : ""}
+          {subtitle ??
+            `${mediaYear(item)}${
+              item.voteAverage || item.rating?.value
+                ? ` · ${(item.rating?.value ?? item.voteAverage ?? 0).toFixed(1)}`
+                : ""
+            }`}
+        </small>
+      </span>
+    </button>
+  );
+}
+
+function EpisodeShelfCard({
+  episode,
+  series,
+  onSelect,
+}: {
+  episode: LibraryItem;
+  series: LibraryItem;
+  onSelect: (series: LibraryItem) => void;
+}) {
+  const poster = imageUrl(series.posterPath ?? episode.posterPath, "w342");
+  const acquiredAt =
+    typeof episode.updatedAt === "string" ? episode.updatedAt : episode.addedAt;
+  const relative = formatRelativeDate(acquiredAt);
+  const code = episodeCode(episode);
+  return (
+    <button
+      type="button"
+      className="library-shelf-card library-shelf-card--episode"
+      onClick={() => onSelect(series)}
+      aria-label={`Open ${series.title}, ${code} ${episode.title}`}
+    >
+      <span className="library-shelf-card__poster" aria-hidden="true">
+        {poster ? (
+          <img src={poster} alt="" loading="lazy" />
+        ) : (
+          <span className="poster-placeholder">{initials(series.title)}</span>
+        )}
+      </span>
+      <span className="library-shelf-card__copy">
+        <strong>{series.title}</strong>
+        <small>
+          {code} · {episode.title}
+          {relative ? ` · ${relative}` : ""}
         </small>
       </span>
     </button>
@@ -90,19 +146,22 @@ function LibraryShelf({
   );
 }
 
-export function MovieLibraryShelves({
+export function MediaLibraryShelves({
+  kind,
   enabled,
   onSelect,
 }: {
+  kind: "movie" | "series";
   enabled: boolean;
   onSelect: (item: LibraryItem) => void;
 }) {
+  const label = kind === "movie" ? "movies" : "shows";
   const recentQuery = useQuery({
-    queryKey: ["library", "shelves", "recent"],
+    queryKey: ["library", "shelves", kind, "recent"],
     queryFn: ({ signal }) =>
       api.get("listLibrary", {
         query: {
-          kind: "movie",
+          kind,
           sort: "added_at.desc",
           limit: SHELF_LIMIT,
           offset: 0,
@@ -113,11 +172,11 @@ export function MovieLibraryShelves({
     staleTime: 60_000,
   });
   const attentionMissingQuery = useQuery({
-    queryKey: ["library", "shelves", "missing"],
+    queryKey: ["library", "shelves", kind, "missing"],
     queryFn: ({ signal }) =>
       api.get("listLibrary", {
         query: {
-          kind: "movie",
+          kind,
           availability: "missing",
           sort: "updated_at.desc",
           limit: SHELF_LIMIT,
@@ -129,11 +188,11 @@ export function MovieLibraryShelves({
     staleTime: 60_000,
   });
   const attentionFailedQuery = useQuery({
-    queryKey: ["library", "shelves", "failed"],
+    queryKey: ["library", "shelves", kind, "failed"],
     queryFn: ({ signal }) =>
       api.get("listLibrary", {
         query: {
-          kind: "movie",
+          kind,
           availability: "failed",
           sort: "updated_at.desc",
           limit: SHELF_LIMIT,
@@ -145,11 +204,11 @@ export function MovieLibraryShelves({
     staleTime: 60_000,
   });
   const ratedQuery = useQuery({
-    queryKey: ["library", "shelves", "rated"],
+    queryKey: ["library", "shelves", kind, "rated"],
     queryFn: ({ signal }) =>
       api.get("listLibrary", {
         query: {
-          kind: "movie",
+          kind,
           sort: "rating.desc",
           ratingMin: 7,
           limit: SHELF_LIMIT,
@@ -158,6 +217,23 @@ export function MovieLibraryShelves({
         signal,
       }),
     enabled,
+    staleTime: 60_000,
+  });
+  const recentEpisodesQuery = useQuery({
+    queryKey: ["library", "shelves", "recent-episodes"],
+    queryFn: async ({ signal }) => {
+      const response = await api.get("listRecentEpisodeAcquisitions", {
+        query: { limit: SHELF_LIMIT },
+        signal,
+      });
+      return {
+        items: response.items.map(({ episode, series }) => ({
+          episode: collectionItems({ items: [episode] })[0] ?? episode,
+          series: collectionItems({ items: [series] })[0] ?? series,
+        })),
+      };
+    },
+    enabled: enabled && kind === "series",
     staleTime: 60_000,
   });
 
@@ -174,6 +250,7 @@ export function MovieLibraryShelves({
     )
     .slice(0, SHELF_LIMIT);
   const rated = collectionItems(ratedQuery.data);
+  const recentEpisodes = recentEpisodesQuery.data?.items ?? [];
 
   const topGenre = recent
     .flatMap((item) => item.genres ?? [])
@@ -194,11 +271,11 @@ export function MovieLibraryShelves({
   )[0];
 
   const genreQuery = useQuery({
-    queryKey: ["library", "shelves", "genre", genreLeader?.id],
+    queryKey: ["library", "shelves", kind, "genre", genreLeader?.id],
     queryFn: ({ signal }) =>
       api.get("listLibrary", {
         query: {
-          kind: "movie",
+          kind,
           genreId: genreLeader!.id,
           sort: "rating.desc",
           limit: SHELF_LIMIT,
@@ -214,11 +291,39 @@ export function MovieLibraryShelves({
     <div className="library-shelves">
       <LibraryShelf
         title="Recently added"
-        description="The newest movies to land in your library."
+        description={`The newest ${label} to land in your library.`}
         items={recent}
         loading={recentQuery.isLoading}
         onSelect={onSelect}
       />
+      {kind === "series" &&
+      (recentEpisodesQuery.isLoading || recentEpisodes.length > 0) ? (
+        <section
+          className="library-shelf"
+          aria-label="Recently downloaded episodes"
+        >
+          <header className="library-shelf__header">
+            <div>
+              <h3>Recently downloaded episodes</h3>
+              <p>Fresh episode files that just landed in your library.</p>
+            </div>
+          </header>
+          {recentEpisodesQuery.isLoading ? (
+            <InlineSpinner label="Loading recently downloaded episodes…" />
+          ) : (
+            <div className="library-shelf__rail">
+              {recentEpisodes.map(({ episode, series }) => (
+                <EpisodeShelfCard
+                  key={episode.id}
+                  episode={episode}
+                  series={series}
+                  onSelect={onSelect}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
       <LibraryShelf
         title="Needs attention"
         description="Missing or failed acquisitions that still need a release."
@@ -230,7 +335,7 @@ export function MovieLibraryShelves({
       />
       <LibraryShelf
         title="Highly rated"
-        description="Your library titles rated 7.0 and above."
+        description={`Your library ${label} rated 7.0 and above.`}
         items={rated}
         loading={ratedQuery.isLoading}
         onSelect={onSelect}
@@ -238,7 +343,7 @@ export function MovieLibraryShelves({
       {genreLeader ? (
         <LibraryShelf
           title={genreLeader.name}
-          description={`A shelf drawn from the ${genreLeader.name.toLowerCase()} movies you already keep.`}
+          description={`A shelf drawn from the ${genreLeader.name.toLowerCase()} ${label} you already keep.`}
           items={collectionItems(genreQuery.data)}
           loading={genreQuery.isLoading}
           onSelect={onSelect}
@@ -248,21 +353,37 @@ export function MovieLibraryShelves({
   );
 }
 
-export function MovieLibraryEmptyGuidance({
+/** @deprecated Prefer MediaLibraryShelves. */
+export function MovieLibraryShelves(props: {
+  enabled: boolean;
+  onSelect: (item: LibraryItem) => void;
+}) {
+  return <MediaLibraryShelves kind="movie" {...props} />;
+}
+
+export function LibraryEmptyGuidance({
+  kind,
   onScan,
   scanBusy,
 }: {
+  kind: "movie" | "series";
   onScan: () => void;
   scanBusy: boolean;
 }) {
+  const isMovies = kind === "movie";
   return (
     <EmptyState
-      title="Your movie library is ready to grow"
+      title={
+        isMovies
+          ? "Your movie library is ready to grow"
+          : "Your show library is ready to grow"
+      }
       description="Start with files you already have, or let Bobarr find something new."
       action={
         <div className="library-empty-actions">
           <Button type="button" busy={scanBusy} onClick={onScan}>
-            <ScanSearch size={16} /> Scan existing movies
+            <ScanSearch size={16} />{" "}
+            {isMovies ? "Scan existing movies" : "Scan existing shows"}
           </Button>
           <Link
             className="button button--secondary button--md"
@@ -270,13 +391,24 @@ export function MovieLibraryEmptyGuidance({
           >
             <Sparkles size={16} /> Get suggestions
           </Link>
-          <Link className="button button--secondary button--md" to="/discover">
-            <Compass size={16} /> Browse Discover
+          <Link
+            className="button button--secondary button--md"
+            to={isMovies ? "/discover" : "/discover?kind=series"}
+          >
+            {isMovies ? <Film size={16} /> : <Tv size={16} />} Browse Discover
           </Link>
         </div>
       }
     />
   );
+}
+
+/** @deprecated Prefer LibraryEmptyGuidance. */
+export function MovieLibraryEmptyGuidance(props: {
+  onScan: () => void;
+  scanBusy: boolean;
+}) {
+  return <LibraryEmptyGuidance kind="movie" {...props} />;
 }
 
 export function LibraryAttentionStrip({

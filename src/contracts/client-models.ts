@@ -158,6 +158,7 @@ export interface LibraryItem extends Omit<CatalogItem, "kind" | "tmdbId"> {
   acquisitionState: AcquisitionState;
   metadata?: Record<string, unknown>;
   addedAt?: string;
+  updatedAt?: string;
   nextAirDate?: string | null;
   episodeProgress?: {
     available: number;

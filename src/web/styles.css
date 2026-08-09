@@ -2849,6 +2849,12 @@ textarea:focus-visible {
   color: var(--text-muted);
   font-size: 12px;
 }
+.library-shelf-card--episode .library-shelf-card__copy small {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .library-browse-filters {
   display: flex;
   flex-wrap: wrap;

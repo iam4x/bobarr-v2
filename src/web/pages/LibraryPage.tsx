@@ -56,8 +56,8 @@ import {
 } from "./libraryBrowsing";
 import {
   LibraryAttentionStrip,
-  MovieLibraryEmptyGuidance,
-  MovieLibraryShelves,
+  LibraryEmptyGuidance,
+  MediaLibraryShelves,
 } from "./MovieLibraryExtras";
 import { api } from "../api/client";
 import { collectionItems } from "../api/normalize";
@@ -2414,7 +2414,6 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
     queryFn: ({ signal }) =>
       api.get("catalogGenres", { query: { kind }, signal }),
     staleTime: 24 * 60 * 60_000,
-    enabled: kind === "movie",
   });
   const scanMutation = useMutation({
     mutationFn: () => api.post("scanLibrary", { body: { kind } }),
@@ -2513,7 +2512,7 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
       description={
         isMovies
           ? "Browse, filter, and keep every film acquisition on track."
-          : "Every monitored season and episode, without the spreadsheet."
+          : "Browse shows, catch new episodes, and keep monitoring on track."
       }
       actions={
         <Button
@@ -2551,8 +2550,8 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
         />
       ) : null}
       <ScanReviewPanel kind={kind} />
-      {isMovies && browsingDefault && (summary?.total ?? 0) > 0 ? (
-        <MovieLibraryShelves enabled onSelect={openLibraryItem} />
+      {browsingDefault && (summary?.total ?? 0) > 0 ? (
+        <MediaLibraryShelves kind={kind} enabled onSelect={openLibraryItem} />
       ) : null}
       <div className="library-toolbar">
         <div className="mini-search">
@@ -2577,92 +2576,88 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
           onChange={(filter) => updateBrowse({ filter })}
         />
       </div>
-      {isMovies ? (
-        <div className="library-browse-filters" aria-label="Browse filters">
-          <SelectField
-            label="Sort"
-            value={browse.sort}
-            onChange={(event) =>
-              updateBrowse({
-                sort: event.target.value as LibraryBrowseFilters["sort"],
-              })
-            }
-          >
-            {LIBRARY_SORT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
+      <div className="library-browse-filters" aria-label="Browse filters">
+        <SelectField
+          label="Sort"
+          value={browse.sort}
+          onChange={(event) =>
+            updateBrowse({
+              sort: event.target.value as LibraryBrowseFilters["sort"],
+            })
+          }
+        >
+          {LIBRARY_SORT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </SelectField>
+        <SelectField
+          label="Genre"
+          value={browse.genreId ?? ""}
+          onChange={(event) =>
+            updateBrowse({
+              genreId: event.target.value ? Number(event.target.value) : null,
+            })
+          }
+        >
+          <option value="">Any genre</option>
+          {(genresQuery.data?.items ?? []).map((genre) => (
+            <option key={genre.id} value={genre.id}>
+              {genre.name}
+            </option>
+          ))}
+        </SelectField>
+        <SelectField
+          label="Year"
+          value={browse.year}
+          onChange={(event) => updateBrowse({ year: event.target.value })}
+        >
+          <option value="">Any year</option>
+          {Array.from({ length: 30 }, (_, index) => 2026 - index).map(
+            (value) => (
+              <option key={value} value={String(value)}>
+                {value}
               </option>
-            ))}
-          </SelectField>
-          <SelectField
-            label="Genre"
-            value={browse.genreId ?? ""}
-            onChange={(event) =>
-              updateBrowse({
-                genreId: event.target.value ? Number(event.target.value) : null,
-              })
-            }
+            ),
+          )}
+        </SelectField>
+        <SelectField
+          label="Rating"
+          value={browse.ratingMin}
+          onChange={(event) => updateBrowse({ ratingMin: event.target.value })}
+        >
+          {LIBRARY_RATING_OPTIONS.map((option) => (
+            <option key={option.value || "any"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </SelectField>
+        <SelectField
+          label="Quality"
+          value={browse.quality}
+          onChange={(event) => updateBrowse({ quality: event.target.value })}
+        >
+          {LIBRARY_QUALITY_OPTIONS.map((option) => (
+            <option key={option.value || "any"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </SelectField>
+        {!browsingDefault ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setBrowse(createDefaultLibraryBrowseFilters());
+              setSearch("");
+            }}
           >
-            <option value="">Any genre</option>
-            {(genresQuery.data?.items ?? []).map((genre) => (
-              <option key={genre.id} value={genre.id}>
-                {genre.name}
-              </option>
-            ))}
-          </SelectField>
-          <SelectField
-            label="Year"
-            value={browse.year}
-            onChange={(event) => updateBrowse({ year: event.target.value })}
-          >
-            <option value="">Any year</option>
-            {Array.from({ length: 30 }, (_, index) => 2026 - index).map(
-              (value) => (
-                <option key={value} value={String(value)}>
-                  {value}
-                </option>
-              ),
-            )}
-          </SelectField>
-          <SelectField
-            label="Rating"
-            value={browse.ratingMin}
-            onChange={(event) =>
-              updateBrowse({ ratingMin: event.target.value })
-            }
-          >
-            {LIBRARY_RATING_OPTIONS.map((option) => (
-              <option key={option.value || "any"} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </SelectField>
-          <SelectField
-            label="Quality"
-            value={browse.quality}
-            onChange={(event) => updateBrowse({ quality: event.target.value })}
-          >
-            {LIBRARY_QUALITY_OPTIONS.map((option) => (
-              <option key={option.value || "any"} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </SelectField>
-          {!browsingDefault ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setBrowse(createDefaultLibraryBrowseFilters());
-                setSearch("");
-              }}
-            >
-              Clear filters
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
+            Clear filters
+          </Button>
+        ) : null}
+      </div>
       {scanMutation.isSuccess ? (
         <div className="notice notice--success" role="status">
           <ScanSearch size={17} />
@@ -2681,18 +2676,14 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
           onRetry={() => void libraryQuery.refetch()}
         />
       ) : null}
-      {libraryQuery.data &&
-      items.length === 0 &&
-      isMovies &&
-      browsingDefault ? (
-        <MovieLibraryEmptyGuidance
+      {libraryQuery.data && items.length === 0 && browsingDefault ? (
+        <LibraryEmptyGuidance
+          kind={kind}
           onScan={() => scanMutation.mutate()}
           scanBusy={scanMutation.isPending}
         />
       ) : null}
-      {libraryQuery.data &&
-      items.length === 0 &&
-      !(isMovies && browsingDefault) ? (
+      {libraryQuery.data && items.length === 0 && !browsingDefault ? (
         <EmptyState
           title={
             !browsingDefault
@@ -2723,9 +2714,7 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
               <LibraryCard
                 key={item.id}
                 item={item}
-                onGenreSelect={
-                  isMovies ? (genreId) => updateBrowse({ genreId }) : undefined
-                }
+                onGenreSelect={(genreId) => updateBrowse({ genreId })}
                 onManage={openLibraryItem}
               />
             ))}

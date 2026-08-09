@@ -142,4 +142,68 @@ describe("library repository", () => {
       database.close();
     }
   });
+
+  test("lists recently acquired episodes with their parent series", async () => {
+    const clock = new MutableClock(new Date("2026-07-21T12:00:00.000Z"));
+    const database = await openBackendDatabase(":memory:");
+    try {
+      const repositories = createRepositories(database, clock);
+      const series = repositories.library.create(
+        CreateLibraryItemRequestSchema.parse({
+          kind: "series",
+          title: "The Expanse",
+          year: 2015,
+        }),
+      );
+      const season = repositories.library.create(
+        CreateLibraryItemRequestSchema.parse({
+          kind: "season",
+          parentId: series.id,
+          seasonNumber: 1,
+          title: "Season 1",
+        }),
+      );
+      const olderEpisode = repositories.library.create(
+        CreateLibraryItemRequestSchema.parse({
+          kind: "episode",
+          parentId: season.id,
+          seasonNumber: 1,
+          episodeNumber: 1,
+          title: "Dulcinea",
+          acquisitionState: "available",
+        }),
+      );
+      clock.advance(5_000);
+      const newerEpisode = repositories.library.create(
+        CreateLibraryItemRequestSchema.parse({
+          kind: "episode",
+          parentId: season.id,
+          seasonNumber: 1,
+          episodeNumber: 2,
+          title: "The Big Empty",
+          acquisitionState: "available",
+        }),
+      );
+      repositories.library.create(
+        CreateLibraryItemRequestSchema.parse({
+          kind: "episode",
+          parentId: season.id,
+          seasonNumber: 1,
+          episodeNumber: 3,
+          title: "Remember the Cant",
+          acquisitionState: "missing",
+        }),
+      );
+
+      const recent = repositories.library.recentEpisodeAcquisitions(12);
+      expect(recent.map((item) => item.episode.id)).toEqual([
+        newerEpisode.id,
+        olderEpisode.id,
+      ]);
+      expect(recent[0]?.series.id).toBe(series.id);
+      expect(recent[0]?.episode.title).toBe("The Big Empty");
+    } finally {
+      database.close();
+    }
+  });
 });

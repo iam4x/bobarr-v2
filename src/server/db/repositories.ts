@@ -662,6 +662,40 @@ export class LibraryRepository {
     return { items: rows.map(mapLibraryItem), total: Number(total ?? 0) };
   }
 
+  recentEpisodeAcquisitions(limit: number): Array<{
+    episode: LibraryItem;
+    series: LibraryItem;
+  }> {
+    const capped = Math.min(Math.max(1, Math.trunc(limit)), 50);
+    const rows = this.database.sqlite
+      .query<{ episodeId: string; seriesId: string }, [number]>(
+        `
+          SELECT
+            episode.id AS episodeId,
+            series.id AS seriesId
+          FROM media_items AS episode
+          JOIN media_items AS season
+            ON season.id = episode.parent_id
+            AND season.kind = 'season'
+          JOIN media_items AS series
+            ON series.id = season.parent_id
+            AND series.kind = 'series'
+          WHERE episode.kind = 'episode'
+            AND episode.acquisition_state = 'available'
+          ORDER BY episode.updated_at DESC, episode.id DESC
+          LIMIT ?
+        `,
+      )
+      .all(capped);
+    const items: Array<{ episode: LibraryItem; series: LibraryItem }> = [];
+    for (const row of rows) {
+      const episode = this.get(row.episodeId);
+      const series = this.get(row.seriesId);
+      if (episode && series) items.push({ episode, series });
+    }
+    return items;
+  }
+
   summarize(
     query: Pick<LibraryQuery, "kind" | "parentId" | "monitorPolicy">,
   ): LibrarySummary {
