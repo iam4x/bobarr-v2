@@ -138,6 +138,8 @@ export interface CatalogDiscoverQuery {
   runtimeMax?: number;
   voteCountMin?: number;
   ratingMin?: number;
+  /** When true, omit titles already present in the library. */
+  hideOwned?: boolean;
 }
 
 export type MonitorMediaInput =
@@ -263,12 +265,28 @@ export const apiRoutes = {
     | (PaginationQuery & {
         search?: string;
         status?: string;
+        availability?: "available" | "missing" | "active" | "failed";
+        sort?:
+          | "added_at.desc"
+          | "added_at.asc"
+          | "title.asc"
+          | "title.desc"
+          | "year.desc"
+          | "year.asc"
+          | "rating.desc"
+          | "rating.asc"
+          | "updated_at.desc";
+        genreId?: number;
+        year?: number;
+        ratingMin?: number;
+        quality?: string;
         kind?: "movie" | "series" | "season" | "episode";
         parentId?: string;
         monitorPolicy?: MonitorPolicy;
       })
     | undefined
   >()("GET", "/library"),
+  getLibraryItem: route<LibraryItem>()("GET", "/library/:id"),
   monitorMedia: route<LibraryItem, never, MonitorMediaInput>()(
     "POST",
     "/library",

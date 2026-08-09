@@ -108,6 +108,7 @@ const CatalogItemSchema = z.object({
   monitoredSeasonNumbers: z.array(z.number().int().positive()).optional(),
   ratings: CatalogRatingsSchema.optional(),
   monitored: z.boolean(),
+  libraryId: z.string().uuid().optional(),
   acquisitionState: z.string().optional(),
 });
 const CatalogPageSchema = z.object({
@@ -226,6 +227,14 @@ const CatalogDiscoverQuerySchema = z
       )
       .optional(),
     ratingMin: z.coerce.number().min(0).max(10).optional(),
+    hideOwned: z
+      .union([
+        z.boolean(),
+        z
+          .enum(["true", "false", "1", "0"])
+          .transform((value) => value === "true" || value === "1"),
+      ])
+      .optional(),
   })
   .superRefine((value, context) => {
     if (
@@ -513,7 +522,12 @@ export function registerProductRoutes(
           }),
         ),
     );
-    return context.json(catalogPage(result, dependencies));
+    const page = catalogPage(result, dependencies);
+    if (!query.hideOwned) return context.json(page);
+    return context.json({
+      ...page,
+      items: page.items.filter((item) => !item.monitored),
+    });
   });
 
   app.get("/api/v1/catalog/popular", async (context) => {
@@ -2174,7 +2188,12 @@ function catalogItem(
     year: item.year,
     voteAverage: item.voteAverage,
     monitored: monitored !== undefined,
-    ...(monitored ? { acquisitionState: monitored.acquisitionState } : {}),
+    ...(monitored
+      ? {
+          libraryId: monitored.id,
+          acquisitionState: monitored.acquisitionState,
+        }
+      : {}),
   };
 }
 

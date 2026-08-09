@@ -89,6 +89,8 @@ export interface CatalogItem {
     } | null;
   };
   monitored?: boolean;
+  /** Present when the title is already in the Bobarr library. */
+  libraryId?: string;
   acquisitionState?: AcquisitionState;
 }
 

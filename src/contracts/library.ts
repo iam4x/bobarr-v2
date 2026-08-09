@@ -116,9 +116,34 @@ export const LibraryItemParamsSchema = z
   })
   .openapi("LibraryItemParams");
 
+export const LibraryAvailabilitySchema = z
+  .enum(["available", "missing", "active", "failed"])
+  .openapi("LibraryAvailability");
+
+export const LibrarySortSchema = z
+  .enum([
+    "added_at.desc",
+    "added_at.asc",
+    "title.asc",
+    "title.desc",
+    "year.desc",
+    "year.asc",
+    "rating.desc",
+    "rating.asc",
+    "updated_at.desc",
+  ])
+  .openapi("LibrarySort");
+
 export const LibraryQuerySchema = PaginationQuerySchema.extend({
   search: z.string().trim().max(200).optional(),
   status: LibraryStatusSchema.optional(),
+  /** UI availability buckets. Takes precedence over exact `status` when both are set. */
+  availability: LibraryAvailabilitySchema.optional(),
+  sort: LibrarySortSchema.optional(),
+  genreId: z.coerce.number().int().positive().optional(),
+  year: z.coerce.number().int().min(1870).max(3000).optional(),
+  ratingMin: z.coerce.number().min(0).max(10).optional(),
+  quality: z.string().trim().min(1).max(40).optional(),
   kind: MediaKindSchema.optional(),
   parentId: EntityIdSchema.optional(),
   monitorPolicy: MonitorPolicySchema.optional(),
@@ -144,6 +169,8 @@ export const DeleteLibraryItemResponseSchema = z
 
 export type { AcquisitionState, MediaKind, MonitorPolicy } from "./media";
 export type LibraryStatus = z.infer<typeof LibraryStatusSchema>;
+export type LibraryAvailability = z.infer<typeof LibraryAvailabilitySchema>;
+export type LibrarySort = z.infer<typeof LibrarySortSchema>;
 export type LibraryItem = z.infer<typeof LibraryItemSchema>;
 export type LibraryCardItem = z.infer<typeof LibraryCardItemSchema>;
 export type CreateLibraryItemRequest = z.infer<

@@ -2,6 +2,7 @@ import type { BackendDatabase } from "./database";
 
 import {
   and,
+  asc,
   desc,
   eq,
   gte,
@@ -42,6 +43,7 @@ import {
   type JobStatus,
   type LibraryItem,
   type LibraryQuery,
+  type LibrarySort,
   type MediaKind,
   type AcquisitionState,
   type DownloadState,
@@ -642,26 +644,13 @@ export class LibraryRepository {
   }
 
   list(query: LibraryQuery): { items: LibraryItem[]; total: number } {
-    const filters: SQL[] = [];
-    if (query.search !== undefined && query.search !== "") {
-      filters.push(
-        sql`instr(lower(${libraryItems.title}), lower(${query.search})) > 0`,
-      );
-    }
-    if (query.status !== undefined)
-      filters.push(eq(libraryItems.acquisitionState, query.status));
-    if (query.kind !== undefined)
-      filters.push(eq(libraryItems.kind, query.kind));
-    if (query.parentId !== undefined)
-      filters.push(eq(libraryItems.parentId, query.parentId));
-    if (query.monitorPolicy !== undefined)
-      filters.push(eq(libraryItems.monitorPolicy, query.monitorPolicy));
-    const where = filters.length === 0 ? undefined : and(...filters);
+    const where = libraryListWhere(query);
+    const orderBy = libraryListOrderBy(query.sort ?? "added_at.desc");
     const rows = this.database.client
       .select()
       .from(libraryItems)
       .where(where)
-      .orderBy(desc(libraryItems.createdAt), desc(libraryItems.id))
+      .orderBy(...orderBy)
       .limit(query.limit)
       .offset(query.offset)
       .all();
@@ -1123,6 +1112,88 @@ function mapLibraryItem(row: LibraryItemRow): LibraryItem {
     createdAt: toIsoDate(row.createdAt),
     updatedAt: toIsoDate(row.updatedAt),
   };
+}
+
+function libraryListWhere(query: LibraryQuery): SQL | undefined {
+  const filters: SQL[] = [];
+  if (query.search !== undefined && query.search !== "") {
+    filters.push(
+      sql`instr(lower(${libraryItems.title}), lower(${query.search})) > 0`,
+    );
+  }
+  if (query.availability !== undefined) {
+    if (query.availability === "active") {
+      filters.push(
+        inArray(libraryItems.acquisitionState, [
+          "searching",
+          "queued",
+          "downloading",
+          "organizing",
+        ]),
+      );
+    } else {
+      filters.push(eq(libraryItems.acquisitionState, query.availability));
+    }
+  } else if (query.status !== undefined) {
+    filters.push(eq(libraryItems.acquisitionState, query.status));
+  }
+  if (query.kind !== undefined) filters.push(eq(libraryItems.kind, query.kind));
+  if (query.parentId !== undefined)
+    filters.push(eq(libraryItems.parentId, query.parentId));
+  if (query.monitorPolicy !== undefined)
+    filters.push(eq(libraryItems.monitorPolicy, query.monitorPolicy));
+  if (query.year !== undefined) filters.push(eq(libraryItems.year, query.year));
+  if (query.genreId !== undefined) {
+    filters.push(
+      sql`exists (
+        select 1
+        from json_each(json_extract(${libraryItems.metadataJson}, '$.genres')) as genre
+        where cast(json_extract(genre.value, '$.id') as integer) = ${query.genreId}
+      )`,
+    );
+  }
+  if (query.ratingMin !== undefined) {
+    filters.push(
+      sql`cast(json_extract(${libraryItems.metadataJson}, '$.voteAverage') as real) >= ${query.ratingMin}`,
+    );
+  }
+  if (query.quality !== undefined && query.quality !== "") {
+    filters.push(
+      sql`exists (
+        select 1
+        from library_files
+        where library_files.media_item_id = ${libraryItems.id}
+          and library_files.quality = ${query.quality}
+      )`,
+    );
+  }
+  return filters.length === 0 ? undefined : and(...filters);
+}
+
+function libraryListOrderBy(sort: LibrarySort): SQL[] {
+  const ratingExpression = sql`coalesce(cast(json_extract(${libraryItems.metadataJson}, '$.voteAverage') as real), -1)`;
+  const yearExpression = sql`coalesce(${libraryItems.year}, -1)`;
+  switch (sort) {
+    case "added_at.asc":
+      return [asc(libraryItems.createdAt), asc(libraryItems.id)];
+    case "title.asc":
+      return [asc(libraryItems.title), desc(libraryItems.id)];
+    case "title.desc":
+      return [desc(libraryItems.title), desc(libraryItems.id)];
+    case "year.asc":
+      return [asc(yearExpression), asc(libraryItems.title)];
+    case "year.desc":
+      return [desc(yearExpression), asc(libraryItems.title)];
+    case "rating.asc":
+      return [asc(ratingExpression), asc(libraryItems.title)];
+    case "rating.desc":
+      return [desc(ratingExpression), asc(libraryItems.title)];
+    case "updated_at.desc":
+      return [desc(libraryItems.updatedAt), desc(libraryItems.id)];
+    case "added_at.desc":
+    default:
+      return [desc(libraryItems.createdAt), desc(libraryItems.id)];
+  }
 }
 
 function mapCalendarEvent(row: CalendarEventRow): CalendarEvent {

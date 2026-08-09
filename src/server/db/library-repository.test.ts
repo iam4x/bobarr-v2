@@ -57,4 +57,89 @@ describe("library repository", () => {
       }
     },
   );
+
+  test("filters by availability buckets and sorts by title", async () => {
+    const database = await openBackendDatabase(":memory:");
+    try {
+      const repositories = createRepositories(database);
+      const available = repositories.library.create(
+        CreateLibraryItemRequestSchema.parse({
+          kind: "movie",
+          title: "Zulu Available",
+          acquisitionState: "available",
+          metadata: {
+            genres: [{ id: 28, name: "Action" }],
+            voteAverage: 8.1,
+          },
+        }),
+      );
+      const missing = repositories.library.create(
+        CreateLibraryItemRequestSchema.parse({
+          kind: "movie",
+          title: "Alpha Missing",
+          acquisitionState: "missing",
+          metadata: {
+            genres: [{ id: 18, name: "Drama" }],
+            voteAverage: 6.2,
+          },
+        }),
+      );
+      repositories.library.create(
+        CreateLibraryItemRequestSchema.parse({
+          kind: "movie",
+          title: "Busy Download",
+          acquisitionState: "downloading",
+        }),
+      );
+
+      const missingPage = repositories.library.list({
+        kind: "movie",
+        availability: "missing",
+        limit: 50,
+        offset: 0,
+      });
+      expect(missingPage.items.map((item) => item.id)).toEqual([missing.id]);
+      expect(missingPage.total).toBe(1);
+
+      const activePage = repositories.library.list({
+        kind: "movie",
+        availability: "active",
+        limit: 50,
+        offset: 0,
+      });
+      expect(activePage.total).toBe(1);
+      expect(activePage.items[0]?.title).toBe("Busy Download");
+
+      const titlePage = repositories.library.list({
+        kind: "movie",
+        sort: "title.asc",
+        limit: 50,
+        offset: 0,
+      });
+      expect(titlePage.items.map((item) => item.title)).toEqual([
+        "Alpha Missing",
+        "Busy Download",
+        "Zulu Available",
+      ]);
+
+      const genrePage = repositories.library.list({
+        kind: "movie",
+        genreId: 28,
+        limit: 50,
+        offset: 0,
+      });
+      expect(genrePage.items.map((item) => item.id)).toEqual([available.id]);
+
+      const ratingPage = repositories.library.list({
+        kind: "movie",
+        ratingMin: 8,
+        sort: "rating.desc",
+        limit: 50,
+        offset: 0,
+      });
+      expect(ratingPage.items.map((item) => item.id)).toEqual([available.id]);
+    } finally {
+      database.close();
+    }
+  });
 });
