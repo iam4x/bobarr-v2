@@ -62,9 +62,16 @@ export interface CatalogActor {
   profilePath: string | null;
 }
 
+export interface CatalogTrailer {
+  site: "youtube";
+  key: string;
+  name: string;
+}
+
 export interface CatalogDetails extends CatalogItem {
   genres: readonly CatalogGenre[];
   actors: readonly CatalogActor[];
+  trailer: CatalogTrailer | null;
   runtimeMinutes: number | null;
   status: string | null;
   tagline: string | null;
@@ -411,17 +418,23 @@ export function createTmdbClient(options: TmdbClientOptions): TmdbClient {
 
     async details(mediaType, tmdbId, queryOptions = {}) {
       const parameters = languageParameters(queryOptions.language);
+      // Metadata stays localized, but trailers are almost always English or
+      // untagged. Without this fallback, `language=fr` (etc.) returns no videos.
+      parameters.set(
+        "include_video_language",
+        videoLanguageFallback(queryOptions.language),
+      );
       if (mediaType === "tv") {
-        parameters.set("append_to_response", "external_ids");
+        parameters.set("append_to_response", "external_ids,videos");
       } else {
-        parameters.set("append_to_response", "credits");
+        parameters.set("append_to_response", "credits,videos");
       }
       const payload = await request(
         `${validateMediaType(mediaType)}/${positiveId(tmdbId)}`,
         parameters,
         queryOptions.signal,
       );
-      return parseCatalogDetails(payload, mediaType);
+      return parseCatalogDetails(payload, mediaType, queryOptions.language);
     },
 
     async season(tvTmdbId, seasonNumber, queryOptions = {}) {
@@ -491,6 +504,19 @@ function languageParameters(language?: string): URLSearchParams {
     parameters.set("language", language);
   }
   return parameters;
+}
+
+function videoLanguageFallback(language?: string): string {
+  const codes = new Set<string>(["en", "null"]);
+  const primary = language?.trim().toLowerCase().split(/[-_]/)[0];
+  if (primary && /^[a-z]{2}$/.test(primary)) {
+    codes.add(primary);
+  }
+  // Preferred locale first, then English, then untagged videos.
+  return [primary && codes.has(primary) ? primary : null, "en", "null"]
+    .filter((code): code is string => Boolean(code))
+    .filter((code, index, all) => all.indexOf(code) === index)
+    .join(",");
 }
 
 function parseCatalogPage(
@@ -570,6 +596,7 @@ function parseCatalogItem(
 function parseCatalogDetails(
   value: unknown,
   mediaType: CatalogMediaType,
+  language?: string,
 ): CatalogDetails {
   const base = parseCatalogItem(value, mediaType);
   if (!base || !isRecord(value)) {
@@ -594,6 +621,7 @@ function parseCatalogDetails(
     ...base,
     genres,
     actors: parseCatalogActors(value),
+    trailer: parseCatalogTrailer(value, language),
     runtimeMinutes: nullableNumber(
       value[mediaType === "movie" ? "runtime" : "episode_run_time"],
     ),
@@ -606,6 +634,52 @@ function parseCatalogDetails(
     numberOfEpisodes:
       mediaType === "tv" ? nullableNumber(value["number_of_episodes"]) : null,
   };
+}
+
+function parseCatalogTrailer(
+  value: Record<string, unknown>,
+  language?: string,
+): CatalogTrailer | null {
+  const videos = isRecord(value["videos"]) ? value["videos"] : undefined;
+  if (!Array.isArray(videos?.["results"])) return null;
+  const preferredLanguage = language?.trim().toLowerCase().split(/[-_]/)[0];
+
+  let best: { trailer: CatalogTrailer; score: number } | null = null;
+  for (const [index, entry] of videos["results"].entries()) {
+    if (!isRecord(entry)) continue;
+    if (asString(entry["site"])?.toLowerCase() !== "youtube") continue;
+    const key = asString(entry["key"])?.trim();
+    if (!key || !/^[A-Za-z0-9_-]{6,}$/.test(key)) continue;
+    const type = asString(entry["type"])?.toLowerCase() ?? "";
+    const official = entry["official"] === true;
+    const videoLanguage = asString(entry["iso_639_1"])?.toLowerCase();
+    let score = 0;
+    if (type === "trailer") score += 40;
+    else if (type === "teaser") score += 20;
+    else if (type === "clip") score += 10;
+    else continue;
+    if (official) score += 15;
+    if (
+      preferredLanguage &&
+      videoLanguage &&
+      videoLanguage === preferredLanguage
+    ) {
+      score += 12;
+    } else if (videoLanguage === "en") {
+      score += 6;
+    }
+    // Prefer earlier TMDB order only as a stable tie-breaker.
+    score -= Math.min(index, 9);
+    const trailer = {
+      site: "youtube" as const,
+      key,
+      name: asString(entry["name"])?.trim() || "Trailer",
+    };
+    if (!best || score > best.score) {
+      best = { trailer, score };
+    }
+  }
+  return best?.trailer ?? null;
 }
 
 function parseCatalogActors(value: Record<string, unknown>): CatalogActor[] {

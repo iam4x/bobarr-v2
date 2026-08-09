@@ -127,6 +127,30 @@ describe("library manual release targets", () => {
     expect(markup).toContain("Neo");
   });
 
+  test("shows a watch trailer action in movie management", () => {
+    const markup = renderToStaticMarkup(
+      createElement(MovieManagement, {
+        item: movie,
+        trailer: {
+          site: "youtube",
+          key: "nFk_nVSS5IU",
+          name: "Official Trailer",
+        },
+        policy: "all",
+        saveBusy: false,
+        retryBusy: false,
+        onPolicyChange: () => undefined,
+        onSave: () => undefined,
+        onRetry: () => undefined,
+        onManualSearch: () => undefined,
+        onRemove: () => undefined,
+      }),
+    );
+
+    expect(markup).toContain("Watch trailer");
+    expect(markup).toContain("movie-overview__trailer");
+  });
+
   test("shows television availability and the next air date", () => {
     const markup = renderToStaticMarkup(
       LibraryCard({

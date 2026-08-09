@@ -2142,7 +2142,7 @@ function cacheId(namespace: string, value: unknown): string {
 }
 
 function catalogDetailsCacheId(tmdbId: number): string {
-  return `details:v2:${tmdbId}`;
+  return `details:v3:${tmdbId}`;
 }
 
 function localeKey(settings: {
@@ -2206,6 +2206,7 @@ function catalogDetails(
     ...(details.mediaType === "movie"
       ? { actors: details.actors.slice(0, 6) }
       : {}),
+    ...(details.trailer ? { trailer: details.trailer } : {}),
     numberOfSeasons: details.numberOfSeasons,
     monitoredSeasonNumbers,
     ...(ratings

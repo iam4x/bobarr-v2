@@ -7,6 +7,7 @@ import type {
 
 import { AlertCircle, ChevronDown, Inbox, LoaderCircle, X } from "lucide-react";
 import { useEffect, useId, useRef } from "react";
+import { createPortal } from "react-dom";
 
 import { ApiError } from "../api/client";
 
@@ -347,6 +348,8 @@ export function ErrorState({
   );
 }
 
+let openDialogCount = 0;
+
 export function Dialog({
   open,
   title,
@@ -366,16 +369,25 @@ export function Dialog({
   const descriptionId = useId();
   const dialogRef = useRef<HTMLElement>(null);
   const onCloseRef = useRef(onClose);
+  const depthRef = useRef(0);
   onCloseRef.current = onClose;
+
+  if (open && depthRef.current === 0) {
+    openDialogCount += 1;
+    depthRef.current = openDialogCount;
+  }
 
   useEffect(() => {
     if (!open) return;
+    const depth = depthRef.current;
     const previouslyFocused = document.activeElement;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (depth !== openDialogCount) return;
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         onCloseRef.current();
         return;
       }
@@ -401,6 +413,8 @@ export function Dialog({
       focusableElements(dialogRef.current)[0]?.focus();
     });
     return () => {
+      openDialogCount = Math.max(0, openDialogCount - 1);
+      depthRef.current = 0;
       cancelAnimationFrame(focusFrame);
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown);
@@ -414,8 +428,13 @@ export function Dialog({
   }, [open]);
 
   if (!open) return null;
-  return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
+  const dialog = (
+    <div
+      className="dialog-backdrop"
+      role="presentation"
+      style={{ zIndex: 100 + depthRef.current }}
+      onMouseDown={onClose}
+    >
       <section
         ref={dialogRef}
         className={classNames("dialog", `dialog--${size}`)}
@@ -439,6 +458,9 @@ export function Dialog({
       </section>
     </div>
   );
+  return typeof document === "undefined"
+    ? dialog
+    : createPortal(dialog, document.body);
 }
 
 export function VisuallyHidden({ children }: { children: ReactNode }) {

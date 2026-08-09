@@ -1,4 +1,9 @@
-import type { CatalogActor, CatalogItem, CatalogSeason } from "../types";
+import type {
+  CatalogActor,
+  CatalogItem,
+  CatalogSeason,
+  CatalogTrailer,
+} from "../types";
 
 import {
   useMutation,
@@ -6,7 +11,14 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { BookmarkPlus, Calendar, Check, Search, Star } from "lucide-react";
+import {
+  BookmarkPlus,
+  Calendar,
+  Check,
+  Play,
+  Search,
+  Star,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -203,6 +215,50 @@ export function MovieCast({
         })}
       </div>
     </section>
+  );
+}
+
+export function WatchTrailerButton({
+  trailer,
+  title,
+  className,
+}: {
+  trailer?: CatalogTrailer | null;
+  title: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!trailer) return null;
+
+  return (
+    <>
+      <div className={className ?? "watch-trailer"}>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={() => setOpen(true)}
+        >
+          <Play size={15} fill="currentColor" /> Watch trailer
+        </Button>
+      </div>
+      <Dialog
+        open={open}
+        title={trailer.name}
+        description={`${title} trailer`}
+        onClose={() => setOpen(false)}
+        size="lg"
+      >
+        <div className="trailer-player">
+          <iframe
+            src={`https://www.youtube-nocookie.com/embed/${trailer.key}?autoplay=1&rel=0`}
+            title={trailer.name}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+          />
+        </div>
+      </Dialog>
+    </>
   );
 }
 
@@ -436,6 +492,11 @@ export function MediaDetailDialog({
               </div>
               <ExternalRatings ratings={item.ratings} />
               <p>{item.overview || "No synopsis is available yet."}</p>
+              <WatchTrailerButton
+                trailer={item.trailer}
+                title={item.title}
+                className="media-detail__trailer"
+              />
               {item.genres?.length ? (
                 <p className="media-detail__genres">
                   {item.genres.map((genre) => genre.name).join(" · ")}

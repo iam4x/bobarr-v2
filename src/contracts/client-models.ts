@@ -54,6 +54,12 @@ export interface CatalogActor {
   profilePath: string | null;
 }
 
+export interface CatalogTrailer {
+  site: "youtube";
+  key: string;
+  name: string;
+}
+
 export interface CatalogItem {
   id: string;
   tmdbId: number;
@@ -68,6 +74,7 @@ export interface CatalogItem {
   voteAverage?: number | null;
   genres?: Array<{ id: number; name: string }>;
   actors?: CatalogActor[];
+  trailer?: CatalogTrailer;
   numberOfSeasons?: number | null;
   monitoredSeasonNumbers?: number[];
   ratings?: {

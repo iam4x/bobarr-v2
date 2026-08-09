@@ -260,6 +260,17 @@ function detailsPayload(item: FakeMedia): Record<string, unknown> {
             ],
           }
         : undefined,
+    videos: {
+      results: [
+        {
+          name: "Official Trailer",
+          key: "e2eTrailerKey",
+          site: "YouTube",
+          type: "Trailer",
+          official: true,
+        },
+      ],
+    },
   };
 }
 

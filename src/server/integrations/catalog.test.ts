@@ -291,11 +291,14 @@ describe("TMDB adapter", () => {
       },
     });
 
-    const details = await client.details("tv", 1399);
+    const details = await client.details("tv", 1399, { language: "fr-FR" });
 
     expect(details.externalId).toBe("tt0944947");
     expect(requestedUrl?.searchParams.get("append_to_response")).toBe(
-      "external_ids",
+      "external_ids,videos",
+    );
+    expect(requestedUrl?.searchParams.get("include_video_language")).toBe(
+      "fr,en,null",
     );
   });
 
@@ -337,14 +340,45 @@ describe("TMDB adapter", () => {
               { id: "invalid", name: "Invalid Actor", order: 1 },
             ],
           },
+          videos: {
+            results: [
+              {
+                name: "Teaser",
+                key: "teaserKey1",
+                site: "YouTube",
+                type: "Teaser",
+                official: true,
+                iso_639_1: "en",
+              },
+              {
+                name: "Official Trailer",
+                key: "dQw4w9WgXcQ",
+                site: "YouTube",
+                type: "Trailer",
+                official: true,
+                iso_639_1: "en",
+              },
+              {
+                name: "Vimeo Trailer",
+                key: "123456",
+                site: "Vimeo",
+                type: "Trailer",
+                official: true,
+                iso_639_1: "en",
+              },
+            ],
+          },
         });
       },
     });
 
-    const details = await client.details("movie", 603);
+    const details = await client.details("movie", 603, { language: "en-US" });
 
     expect(requestedUrl?.searchParams.get("append_to_response")).toBe(
-      "credits",
+      "credits,videos",
+    );
+    expect(requestedUrl?.searchParams.get("include_video_language")).toBe(
+      "en,null",
     );
     expect(details.actors).toEqual([
       {
@@ -360,6 +394,11 @@ describe("TMDB adapter", () => {
         profilePath: null,
       },
     ]);
+    expect(details.trailer).toEqual({
+      site: "youtube",
+      key: "dQw4w9WgXcQ",
+      name: "Official Trailer",
+    });
   });
 });
 

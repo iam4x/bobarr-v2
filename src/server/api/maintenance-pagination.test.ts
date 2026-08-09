@@ -288,6 +288,7 @@ function catalogDetails(
     voteCount: 1,
     genres: [],
     actors: [],
+    trailer: null,
     runtimeMinutes: 90,
     status: "Released",
     tagline: null,

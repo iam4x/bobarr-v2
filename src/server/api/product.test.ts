@@ -302,6 +302,11 @@ describe("public product API", () => {
           profilePath: "/keanu.jpg",
         },
       ],
+      trailer: {
+        site: "youtube",
+        key: "nFk_nVSS5IU",
+        name: "Official Trailer",
+      },
       ratings: {
         imdb: { value: 8.7, scale: 10, votes: 2_107_348 },
         rottenTomatoes: { value: 83, scale: 100 },
@@ -3308,6 +3313,17 @@ class FakeProductServices {
               character: "Neo",
               profile_path: "/keanu.jpg",
               order: 0,
+            },
+          ],
+        },
+        videos: {
+          results: [
+            {
+              name: "Official Trailer",
+              key: "nFk_nVSS5IU",
+              site: "YouTube",
+              type: "Trailer",
+              official: true,
             },
           ],
         },

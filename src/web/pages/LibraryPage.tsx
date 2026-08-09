@@ -5,6 +5,7 @@ import type {
 import type {
   AcquisitionState,
   CatalogActor,
+  CatalogTrailer,
   LibraryItem,
   MonitorPolicy,
 } from "../types";
@@ -41,7 +42,11 @@ import { Link, useNavigate } from "react-router";
 
 import { api } from "../api/client";
 import { collectionItems } from "../api/normalize";
-import { actorDiscoverPath, MovieCast } from "../components/Catalog";
+import {
+  actorDiscoverPath,
+  MovieCast,
+  WatchTrailerButton,
+} from "../components/Catalog";
 import { Page } from "../components/Page";
 import {
   type ManualReleaseTarget,
@@ -1567,6 +1572,7 @@ export function TvSeriesManagement({
 export function MovieManagement({
   item,
   actors,
+  trailer,
   downloadFiles = [],
   policy,
   saveBusy,
@@ -1582,6 +1588,7 @@ export function MovieManagement({
 }: {
   item: LibraryItem;
   actors?: CatalogActor[];
+  trailer?: CatalogTrailer | null;
   downloadFiles?: LibraryDownloadFile[];
   policy: MonitorPolicy;
   saveBusy: boolean;
@@ -1671,6 +1678,11 @@ export function MovieManagement({
             </Badge>
           </div>
           <p>{overviewCopy}</p>
+          <WatchTrailerButton
+            trailer={trailer}
+            title={item.title}
+            className="movie-overview__trailer"
+          />
           {activeDownload ? (
             <div className="movie-overview__progress">
               <ProgressBar
@@ -2236,6 +2248,7 @@ function ManageLibraryDialog({
         <MovieManagement
           item={item}
           actors={movieDetailsQuery.data?.actors}
+          trailer={movieDetailsQuery.data?.trailer}
           downloadFiles={downloadFiles}
           policy={policy}
           saveBusy={updateMutation.isPending}
