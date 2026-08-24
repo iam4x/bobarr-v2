@@ -1,4 +1,5 @@
 import type {
+  MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   ReactNode,
   RefObject,
@@ -112,15 +113,11 @@ function decideSheetRelease(input: {
     : { kind: "restore" };
 }
 
-function dismissOnBackdropPointerDown(
-  event: ReactPointerEvent<HTMLDivElement>,
+function dismissOnBackdropClick(
+  event: ReactMouseEvent<HTMLDivElement>,
   onDismiss: () => void,
 ): void {
-  if (
-    event.isPrimary &&
-    event.button === 0 &&
-    event.target === event.currentTarget
-  ) {
+  if (event.button === 0 && event.target === event.currentTarget) {
     onDismiss();
   }
 }
@@ -368,9 +365,7 @@ export function ModalLayer({
     <div
       className={backdropClassName}
       role="presentation"
-      onPointerDown={(event) =>
-        dismissOnBackdropPointerDown(event, onDismissRef.current)
-      }
+      onClick={(event) => dismissOnBackdropClick(event, onDismissRef.current)}
     >
       <section
         ref={surfaceRef}

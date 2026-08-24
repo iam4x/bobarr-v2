@@ -46,6 +46,56 @@ test("completes first-run setup and a real logout/login round trip", async ({
   ).toBeVisible();
 });
 
+test("does not reopen a dialog after dismissing it from the backdrop", async ({
+  page,
+}) => {
+  await authenticate(page);
+  await page.goto("/activity");
+
+  const trigger = page.getByRole("button", { name: "Add download" }).first();
+  await trigger.click();
+  await expect(
+    page.getByRole("dialog", { name: "Add a download" }),
+  ).toBeVisible();
+
+  await page.evaluate(() => {
+    const backdrop = document.querySelector<HTMLElement>(".dialog-backdrop");
+    if (!backdrop) throw new Error("Dialog backdrop is missing.");
+    backdrop.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        isPrimary: true,
+        pointerId: 1,
+      }),
+    );
+  });
+  await page.waitForTimeout(50);
+
+  await page.evaluate(() => {
+    const backdrop = document.querySelector<HTMLElement>(".dialog-backdrop");
+    if (backdrop) {
+      backdrop.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, button: 0 }),
+      );
+      return;
+    }
+    const trigger = [
+      ...document.querySelectorAll<HTMLButtonElement>("button"),
+    ].find(
+      (button) =>
+        button.textContent?.includes("Add download") &&
+        !button.closest('[role="dialog"]'),
+    );
+    if (!trigger) throw new Error("Underlying dialog trigger is missing.");
+    trigger.click();
+  });
+
+  await expect(
+    page.getByRole("dialog", { name: "Add a download" }),
+  ).toHaveCount(0);
+});
+
 test("searches while typing and reuses session-cached TMDB results", async ({
   page,
 }, testInfo) => {
