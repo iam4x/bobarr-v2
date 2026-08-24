@@ -96,6 +96,76 @@ test("does not reopen a dialog after dismissing it from the backdrop", async ({
   ).toHaveCount(0);
 });
 
+test("does not rehydrate movie or TV details after a backdrop close", async ({
+  page,
+}, testInfo) => {
+  await authenticate(page);
+
+  async function addUnmonitoredItem(
+    title: string,
+    kind: "movie" | "series",
+  ): Promise<void> {
+    const search = await apiJson<CatalogSearchPayload>(
+      page,
+      "/api/v1/catalog/search?query=" + encodeURIComponent(title),
+    );
+    const item = search.items.find((candidate) => candidate.title === title);
+    if (!item) throw new Error("Could not find " + kind + " fixture " + title);
+    await apiJson(page, "/api/v1/library", {
+      method: "POST",
+      body: {
+        tmdbId: item.tmdbId,
+        kind,
+        monitorPolicy: "none",
+      },
+    });
+  }
+
+  const cases = [
+    {
+      kind: "movie" as const,
+      route: "/library/movies",
+      title: "E2E Backdrop Movie " + testInfo.project.name,
+    },
+    {
+      kind: "series" as const,
+      route: "/library/shows",
+      title: "E2E Backdrop Series " + testInfo.project.name,
+    },
+  ];
+
+  for (const testCase of cases) {
+    await addUnmonitoredItem(testCase.title, testCase.kind);
+    await page.goto(testCase.route);
+    const card = page.locator(".library-card").filter({
+      hasText: testCase.title,
+    });
+    await expect(card).toBeVisible();
+    await card
+      .getByRole("button", {
+        name: "Open " + testCase.title + " details",
+      })
+      .dispatchEvent("click");
+    const dialog = page.getByRole("dialog", { name: testCase.title });
+    await expect(dialog).toBeVisible();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("item"))
+      .toBeTruthy();
+    const backdrop = page.locator(".dialog-backdrop");
+    const backdropBox = await backdrop.boundingBox();
+    expect(backdropBox).not.toBeNull();
+    if (!backdropBox) return;
+
+    if (testInfo.project.name === "phone") {
+      await page.touchscreen.tap(backdropBox.x + 8, backdropBox.y + 8);
+    } else {
+      await page.mouse.click(backdropBox.x + 8, backdropBox.y + 8);
+    }
+    await expect(dialog).toBeHidden();
+    expect(new URL(page.url()).searchParams.has("item")).toBe(false);
+  }
+});
+
 test("searches while typing and reuses session-cached TMDB results", async ({
   page,
 }, testInfo) => {

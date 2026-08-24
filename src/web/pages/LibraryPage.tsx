@@ -2368,6 +2368,7 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
   }));
   const [search, setSearch] = useState(routeBrowse.search ?? "");
   const [selected, setSelected] = useState<LibraryItem | null>(null);
+  const dismissedItemIdRef = useRef<string | undefined>(undefined);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const normalizedSearch = search.trim();
   const availability = libraryAvailabilityParam(browse.filter);
@@ -2456,13 +2457,26 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
   });
 
   useEffect(() => {
-    if (!focusItemId || selected?.id === focusItemId) return;
+    if (!focusItemId) {
+      dismissedItemIdRef.current = undefined;
+      return;
+    }
+    if (dismissedItemIdRef.current !== focusItemId) {
+      dismissedItemIdRef.current = undefined;
+    }
+    if (
+      dismissedItemIdRef.current === focusItemId ||
+      selected?.id === focusItemId
+    ) {
+      return;
+    }
     const match =
       items.find((item) => item.id === focusItemId) ?? focusedItemQuery.data;
     if (match) setSelected(match);
   }, [focusItemId, focusedItemQuery.data, items, selected?.id]);
 
   function openLibraryItem(item: LibraryItem): void {
+    dismissedItemIdRef.current = undefined;
     setSelected(item);
     setSearchParams(
       (previous) => {
@@ -2475,6 +2489,7 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
   }
 
   function closeLibraryItem(): void {
+    dismissedItemIdRef.current = selected?.id;
     setSelected(null);
     setSearchParams(
       (previous) => {
