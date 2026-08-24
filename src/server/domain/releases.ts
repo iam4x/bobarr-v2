@@ -442,20 +442,32 @@ function matchTargetTitle(
   const alternatives = [target.title, ...(target.alternateTitles ?? [])];
   let bestCoverage = 0;
   for (const alternative of alternatives) {
-    const tokens = normalizeReleaseTitle(alternative)
-      .split(" ")
-      .filter(Boolean);
-    if (tokens.length === 0) continue;
-    const matching = tokens.filter((token) =>
-      releaseTokens.includes(token),
-    ).length;
-    const coverage = matching / tokens.length;
-    if (coverage > bestCoverage) bestCoverage = coverage;
-    if (coverage === 1 && containsSequence(releaseTokens, tokens)) {
-      return { matched: true, coverage: 1 };
+    for (const tokens of tokenizeTargetTitle(alternative)) {
+      const matching = tokens.filter((token) =>
+        releaseTokens.includes(token),
+      ).length;
+      const coverage = matching / tokens.length;
+      if (coverage > bestCoverage) bestCoverage = coverage;
+      if (coverage === 1 && containsSequence(releaseTokens, tokens)) {
+        return { matched: true, coverage: 1 };
+      }
     }
   }
   return { matched: bestCoverage === 1, coverage: bestCoverage };
+}
+
+function tokenizeTargetTitle(value: string): readonly (readonly string[])[] {
+  const forms = [value, value.replace(/[’']/g, " ")];
+  const tokenizations: string[][] = [];
+  const seen = new Set<string>();
+  for (const form of forms) {
+    const tokens = normalizeReleaseTitle(form).split(" ").filter(Boolean);
+    const key = tokens.join("\u0000");
+    if (tokens.length === 0 || seen.has(key)) continue;
+    seen.add(key);
+    tokenizations.push(tokens);
+  }
+  return tokenizations;
 }
 
 function containsSequence(

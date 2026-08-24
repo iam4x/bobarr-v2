@@ -63,6 +63,28 @@ describe("release normalization and scoring", () => {
     );
   });
 
+  test("matches apostrophes with dot-separated release titles", () => {
+    const result = scoreRelease(
+      {
+        id: "300-rise-of-an-empire",
+        title:
+          "300.La.Naissance.d.un.Empire.2014.MULTI.VFF.1080p.BluRay.HDLight.AC3.5.1.x265-Winks",
+        sizeBytes: 2_000_000_000,
+        seeders: 20,
+      },
+      {
+        kind: "movie",
+        title: "300\u00a0: La Naissance d’un Empire 2014",
+        year: 2014,
+      },
+    );
+
+    expect(result.eligible).toBe(true);
+    expect(result.exclusions).not.toContain(
+      "release title does not match the requested media",
+    );
+  });
+
   test("excludes wrong media identity and blocked terms", () => {
     const result = scoreRelease(
       {
