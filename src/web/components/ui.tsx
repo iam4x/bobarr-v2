@@ -6,9 +6,9 @@ import type {
 } from "react";
 
 import { AlertCircle, ChevronDown, Inbox, LoaderCircle, X } from "lucide-react";
-import { useEffect, useId, useRef } from "react";
-import { createPortal } from "react-dom";
+import { useId } from "react";
 
+import { ModalLayer } from "./ModalLayer";
 import { ApiError } from "../api/client";
 
 function classNames(
@@ -348,8 +348,6 @@ export function ErrorState({
   );
 }
 
-let openDialogCount = 0;
-
 export function Dialog({
   open,
   title,
@@ -367,100 +365,28 @@ export function Dialog({
 }) {
   const titleId = useId();
   const descriptionId = useId();
-  const dialogRef = useRef<HTMLElement>(null);
-  const onCloseRef = useRef(onClose);
-  const depthRef = useRef(0);
-  onCloseRef.current = onClose;
-
-  if (open && depthRef.current === 0) {
-    openDialogCount += 1;
-    depthRef.current = openDialogCount;
-  }
-
-  useEffect(() => {
-    if (!open) return;
-    const depth = depthRef.current;
-    const previouslyFocused = document.activeElement;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (depth !== openDialogCount) return;
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        onCloseRef.current();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const focusable = focusableElements(dialogRef.current);
-      if (focusable.length === 0) {
-        event.preventDefault();
-        dialogRef.current?.focus();
-        return;
-      }
-      const first = focusable[0]!;
-      const last = focusable.at(-1)!;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    const focusFrame = requestAnimationFrame(() => {
-      focusableElements(dialogRef.current)[0]?.focus();
-    });
-    return () => {
-      openDialogCount = Math.max(0, openDialogCount - 1);
-      depthRef.current = 0;
-      cancelAnimationFrame(focusFrame);
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", handleKeyDown);
-      if (
-        previouslyFocused instanceof HTMLElement &&
-        document.contains(previouslyFocused)
-      ) {
-        previouslyFocused.focus();
-      }
-    };
-  }, [open]);
-
-  if (!open) return null;
-  const dialog = (
-    <div
-      className="dialog-backdrop"
-      role="presentation"
-      style={{ zIndex: 100 + depthRef.current }}
-      onMouseDown={onClose}
+  return (
+    <ModalLayer
+      open={open}
+      onDismiss={onClose}
+      labelledBy={titleId}
+      describedBy={description ? descriptionId : undefined}
+      backdropClassName="dialog-backdrop"
+      surfaceClassName={classNames("dialog", `dialog--${size}`)}
+      sheet={{ kind: "drag-handle", availability: "compact" }}
     >
-      <section
-        ref={dialogRef}
-        className={classNames("dialog", `dialog--${size}`)}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={description ? descriptionId : undefined}
-        tabIndex={-1}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <header className="dialog__header">
-          <div>
-            <h2 id={titleId}>{title}</h2>
-            {description ? <p id={descriptionId}>{description}</p> : null}
-          </div>
-          <IconButton label="Close dialog" onClick={onClose}>
-            <X size={20} />
-          </IconButton>
-        </header>
-        <div className="dialog__content">{children}</div>
-      </section>
-    </div>
+      <header className="dialog__header">
+        <div>
+          <h2 id={titleId}>{title}</h2>
+          {description ? <p id={descriptionId}>{description}</p> : null}
+        </div>
+        <IconButton label="Close dialog" onClick={onClose}>
+          <X size={20} />
+        </IconButton>
+      </header>
+      <div className="dialog__content">{children}</div>
+    </ModalLayer>
   );
-  return typeof document === "undefined"
-    ? dialog
-    : createPortal(dialog, document.body);
 }
 
 export function VisuallyHidden({ children }: { children: ReactNode }) {
@@ -469,19 +395,6 @@ export function VisuallyHidden({ children }: { children: ReactNode }) {
 
 export function Stack({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return <div className={classNames("stack", className)} {...props} />;
-}
-
-function focusableElements(root: HTMLElement | null): HTMLElement[] {
-  if (!root) return [];
-  return [
-    ...root.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    ),
-  ].filter(
-    (element) =>
-      element.getAttribute("aria-hidden") !== "true" &&
-      element.getClientRects().length > 0,
-  );
 }
 
 export { classNames };

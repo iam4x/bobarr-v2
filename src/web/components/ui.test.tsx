@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { EmptyState, ProgressBar, SelectControl } from "./ui";
+import { Dialog, EmptyState, ProgressBar, SelectControl } from "./ui";
 
 describe("accessible UI primitives", () => {
   it("renders progress with a bounded accessible value", () => {
@@ -35,6 +35,20 @@ describe("accessible UI primitives", () => {
     expect(markup).toContain(
       'class="lucide lucide-chevron-down select-control__icon"',
     );
+    expect(markup).toContain('aria-hidden="true"');
+  });
+
+  it("keeps the Dialog API and adds a compact, non-interactive drag handle", () => {
+    const markup = renderToStaticMarkup(
+      <Dialog open title="Native sheet" onClose={() => {}}>
+        Content
+      </Dialog>,
+    );
+
+    expect(markup).toContain('role="dialog"');
+    expect(markup).toContain('aria-modal="true"');
+    expect(markup).toContain('data-availability="compact"');
+    expect(markup).toContain('data-sheet-drag-handle="true"');
     expect(markup).toContain('aria-hidden="true"');
   });
 });

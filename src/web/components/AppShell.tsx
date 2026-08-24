@@ -20,6 +20,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
 
 import { Brand } from "./Brand";
+import { ModalLayer } from "./ModalLayer";
 import { Badge, classNames, IconButton } from "./ui";
 import { api } from "../api/client";
 import { normalizeSystemStatus } from "../api/normalize";
@@ -89,7 +90,6 @@ function StatusPill({ status }: { status?: SystemStatus }) {
 export function AppShell() {
   const [moreOpen, setMoreOpen] = useState(false);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
-  const moreSheetRef = useRef<HTMLElement>(null);
   const location = useLocation();
   const statusQuery = useQuery({
     queryKey: ["system", "status"],
@@ -101,45 +101,6 @@ export function AppShell() {
   useServerEvents();
 
   useEffect(() => setMoreOpen(false), [location.pathname]);
-
-  useEffect(() => {
-    if (!moreOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setMoreOpen(false);
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const focusable = sheetFocusableElements(moreSheetRef.current);
-      if (focusable.length === 0) {
-        event.preventDefault();
-        moreSheetRef.current?.focus();
-        return;
-      }
-      const first = focusable[0]!;
-      const last = focusable.at(-1)!;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    const focusFrame = requestAnimationFrame(() => {
-      sheetFocusableElements(moreSheetRef.current)[0]?.focus();
-    });
-    return () => {
-      cancelAnimationFrame(focusFrame);
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", handleKeyDown);
-      moreButtonRef.current?.focus();
-    };
-  }, [moreOpen]);
 
   const mobileItems: NavigationItem[] = [
     { label: "Discover", to: "/discover", icon: Compass },
@@ -238,57 +199,49 @@ export function AppShell() {
         </button>
       </nav>
 
-      {moreOpen ? (
-        <div
-          className="mobile-sheet-backdrop"
-          role="presentation"
-          onMouseDown={() => setMoreOpen(false)}
-        >
-          <section
-            ref={moreSheetRef}
-            id="mobile-more-menu"
-            className="mobile-sheet"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="mobile-more-title"
-            tabIndex={-1}
-            onMouseDown={(event) => event.stopPropagation()}
+      <ModalLayer
+        open={moreOpen}
+        onDismiss={() => setMoreOpen(false)}
+        returnFocusRef={moreButtonRef}
+        surfaceId="mobile-more-menu"
+        labelledBy="mobile-more-title"
+        backdropClassName="mobile-sheet-backdrop"
+        surfaceClassName="mobile-sheet"
+        sheet={{ kind: "drag-handle", availability: "always" }}
+      >
+        <header>
+          <div>
+            <span className="eyebrow">Navigation</span>
+            <h2 id="mobile-more-title">More from Bobarr</h2>
+          </div>
+          <IconButton
+            label="Close menu"
+            autoFocus
+            onClick={() => setMoreOpen(false)}
           >
-            <header>
-              <div>
-                <span className="eyebrow">Navigation</span>
-                <h2 id="mobile-more-title">More from Bobarr</h2>
-              </div>
-              <IconButton
-                label="Close menu"
-                autoFocus
-                onClick={() => setMoreOpen(false)}
-              >
-                <X size={20} />
-              </IconButton>
-            </header>
-            <nav>
-              {[
-                ...primaryNavigation.slice(2),
-                ...libraryNavigation,
-                ...systemNavigation.slice(1),
-              ].map((item) => {
-                const Icon = item.icon;
-                return (
-                  <NavLink key={item.to} to={item.to}>
-                    <span className="mobile-sheet__icon">
-                      <Icon size={20} aria-hidden="true" />
-                    </span>
-                    <span>{item.label}</span>
-                    <ChevronRight size={18} aria-hidden="true" />
-                  </NavLink>
-                );
-              })}
-            </nav>
-            <StatusPill status={statusQuery.data} />
-          </section>
-        </div>
-      ) : null}
+            <X size={20} />
+          </IconButton>
+        </header>
+        <nav>
+          {[
+            ...primaryNavigation.slice(2),
+            ...libraryNavigation,
+            ...systemNavigation.slice(1),
+          ].map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink key={item.to} to={item.to}>
+                <span className="mobile-sheet__icon">
+                  <Icon size={20} aria-hidden="true" />
+                </span>
+                <span>{item.label}</span>
+                <ChevronRight size={18} aria-hidden="true" />
+              </NavLink>
+            );
+          })}
+        </nav>
+        <StatusPill status={statusQuery.data} />
+      </ModalLayer>
     </div>
   );
 }
@@ -300,18 +253,5 @@ export function RootLoading() {
       <Clapperboard className="spin-slow" size={28} aria-hidden="true" />
       <p>Warming up your library…</p>
     </main>
-  );
-}
-
-function sheetFocusableElements(root: HTMLElement | null): HTMLElement[] {
-  if (!root) return [];
-  return [
-    ...root.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    ),
-  ].filter(
-    (element) =>
-      element.getAttribute("aria-hidden") !== "true" &&
-      element.getClientRects().length > 0,
   );
 }

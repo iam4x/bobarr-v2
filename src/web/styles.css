@@ -34,6 +34,10 @@
   --shadow-lg: 0 24px 80px rgba(0, 0, 0, 0.48);
   --rail-width: 228px;
   --content-max: 1520px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
 * {
@@ -50,6 +54,7 @@ html {
 body {
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
   margin: 0;
   color: var(--text);
   background:
@@ -77,7 +82,10 @@ textarea {
   -webkit-tap-highlight-color: transparent;
 }
 button,
-a {
+a,
+input,
+select,
+textarea {
   touch-action: manipulation;
 }
 a {
@@ -508,6 +516,7 @@ textarea:focus-visible {
 
 .app-shell {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 .nav-rail {
   position: fixed;
@@ -613,6 +622,7 @@ textarea:focus-visible {
 }
 .app-content {
   min-height: 100vh;
+  min-height: 100dvh;
   padding-left: var(--rail-width);
 }
 .mobile-header,
@@ -942,12 +952,41 @@ textarea:focus-visible {
 .dialog {
   width: min(100%, 640px);
   max-height: min(900px, calc(100vh - 48px));
+  max-height: min(900px, calc(100dvh - 48px));
   overflow: hidden auto;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: var(--shadow-lg);
   animation: dialog-in 180ms ease;
+}
+.modal-surface {
+  translate: 0 var(--sheet-drag-y, 0px);
+}
+.modal-surface[data-sheet-settling] {
+  transition: translate 180ms ease;
+}
+.sheet-drag-handle {
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.sheet-drag-handle:active {
+  cursor: grabbing;
+}
+.sheet-drag-handle > span {
+  width: 42px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+.sheet-drag-handle[data-availability="compact"] {
+  display: none;
 }
 .dialog--sm {
   width: min(100%, 480px);
@@ -4543,18 +4582,17 @@ textarea:focus-visible {
 
 @media (max-width: 760px) {
   :root {
-    --mobile-header: calc(58px + env(safe-area-inset-top, 0px));
+    --mobile-header: calc(58px + var(--safe-top));
     --mobile-nav: 69px;
   }
   body {
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: var(--safe-bottom);
   }
   .nav-rail {
     display: none;
   }
   .app-content {
-    padding: var(--mobile-header) 0
-      calc(var(--mobile-nav) + env(safe-area-inset-bottom));
+    padding: var(--mobile-header) 0 calc(var(--mobile-nav) + var(--safe-bottom));
   }
   .mobile-header {
     position: fixed;
@@ -4564,9 +4602,8 @@ textarea:focus-visible {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: env(safe-area-inset-top, 0px)
-      max(17px, env(safe-area-inset-right, 0px)) 0
-      max(17px, env(safe-area-inset-left, 0px));
+    padding: var(--safe-top) max(17px, var(--safe-right)) 0
+      max(17px, var(--safe-left));
     border-bottom: 1px solid var(--border);
     background: rgba(9, 11, 16, 0.9);
     backdrop-filter: blur(16px);
@@ -4588,10 +4625,10 @@ textarea:focus-visible {
     position: fixed;
     inset: auto 0 0;
     z-index: 50;
-    height: calc(var(--mobile-nav) + env(safe-area-inset-bottom));
+    height: calc(var(--mobile-nav) + var(--safe-bottom));
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    padding: 7px 5px env(safe-area-inset-bottom);
+    padding: 7px 5px var(--safe-bottom);
     border-top: 1px solid var(--border);
     background: rgba(12, 14, 20, 0.94);
     backdrop-filter: blur(18px);
@@ -4624,19 +4661,27 @@ textarea:focus-visible {
   .mobile-sheet-backdrop {
     position: fixed;
     inset: 0;
+    height: 100vh;
+    height: 100dvh;
     z-index: 45;
     display: flex;
     align-items: flex-end;
-    padding-bottom: calc(var(--mobile-nav) + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--mobile-nav) + var(--safe-bottom));
     background: rgba(1, 2, 4, 0.7);
     backdrop-filter: blur(4px);
     animation: fade-in 140ms ease;
   }
   .mobile-sheet {
     width: 100%;
-    max-height: calc(100vh - var(--mobile-header) - var(--mobile-nav));
+    max-height: calc(
+      100vh - var(--mobile-header) - var(--mobile-nav) - var(--safe-bottom)
+    );
+    max-height: calc(
+      100dvh - var(--mobile-header) - var(--mobile-nav) - var(--safe-bottom)
+    );
     overflow-y: auto;
-    padding: 18px 17px 21px;
+    overscroll-behavior-y: contain;
+    padding: 0 max(17px, var(--safe-right)) 21px max(17px, var(--safe-left));
     border: 1px solid var(--border-strong);
     border-width: 1px 0 0;
     border-radius: 22px 22px 0 0;
@@ -4649,6 +4694,9 @@ textarea:focus-visible {
     align-items: center;
     justify-content: space-between;
     margin-bottom: 12px;
+  }
+  .sheet-drag-handle[data-availability="compact"] {
+    display: grid;
   }
   .mobile-sheet h2 {
     margin: 0;
@@ -4753,7 +4801,8 @@ textarea:focus-visible {
   .dialog--lg,
   .dialog--xl {
     width: 100%;
-    max-height: calc(100dvh - 46px);
+    max-height: calc(100vh - max(46px, var(--safe-top)));
+    max-height: calc(100dvh - max(46px, var(--safe-top)));
     border-width: 1px 0 0;
     border-radius: 23px 23px 0 0;
     animation-name: sheet-in;
@@ -4763,7 +4812,8 @@ textarea:focus-visible {
     padding: 14px 17px;
   }
   .dialog__content {
-    padding: 17px;
+    padding: 17px max(17px, var(--safe-right)) max(17px, var(--safe-bottom))
+      max(17px, var(--safe-left));
   }
   .media-detail__hero {
     min-height: 260px;
@@ -5279,6 +5329,20 @@ textarea:focus-visible {
     position: static;
     align-self: center;
     margin-top: auto !important;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
+      [type="file"]
+    ),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-surface[data-sheet-settling] {
+    transition: none;
   }
 }
 

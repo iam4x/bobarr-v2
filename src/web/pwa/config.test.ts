@@ -32,4 +32,14 @@ describe("PWA configuration", () => {
     expect(SERVICE_WORKER_SOURCE).not.toContain("caches.open");
     expect(NO_CACHE_HEADERS["cache-control"]).toContain("no-store");
   });
+
+  test("locks the installed-app viewport and opts into safe-area layout", async () => {
+    const html = await Bun.file(
+      new URL("../index.html", import.meta.url),
+    ).text();
+
+    expect(html).toContain("maximum-scale=1");
+    expect(html).toContain("user-scalable=no");
+    expect(html).toContain("viewport-fit=cover");
+  });
 });

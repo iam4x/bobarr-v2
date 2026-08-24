@@ -1,4 +1,4 @@
-import type { APIRequestContext, Page } from "@playwright/test";
+import type { APIRequestContext, CDPSession, Page } from "@playwright/test";
 
 import { expect } from "@playwright/test";
 
@@ -11,6 +11,44 @@ export const fakeServicesUrl = "http://127.0.0.1:3101";
 export const appControlUrl = "http://127.0.0.1:3102";
 export const mediaRoot = "/tmp/bobarr-e2e/media";
 const appControlToken = "bobarr-e2e-supervisor-control-token";
+const touchSessions = new WeakMap<Page, CDPSession>();
+
+export async function dragTouch(
+  page: Page,
+  input: {
+    from: { x: number; y: number };
+    to: { x: number; y: number };
+    steps?: number;
+  },
+): Promise<void> {
+  let session = touchSessions.get(page);
+  if (!session) {
+    session = await page.context().newCDPSession(page);
+    touchSessions.set(page, session);
+  }
+  const steps = input.steps ?? 8;
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [input.from],
+  });
+  for (let step = 1; step <= steps; step += 1) {
+    const progress = step / steps;
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [
+        {
+          x: input.from.x + (input.to.x - input.from.x) * progress,
+          y: input.from.y + (input.to.y - input.from.y) * progress,
+        },
+      ],
+    });
+    await page.waitForTimeout(16);
+  }
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
+  });
+}
 
 export interface CatalogSearchPayload {
   items: Array<{
