@@ -231,21 +231,21 @@ async function assertBunPin(): Promise<void> {
     packageManager?: string;
   };
   assert(
-    packageJson.packageManager === "bun@1.3.14" &&
-      packageJson.engines?.bun === "1.3.14",
-    "package.json must pin Bun 1.3.14 consistently",
+    packageJson.packageManager === "bun@1.4.0" &&
+      packageJson.engines?.bun === "1.4.0",
+    "package.json must pin Bun 1.4.0 consistently",
   );
   assert(
-    dockerfile.match(/oven\/bun:1\.3\.14-alpine@sha256:[a-f\d]{64}/g)
-      ?.length === 2,
+    dockerfile.match(/oven\/bun:1\.4\.0-alpine@sha256:[a-f\d]{64}/g)?.length ===
+      2,
     "Every Bun Docker stage must use the same versioned immutable image",
   );
   for (const [name, workflow] of Object.entries({ ci, release })) {
     assert(
       workflow.includes(
         "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6",
-      ) && workflow.includes("bun-version: 1.3.14"),
-      `${name} workflow must pin setup-bun and Bun 1.3.14`,
+      ) && workflow.includes("bun-version: 1.4.0"),
+      `${name} workflow must pin setup-bun and Bun 1.4.0`,
     );
   }
 }

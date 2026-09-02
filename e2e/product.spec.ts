@@ -9,6 +9,7 @@ import {
   authenticate,
   controlFakeServices,
   mediaRoot,
+  openLibraryCard,
   restartBobarr,
   searchAndOpen,
   signIn,
@@ -141,11 +142,7 @@ test("does not rehydrate movie or TV details after a backdrop close", async ({
       hasText: testCase.title,
     });
     await expect(card).toBeVisible();
-    await card
-      .getByRole("button", {
-        name: "Open " + testCase.title + " details",
-      })
-      .dispatchEvent("click");
+    await openLibraryCard(page, testCase.title);
     const dialog = page.getByRole("dialog", { name: testCase.title });
     await expect(dialog).toBeVisible();
     await expect
@@ -231,8 +228,7 @@ test("discovers movies from actors in catalog and library details", async ({
   await searchAndOpen(page, title);
   await page.getByRole("button", { name: "Add & search manually" }).click();
   await page.goto("/library/movies");
-  const card = page.locator(".library-card").filter({ hasText: title });
-  await card.getByRole("button", { name: `Open ${title} details` }).click();
+  await openLibraryCard(page, title);
   await page
     .getByRole("button", { name: "Discover movies with E2E Actor" })
     .click();
@@ -340,9 +336,11 @@ test("monitors a movie, manually grabs a Jackett release, and shows it in Activi
 
   await searchAndOpen(page, title);
   await page.getByRole("button", { name: "Add & search manually" }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "without starting a download",
-  );
+  await expect(
+    page.getByRole("status").filter({
+      hasText: "without starting a download",
+    }),
+  ).toContainText("without starting a download");
   const pendingLibrary = await apiJson<{
     items: Array<{
       id: string;
@@ -371,7 +369,9 @@ test("monitors a movie, manually grabs a Jackett release, and shows it in Activi
   await expect(release).toContainText("Bobarr E2E Indexer");
   await expect(release).toContainText("42 seeders");
   await release.getByRole("button", { name: "Grab" }).click();
-  await expect(page.getByRole("status")).toContainText("Release queued");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Release queued" }),
+  ).toContainText("Release queued");
 
   await page.goto("/activity");
   await expect(
@@ -453,7 +453,7 @@ test("monitors a movie, manually grabs a Jackett release, and shows it in Activi
 
   await page.goto("/library/movies");
   const card = page.locator(".library-card").filter({ hasText: title });
-  await card.getByRole("button", { name: `Open ${title} details` }).click();
+  await openLibraryCard(page, title);
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Remove from library" }).click();
   await dialog.getByLabel("Delete organized library files").check();
@@ -546,8 +546,7 @@ test("chooses a release for a missing movie from library management", async ({
   await controlFakeServices(request, { jackettMode: "ready" });
 
   await page.goto("/library/movies");
-  const card = page.locator(".library-card").filter({ hasText: title });
-  await card.getByRole("button", { name: `Open ${title} details` }).click();
+  await openLibraryCard(page, title);
   const dialog = page.getByRole("dialog");
   await dialog
     .getByRole("button", { name: "Search releases manually" })
@@ -561,7 +560,9 @@ test("chooses a release for a missing movie from library management", async ({
     .filter({ hasText: `${title} alternate.2024.1080p` });
   await expect(release).toContainText("Bobarr E2E Indexer");
   await release.getByRole("button", { name: "Grab" }).click();
-  await expect(dialog.getByRole("status")).toContainText("Release queued");
+  await expect(
+    dialog.getByRole("status").filter({ hasText: "Release queued" }),
+  ).toContainText("Release queued");
   const original = await waitForDownloadState(
     page,
     `${title} alternate`,
@@ -569,15 +570,10 @@ test("chooses a release for a missing movie from library management", async ({
   );
 
   await page.goto("/library/movies");
-  const downloadingCard = page
-    .locator(".library-card")
-    .filter({ hasText: title });
-  await downloadingCard
-    .getByRole("button", { name: `Open ${title} details` })
-    .click();
+  await openLibraryCard(page, title);
   const replacementDialog = page.getByRole("dialog");
   await replacementDialog
-    .getByRole("button", { name: "Search releases manually" })
+    .getByRole("button", { name: /Choose replacement/ })
     .click();
   const replacementQuery = replacementDialog.getByLabel("Jackett search query");
   await replacementQuery.fill(`${title} healthier swarm`);
@@ -592,9 +588,11 @@ test("chooses a release for a missing movie from library management", async ({
     "explicit replacement",
   );
   await replacement.getByRole("button", { name: "Replace" }).click();
-  await expect(replacementDialog.getByRole("status")).toContainText(
-    "Replacement queued",
-  );
+  await expect(
+    replacementDialog
+      .getByRole("status")
+      .filter({ hasText: "Replacement queued" }),
+  ).toContainText("Replacement queued");
   const healthier = await waitForDownloadState(
     page,
     `${title} healthier swarm`,
@@ -637,14 +635,14 @@ test("acquires and organizes two monitored TV seasons", async ({
 
   await controlFakeServices(request, { jackettMode: "ready" });
   await page.goto("/library/shows");
-  const card = page.locator(".library-card").filter({ hasText: title });
-  await card.getByRole("button", { name: `Open ${title} details` }).click();
+  await openLibraryCard(page, title);
   const dialog = page.getByRole("dialog");
   await dialog
     .getByRole("button", { name: /Search any release manually/ })
     .click();
   await expect(dialog.getByLabel("Season", { exact: true })).toHaveValue("2");
   await dialog.getByLabel("Season", { exact: true }).selectOption("1");
+  await dialog.getByLabel("Release target").selectOption("season");
   const seasonOneRelease = dialog
     .locator(".release-card")
     .filter({ hasText: ".S01.1080p" });
@@ -653,6 +651,7 @@ test("acquires and organizes two monitored TV seasons", async ({
   await waitForDownloadState(page, `${title}.2024.S01`, "downloading");
 
   await dialog.getByLabel("Season", { exact: true }).selectOption("2");
+  await dialog.getByLabel("Release target").selectOption("season");
   const seasonTwoRelease = dialog
     .locator(".release-card")
     .filter({ hasText: ".S02.1080p" });
@@ -665,7 +664,7 @@ test("acquires and organizes two monitored TV seasons", async ({
     method: "POST",
     body: { kind: "maintenance.reconcile.v1", payload: {} },
   });
-  await waitForLibraryState(page, title, "available");
+  await waitForLibraryState(page, title, "unmonitored");
 
   const library = await apiJson<{
     items: Array<{ id: string; title: string }>;
@@ -769,8 +768,7 @@ test("explains a partially aired TV season episode by episode", async ({
     .toBe("available,downloading,missing,missing,missing,missing");
 
   await page.goto("/library/shows");
-  const card = page.locator(".library-card").filter({ hasText: title });
-  await card.getByRole("button", { name: `Open ${title} details` }).click();
+  await openLibraryCard(page, title);
   const dialog = page.getByRole("dialog", { name: title });
   await expect(dialog).toBeVisible();
   await expect(
@@ -876,7 +874,9 @@ test("adopts an ambiguous existing movie only after explicit scan review", async
 
   await page.goto("/library/movies");
   await page.getByRole("button", { name: "Scan library" }).click();
-  await expect(page.getByRole("status")).toContainText("Library scan queued");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Library scan queued" }),
+  ).toContainText("Library scan queued");
   await expect
     .poll(
       async () => {
@@ -904,7 +904,7 @@ test("adopts an ambiguous existing movie only after explicit scan review", async
   const card = page.locator(".library-card").filter({ hasText: title });
   await expect(card).toBeVisible();
 
-  await card.getByRole("button", { name: `Open ${title} details` }).click();
+  await openLibraryCard(page, title);
   let dialog = page.getByRole("dialog", { name: title });
   await expect(
     dialog.getByRole("heading", { name: "Ready in your library" }),
@@ -957,7 +957,9 @@ test("manages and removes a scan-imported untracked TV show", async ({
 
   await page.goto("/library/shows");
   await page.getByRole("button", { name: "Scan library" }).click();
-  await expect(page.getByRole("status")).toContainText("Library scan queued");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Library scan queued" }),
+  ).toContainText("Library scan queued");
   await expect
     .poll(
       async () => {
@@ -980,7 +982,7 @@ test("manages and removes a scan-imported untracked TV show", async ({
   await page.reload();
   let card = page.locator(".library-card").filter({ hasText: title });
   await expect(card).toBeVisible();
-  await card.getByRole("button", { name: `Open ${title} details` }).click();
+  await openLibraryCard(page, title);
   let dialog = page.getByRole("dialog", { name: title });
   await expect(
     dialog.getByText("Monitoring is off", { exact: true }),
@@ -1026,7 +1028,7 @@ test("manages and removes a scan-imported untracked TV show", async ({
 
   card = page.locator(".library-card").filter({ hasText: title });
   await expect(card).toBeVisible();
-  await card.getByRole("button", { name: `Open ${title} details` }).click();
+  await openLibraryCard(page, title);
   dialog = page.getByRole("dialog", { name: title });
   await expect(dialog.getByText("Future seasons only")).toBeVisible();
   await expect(
@@ -1065,9 +1067,11 @@ test("surfaces a degraded connector result without losing navigation", async ({
     .locator(".connection-card")
     .filter({ hasText: "Transmission" });
   await transmission.getByRole("button", { name: "Test" }).click();
-  await expect(page.getByRole("status")).toContainText(
-    "Transmission connection needs attention",
-  );
+  await expect(
+    page.getByRole("status").filter({
+      hasText: "Transmission connection needs attention",
+    }),
+  ).toContainText("Transmission connection needs attention");
   await expect(page.getByRole("main")).toBeVisible();
   await controlFakeServices(request, { transmissionDegraded: false });
 });

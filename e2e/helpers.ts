@@ -194,6 +194,18 @@ export async function searchAndOpen(page: Page, title: string): Promise<void> {
   await expect(page.getByRole("dialog")).toContainText(title);
 }
 
+export async function openLibraryCard(
+  page: Page,
+  title: string,
+): Promise<void> {
+  const card = page.locator(".library-card").filter({ hasText: title });
+  const hitArea = card.getByRole("button", {
+    name: `Open ${title} details`,
+  });
+  await expect(hitArea).toBeVisible();
+  await hitArea.click({ position: { x: 8, y: 8 } });
+}
+
 export async function waitForLibraryState(
   page: Page,
   title: string,

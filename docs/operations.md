@@ -166,7 +166,7 @@ Bobarr again and sign in with the new password.
 Images are pinned by immutable digest. Dependency automation proposes updates;
 review release and security notes before accepting new digests.
 
-The checked-in pins currently identify Bun 1.3.14, Jackett
+The checked-in pins currently identify Bun 1.4.0, Jackett
 v0.24.2251-ls468, FlareSolverr v3.5.0, Transmission 4.1.3-r0-ls355, and
 Gluetun v3.40.0. Keep the readable version tag and digest together when
 updating an image so operators can audit both intent and exact content.

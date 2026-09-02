@@ -47,7 +47,7 @@ second copy of each file.
 
 ## Development
 
-Bobarr is pinned to Bun 1.3.14.
+Bobarr is pinned to Bun 1.4.0.
 
 ```sh
 bun install --frozen-lockfile

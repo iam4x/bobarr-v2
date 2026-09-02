@@ -106,9 +106,12 @@ function tmdbResponse(url: URL): Response {
     );
   }
   const path = url.pathname.slice("/tmdb/3/".length);
-  if (path === "search/multi") {
+  const searchMatch = /^search\/(multi|movie|tv)$/.exec(path);
+  if (searchMatch) {
     const title = url.searchParams.get("query")?.trim() || "E2E Movie";
-    const kind = mediaKind(title);
+    let kind = mediaKind(title);
+    if (searchMatch[1] === "movie") kind = "movie";
+    else if (searchMatch[1] === "tv") kind = "tv";
     const item = rememberMedia(title, kind);
     if (!tmdbAmbiguous) return catalogPage([catalogPayload(item)]);
     const alternate = rememberMedia(title, kind, item.id + 1);
