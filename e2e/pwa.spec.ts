@@ -40,7 +40,8 @@ test("uses one-tap controls and handle-only sheet gestures on a phone", async ({
   await expect(more).toBeFocused();
   await expect(page.locator("body")).not.toHaveCSS("overflow", "hidden");
 
-  await more.tap();
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await more.click();
   await expect(sheet).toBeVisible();
   const reopenedBox = await handle.boundingBox();
   expect(reopenedBox).not.toBeNull();
