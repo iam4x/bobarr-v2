@@ -37,7 +37,7 @@ describe("authentication throttling", () => {
     );
     expect(errors.filter((code) => code === "unauthorized")).toHaveLength(2);
     expect(errors.filter((code) => code === "account_locked")).toHaveLength(1);
-    expect(fixture.repositories.auth.getAdmin()).toMatchObject({
+    expect(fixture.repositories.auth.getById(1)).toMatchObject({
       failedLoginCount: 3,
       lockedUntil: fixture.now + 60_000,
     });
@@ -88,7 +88,7 @@ describe("authentication throttling", () => {
       ).rejects.toMatchObject({ code: "unauthorized" });
     }
 
-    expect(fixture.repositories.auth.getAdmin()).toMatchObject({
+    expect(fixture.repositories.auth.getById(1)).toMatchObject({
       failedLoginCount: 0,
       lockedUntil: null,
     });

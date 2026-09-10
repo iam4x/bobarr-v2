@@ -12,9 +12,8 @@ import type {
 } from "./auth-service";
 import type { PasswordHasher } from "./passwords";
 
-import { requireAdmin, type Actor, type Rank } from "./policy";
+import { requireAdmin, type Actor } from "./policy";
 import {
-  AppError,
   conflict,
   createOpaqueToken,
   hashOpaqueToken,
@@ -168,6 +167,11 @@ export class InviteService {
     );
   }
 
+  listInvites(actor: Actor): InviteRow[] {
+    requireAdmin(actor, "Administrator access is required to manage people");
+    return this.invites.listAll();
+  }
+
   revoke(actor: Actor, id: string): void {
     requireAdmin(actor, "Administrator access is required to manage people");
     const row = this.invites.getById(id);
@@ -179,49 +183,5 @@ export class InviteService {
     if (!this.invites.revokeIfOpen(id, this.clock.now().getTime())) {
       throw conflict("Only unused invites can be revoked");
     }
-  }
-
-  setRank(actor: Actor, id: number, rank: Rank): UserRow {
-    requireAdmin(actor, "Administrator access is required to manage people");
-    const target = this.accounts.getById(id);
-    if (target === undefined) throw notFound("Account not found");
-    if (target.rank === rank) return target;
-    if (
-      target.rank === "admin" &&
-      rank === "user" &&
-      this.accounts.countByRank("admin") <= 1
-    ) {
-      throw new AppError({
-        code: "conflict",
-        message: "The last administrator cannot be demoted",
-        status: 409,
-      });
-    }
-    return this.accounts.setRank(id, rank, this.clock.now().getTime());
-  }
-
-  deleteUser(actor: Actor, id: number): void {
-    requireAdmin(actor, "Administrator access is required to manage people");
-    const target = this.accounts.getById(id);
-    if (target === undefined) throw notFound("Account not found");
-    if (target.rank === "admin" && this.accounts.countByRank("admin") <= 1) {
-      throw new AppError({
-        code: "conflict",
-        message: "The last administrator cannot be deleted",
-        status: 409,
-      });
-    }
-    this.accounts.deleteUser(id);
-  }
-
-  list(actor: Actor): {
-    users: ReturnType<AuthRepository["listUsers"]>;
-    invites: InviteRow[];
-  } {
-    requireAdmin(actor, "Administrator access is required to manage people");
-    return {
-      users: this.accounts.listUsers(),
-      invites: this.invites.listAll(),
-    };
   }
 }

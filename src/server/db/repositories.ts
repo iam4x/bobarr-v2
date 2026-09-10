@@ -114,18 +114,6 @@ export class AuthRepository {
       .get();
   }
 
-  getBootstrapAdmin(): UserRow | undefined {
-    return this.getById(1);
-  }
-
-  getAdmin(): UserRow | undefined {
-    return this.getBootstrapAdmin();
-  }
-
-  getAdminByUsername(username: string): UserRow | undefined {
-    return this.getByUsername(username);
-  }
-
   countByRank(rank: "admin" | "user"): number {
     const row = this.database.client
       .select({ count: sql<number>`count(*)` })
@@ -1331,10 +1319,6 @@ export function toAccount(row: UserRow): Account {
     createdAt: toIsoDate(row.createdAt),
     lastLoginAt: row.lastLoginAt === null ? null : toIsoDate(row.lastLoginAt),
   };
-}
-
-export function toAdmin(row: UserRow): Account {
-  return toAccount(row);
 }
 
 function mapLibraryItem(row: LibraryItemRow): LibraryItem {
