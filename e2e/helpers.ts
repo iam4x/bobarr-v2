@@ -185,6 +185,15 @@ export async function apiJson<T>(
   ) as Promise<T>;
 }
 
+export function e2eTitle(
+  testInfo: { project: { name: string }; retry: number },
+  base: string,
+): string {
+  return testInfo.retry > 0
+    ? `${base} ${testInfo.project.name}-${testInfo.retry}`
+    : `${base} ${testInfo.project.name}`;
+}
+
 export async function searchAndOpen(page: Page, title: string): Promise<void> {
   await page.goto("/search");
   const search = page.getByLabel("Search movies and shows");
@@ -192,6 +201,13 @@ export async function searchAndOpen(page: Page, title: string): Promise<void> {
   await search.press("Enter");
   await page.getByRole("button", { name: `View ${title}` }).click();
   await expect(page.getByRole("dialog")).toContainText(title);
+}
+
+export async function addOpenedTitleToLibrary(page: Page): Promise<void> {
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Add to library" })
+    .click();
 }
 
 export async function openLibraryCard(
