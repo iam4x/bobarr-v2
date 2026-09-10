@@ -277,6 +277,72 @@ describe("user ranks, invites, and ownership", () => {
     expect(deleted.status).toBe(200);
   });
 
+  test("admin can promote a user and cannot demote the last administrator", async () => {
+    const runtime = await createRuntime();
+    const admin = await setupAdmin(runtime);
+    const friend = await inviteFriend(runtime, admin.headers);
+
+    const denied = await jsonRequest(
+      runtime,
+      `/api/v1/users/${friend.session.user.id}`,
+      "PATCH",
+      { rank: "admin" },
+      friend.headers,
+    );
+    expect(denied.status).toBe(403);
+
+    const promoted = await jsonRequest(
+      runtime,
+      `/api/v1/users/${friend.session.user.id}`,
+      "PATCH",
+      { rank: "admin" },
+      admin.headers,
+    );
+    expect(promoted.status).toBe(200);
+    expect(await promoted.json()).toMatchObject({
+      id: friend.session.user.id,
+      username: "friend",
+      rank: "admin",
+    });
+
+    const again = await jsonRequest(
+      runtime,
+      `/api/v1/users/${friend.session.user.id}`,
+      "PATCH",
+      { rank: "admin" },
+      admin.headers,
+    );
+    expect(again.status).toBe(200);
+
+    const me = await runtime.app.request("/api/v1/auth/me", {
+      headers: { cookie: friend.headers.cookie },
+    });
+    expect(me.status).toBe(200);
+    expect(await me.json()).toMatchObject({
+      user: { rank: "admin" },
+      capabilities: { canManageSettings: true, canInvite: true },
+    });
+
+    const demoted = await jsonRequest(
+      runtime,
+      `/api/v1/users/${friend.session.user.id}`,
+      "PATCH",
+      { rank: "user" },
+      admin.headers,
+    );
+    expect(demoted.status).toBe(200);
+    expect(await demoted.json()).toMatchObject({ rank: "user" });
+
+    const lastAdmin = await jsonRequest(
+      runtime,
+      "/api/v1/users/1",
+      "PATCH",
+      { rank: "user" },
+      admin.headers,
+    );
+    expect(lastAdmin.status).toBe(409);
+  });
+
   test("library views include createdByUserId and ownedByMe", async () => {
     const runtime = await createRuntime();
     const admin = await setupAdmin(runtime);

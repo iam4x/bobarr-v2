@@ -12,7 +12,7 @@ import type {
 } from "./auth-service";
 import type { PasswordHasher } from "./passwords";
 
-import { requireAllowed, type Actor } from "./policy";
+import { requireAllowed, type Actor, type Rank } from "./policy";
 import {
   AppError,
   conflict,
@@ -179,6 +179,25 @@ export class InviteService {
     if (!this.invites.revokeIfOpen(id, this.clock.now().getTime())) {
       throw conflict("Only unused invites can be revoked");
     }
+  }
+
+  setRank(actor: Actor, id: number, rank: Rank): UserRow {
+    requireAllowed(actor, { type: "manage_users" });
+    const target = this.accounts.getById(id);
+    if (target === undefined) throw notFound("Account not found");
+    if (target.rank === rank) return target;
+    if (
+      target.rank === "admin" &&
+      rank === "user" &&
+      this.accounts.countByRank("admin") <= 1
+    ) {
+      throw new AppError({
+        code: "conflict",
+        message: "The last administrator cannot be demoted",
+        status: 409,
+      });
+    }
+    return this.accounts.setRank(id, rank, this.clock.now().getTime());
   }
 
   deleteUser(actor: Actor, id: number): void {

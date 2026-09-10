@@ -6,6 +6,7 @@ test("an invited user can join and cannot open Settings", async ({
   page,
   browser,
 }, testInfo) => {
+  const friendName = `e2e-friend-${testInfo.project.name}`;
   await authenticate(page);
   await page.goto("/settings");
   await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
@@ -26,9 +27,7 @@ test("an invited user can join and cannot open Settings", async ({
   await expect(
     friendPage.getByRole("heading", { name: "Create your Bobarr account" }),
   ).toBeVisible();
-  await friendPage
-    .getByLabel("Username")
-    .fill(`e2e-friend-${testInfo.project.name}`);
+  await friendPage.getByLabel("Username").fill(friendName);
   await friendPage.locator('input[name="password"]').fill("friend-pass-2026");
   await friendPage
     .locator('input[name="confirmation"]')
@@ -56,6 +55,24 @@ test("an invited user can join and cannot open Settings", async ({
       friendPage.getByRole("button", { name: "Sign out" }),
     ).toBeVisible();
   }
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
+  await page
+    .locator("li")
+    .filter({ hasText: friendName })
+    .getByRole("button", { name: "Make admin" })
+    .click();
+  await expect(
+    page.getByText(`${friendName} is now an administrator.`),
+  ).toBeVisible();
+
+  await friendPage.reload();
+  await friendPage.goto("/settings");
+  await expect(friendPage).toHaveURL(/\/settings/);
+  await expect(
+    friendPage.getByRole("heading", { name: "People" }),
+  ).toBeVisible();
 
   await friendContext.close();
 });
