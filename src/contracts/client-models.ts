@@ -6,6 +6,8 @@
  * compatibility at the edge lets the route contract remain strict without
  * spreading fallback shapes through UI components.
  */
+import type { UiLocale } from "./auth";
+
 export type MediaKind = "movie" | "series" | "season" | "episode";
 export type MonitorPolicy = "none" | "selected" | "all" | "future";
 export type AcquisitionState =
@@ -36,7 +38,7 @@ export interface Session {
     rank: "admin" | "user";
     createdAt?: string;
     lastLoginAt?: string | null;
-    uiLocale?: "en" | "fr" | null;
+    uiLocale?: UiLocale | null;
   };
   capabilities?: {
     rank: "admin" | "user";

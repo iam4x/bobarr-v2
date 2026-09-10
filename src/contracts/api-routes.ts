@@ -1,3 +1,4 @@
+import type { Account, UpdateUiLocaleRequest } from "./auth";
 import type {
   ActivityEvent,
   AppSettings,
@@ -250,18 +251,10 @@ export const apiRoutes = {
     never,
     { username: string; password?: string }
   >()("PATCH", "/auth/credentials"),
-  updateUiLocale: route<
-    {
-      id: number;
-      username: string;
-      rank: "admin" | "user";
-      createdAt: string;
-      lastLoginAt: string | null;
-      uiLocale: "en" | "fr" | null;
-    },
-    never,
-    { uiLocale: "en" | "fr" }
-  >()("PATCH", "/auth/ui-locale"),
+  updateUiLocale: route<Account, never, UpdateUiLocaleRequest>()(
+    "PATCH",
+    "/auth/ui-locale",
+  ),
   previewInvite: route<
     { status: "open"; expiresAt: string },
     { token: string }
@@ -272,14 +265,7 @@ export const apiRoutes = {
     { token: string; username: string; password: string }
   >()("POST", "/invites/accept"),
   listUsers: route<{
-    users: Array<{
-      id: number;
-      username: string;
-      rank: "admin" | "user";
-      createdAt: string;
-      lastLoginAt: string | null;
-      uiLocale: "en" | "fr" | null;
-    }>;
+    users: Account[];
     invites: Array<{
       id: string;
       status: "open" | "accepted" | "revoked" | "expired";
@@ -296,18 +282,10 @@ export const apiRoutes = {
     { expiresInSeconds?: number }
   >()("POST", "/users/invites"),
   revokeInvite: route<{ revoked: true }>()("DELETE", "/users/invites/:id"),
-  updateUserRank: route<
-    {
-      id: number;
-      username: string;
-      rank: "admin" | "user";
-      createdAt: string;
-      lastLoginAt: string | null;
-      uiLocale: "en" | "fr" | null;
-    },
-    never,
-    { rank: "admin" | "user" }
-  >()("PATCH", "/users/:id"),
+  updateUserRank: route<Account, never, { rank: "admin" | "user" }>()(
+    "PATCH",
+    "/users/:id",
+  ),
   deleteUser: route<{ deleted: true }>()("DELETE", "/users/:id"),
   getSettings: route<AppSettings>()("GET", "/settings"),
   updateSettings: route<AppSettings, never, Partial<AppSettings>>()(
