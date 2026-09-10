@@ -44,12 +44,7 @@ import {
   type TorrentEngine,
   type TorrentSnapshot,
 } from "../application";
-import {
-  classifyLibraryAdd,
-  effectiveDownloadRequester,
-  effectiveMediaOwner,
-  requireAllowed,
-} from "../auth/policy";
+import { requireAdmin, requireOwner } from "../auth/policy";
 import { AppError, notFound } from "../core";
 import { aggregateChildAcquisitionState } from "../domain/media-state";
 import {
@@ -814,7 +809,13 @@ export function registerProductRoutes(
       input.kind,
       input.tmdbId,
     );
-    requireAllowed(actor, classifyLibraryAdd(existing));
+    if (existing) {
+      requireOwner(
+        actor,
+        existing.createdByUserId,
+        "You can only change titles you added",
+      );
+    }
     const settings =
       dependencies.repositories.settings.ensureDefaults().settings;
     const client = await requireIntegrations(dependencies).tmdb();
@@ -922,10 +923,11 @@ export function registerProductRoutes(
     const input = parse(MonitorPatchSchema, await context.req.json());
     const current = dependencies.repositories.media.get(id);
     if (!current) throw notFound("Library item not found");
-    requireAllowed(actor, {
-      type: "mutate_media",
-      ownerId: effectiveMediaOwner(current),
-    });
+    requireOwner(
+      actor,
+      current.createdByUserId,
+      "You can only change titles you added",
+    );
     if (current.kind === "movie") {
       if (
         input.seasonNumbers !== undefined ||
@@ -1006,10 +1008,11 @@ export function registerProductRoutes(
     const id = parse(DownloadParamsSchema, context.req.param()).id;
     const item = dependencies.repositories.media.get(id);
     if (!item) throw notFound("Library item not found");
-    requireAllowed(context.get("auth").actor, {
-      type: "mutate_media",
-      ownerId: effectiveMediaOwner(item),
-    });
+    requireOwner(
+      context.get("auth").actor,
+      item.createdByUserId,
+      "You can only change titles you added",
+    );
     if (item.monitorPolicy === "none") {
       throw conflictError("Resume monitoring before retrying this title");
     }
@@ -1055,10 +1058,11 @@ export function registerProductRoutes(
     );
     const item = dependencies.repositories.media.get(id);
     if (!item) throw notFound("Library item not found");
-    requireAllowed(context.get("auth").actor, {
-      type: "mutate_media",
-      ownerId: effectiveMediaOwner(item),
-    });
+    requireOwner(
+      context.get("auth").actor,
+      item.createdByUserId,
+      "You can only change titles you added",
+    );
     if (item.monitorPolicy === "none" && !input.candidateId) {
       throw conflictError(
         "Choose a release for a one-time replacement, or resume monitoring for an automatic replacement",
@@ -1195,7 +1199,6 @@ export function registerProductRoutes(
   });
 
   app.get("/api/v1/library/:id/files/:fileId/download", async (context) => {
-    requireAllowed(context.get("auth").actor, { type: "download" });
     const { id, fileId } = parse(LibraryFileParamsSchema, context.req.param());
     const item = dependencies.repositories.media.get(id);
     if (!item) throw notFound("Library item not found");
@@ -1226,7 +1229,10 @@ export function registerProductRoutes(
   });
 
   app.post("/api/v1/library/scan", async (context) => {
-    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    requireAdmin(
+      context.get("auth").actor,
+      "Administrator access is required to change settings",
+    );
     const body = parse(
       z.object({ kind: CatalogKindSchema.optional() }),
       await context.req.json().catch(() => ({})),
@@ -1259,10 +1265,11 @@ export function registerProductRoutes(
     }
     const item = dependencies.repositories.media.get(id);
     if (!item) throw notFound("Library item not found");
-    requireAllowed(context.get("auth").actor, {
-      type: "mutate_media",
-      ownerId: effectiveMediaOwner(item),
-    });
+    requireOwner(
+      context.get("auth").actor,
+      item.createdByUserId,
+      "You can only change titles you added",
+    );
     const deleteLibraryRecord =
       input.deleteLibraryRecord ||
       (input.deleteLibraryFiles &&
@@ -1386,7 +1393,6 @@ export function registerProductRoutes(
 
   app.post("/api/v1/downloads", async (context) => {
     const actor = context.get("auth").actor;
-    requireAllowed(actor, { type: "download" });
     const service = await requireAcquisition(dependencies);
     const contentType = context.req.header("content-type") ?? "";
     let download;
@@ -1420,6 +1426,7 @@ export function registerProductRoutes(
           },
           title: torrent.name,
           metainfo,
+          requestedByUserId: actor.account.id,
         }),
       );
     } else {
@@ -1436,16 +1443,20 @@ export function registerProductRoutes(
           : undefined;
         candidateTarget = media;
         if (media && hasRecordedFiles(media, dependencies)) {
-          requireAllowed(actor, {
-            type: "mutate_media",
-            ownerId: effectiveMediaOwner(media),
-          });
+          requireOwner(
+            actor,
+            media.createdByUserId,
+            "You can only change titles you added",
+          );
           replacementTarget = media;
         }
       }
       download = input.candidateId
         ? await acquisitionCall(() =>
-            service.startFromCandidate(input.candidateId!, input),
+            service.startFromCandidate(input.candidateId!, {
+              ...input,
+              requestedByUserId: actor.account.id,
+            }),
           )
         : await acquisitionCall(() =>
             service.startFromMagnet({
@@ -1454,6 +1465,7 @@ export function registerProductRoutes(
               magnetUri: input.magnet!,
               paused: input.paused,
               peerLimit: input.peerLimit,
+              requestedByUserId: actor.account.id,
             }),
           );
     }
@@ -1483,10 +1495,6 @@ export function registerProductRoutes(
       download.id,
     );
     dependencies.events?.publish("download.changed", { id: download.id });
-    dependencies.repositories.downloads.stampRequester(
-      download.id,
-      actor.account.id,
-    );
     const publicDownload = dependencies.repositories.downloads.get(download.id);
     if (!publicDownload)
       throw internalError("Queued download was not persisted");
@@ -1506,10 +1514,11 @@ export function registerProductRoutes(
     const id = parse(DownloadParamsSchema, context.req.param()).id;
     const existing = dependencies.repositories.downloads.get(id);
     if (!existing) throw notFound("Download not found");
-    requireAllowed(context.get("auth").actor, {
-      type: "mutate_download",
-      requesterId: effectiveDownloadRequester(existing),
-    });
+    requireOwner(
+      context.get("auth").actor,
+      existing.requestedByUserId,
+      "You can only change downloads you started",
+    );
     const download = await acquisitionCall(() =>
       requireAcquisition(dependencies).then((service) =>
         service.retryDownload(id),
@@ -1526,10 +1535,11 @@ export function registerProductRoutes(
     const input = parse(DownloadFilesSchema, await context.req.json());
     const download = dependencies.repositories.downloads.get(id);
     if (!download) throw notFound("Download not found");
-    requireAllowed(context.get("auth").actor, {
-      type: "mutate_download",
-      requesterId: effectiveDownloadRequester(download),
-    });
+    requireOwner(
+      context.get("auth").actor,
+      download.requestedByUserId,
+      "You can only change downloads you started",
+    );
     if (!download.externalId)
       throw conflictError("Download has not been submitted to Transmission");
     const owned = await requireOwnedTorrent(
@@ -1554,10 +1564,11 @@ export function registerProductRoutes(
     );
     const download = dependencies.repositories.downloads.get(id);
     if (!download) throw notFound("Download not found");
-    requireAllowed(context.get("auth").actor, {
-      type: "mutate_download",
-      requesterId: effectiveDownloadRequester(download),
-    });
+    requireOwner(
+      context.get("auth").actor,
+      download.requestedByUserId,
+      "You can only change downloads you started",
+    );
     const owned = download.externalId
       ? await findOwnedTorrentForRemoval(
           download,
@@ -1633,7 +1644,10 @@ export function registerProductRoutes(
   });
 
   app.post("/api/v1/system/backups", async (context) => {
-    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    requireAdmin(
+      context.get("auth").actor,
+      "Administrator access is required to change settings",
+    );
     if (!dependencies.backup) throw unavailable("Backups are unavailable");
     const result = await dependencies.backup();
     recordActivity(
@@ -1647,7 +1661,10 @@ export function registerProductRoutes(
   });
 
   app.post("/api/v1/settings/integrations/:key/test", async (context) => {
-    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    requireAdmin(
+      context.get("auth").actor,
+      "Administrator access is required to change settings",
+    );
     const { key } = parse(IntegrationParamsSchema, context.req.param());
     const status = await requireIntegrations(dependencies).test(key);
     dependencies.events?.publish("service.changed", {
@@ -1659,7 +1676,10 @@ export function registerProductRoutes(
   });
 
   app.post("/api/v1/settings/storage/validate", async (context) => {
-    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    requireAdmin(
+      context.get("auth").actor,
+      "Administrator access is required to change settings",
+    );
     const input = parse(StorageValidationSchema, await context.req.json());
     return context.json(await validateStorage(input));
   });
@@ -3333,10 +3353,11 @@ async function controlDownload(
   const id = parse(DownloadParamsSchema, context.req.param()).id;
   const download = dependencies.repositories.downloads.get(id);
   if (!download) throw notFound("Download not found");
-  requireAllowed(context.get("auth").actor, {
-    type: "mutate_download",
-    requesterId: effectiveDownloadRequester(download),
-  });
+  requireOwner(
+    context.get("auth").actor,
+    download.requestedByUserId,
+    "You can only change downloads you started",
+  );
   if (!download.externalId)
     throw conflictError("Download has not been submitted to Transmission");
   const owned = await requireOwnedTorrent(

@@ -9,7 +9,6 @@ import type {
 
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
 
-import { requesterForAcquiredDownload } from "../auth/policy";
 import { downloads, mediaItems, releaseCandidates } from "../db";
 
 type DownloadRow = typeof downloads.$inferSelect;
@@ -41,23 +40,20 @@ export class SqliteAcquisitionDownloadRepository implements DownloadRepository {
           .get()?.mediaItemId ?? null)
       : null;
     const mediaOwner =
-      mediaItemId === null
-        ? undefined
-        : this.database.client
+      download.requestedByUserId === undefined && mediaItemId !== null
+        ? this.database.client
             .select({ createdByUserId: mediaItems.createdByUserId })
             .from(mediaItems)
             .where(eq(mediaItems.id, mediaItemId))
-            .get();
+            .get()?.createdByUserId
+        : undefined;
+    const requestedByUserId = download.requestedByUserId ?? mediaOwner;
     this.database.client
       .insert(downloads)
       .values({
         id: download.id,
         mediaItemId,
-        ...(mediaOwner === undefined
-          ? {}
-          : {
-              requestedByUserId: requesterForAcquiredDownload(mediaOwner),
-            }),
+        ...(requestedByUserId === undefined ? {} : { requestedByUserId }),
         releaseCandidateId: download.candidateId,
         client: "transmission",
         externalId: download.engineInfoHash,

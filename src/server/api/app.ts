@@ -79,7 +79,7 @@ import {
   UsersResponseSchema,
 } from "../../contracts";
 import { deriveInviteState } from "../auth";
-import { requireAllowed } from "../auth/policy";
+import { requireAdmin } from "../auth/policy";
 import { AppError, notFound, systemClock, toIsoDate } from "../core";
 import { toAccount } from "../db";
 import { durableJobToContract, validateCronExpression } from "../jobs";
@@ -620,7 +620,10 @@ export function createApiApp(
     return context.json({ loggedOut: true as const }, 200);
   });
   app.openapi(routes.getSettings, (context) => {
-    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    requireAdmin(
+      context.get("auth").actor,
+      "Administrator access is required to change settings",
+    );
     return context.json(
       withoutSecretInputs(
         dependencies.repositories.settings.ensureDefaults().settings,
@@ -629,7 +632,10 @@ export function createApiApp(
     );
   });
   app.openapi(routes.updateSettings, async (context) => {
-    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    requireAdmin(
+      context.get("auth").actor,
+      "Administrator access is required to change settings",
+    );
     const patch = context.req.valid("json");
     validateSchedulePatch(patch);
     await persistSecretInputs(dependencies.secrets, patch);
@@ -643,7 +649,10 @@ export function createApiApp(
     return context.json(withoutSecretInputs(updated.settings), 200);
   });
   app.openapi(routes.resetLoginLock, (context) => {
-    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    requireAdmin(
+      context.get("auth").actor,
+      "Administrator access is required to change settings",
+    );
     dependencies.auth.resetLoginLock(context.get("auth").actor);
     return context.json({ reset: true as const }, 200);
   });
@@ -726,11 +735,17 @@ export function createApiApp(
     return context.json({ deleted: true as const }, 200);
   });
   app.openapi(routes.listSecrets, (context) => {
-    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    requireAdmin(
+      context.get("auth").actor,
+      "Administrator access is required to change settings",
+    );
     return context.json({ secrets: dependencies.secrets.list() }, 200);
   });
   app.openapi(routes.setSecret, async (context) => {
-    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    requireAdmin(
+      context.get("auth").actor,
+      "Administrator access is required to change settings",
+    );
     const { name } = context.req.valid("param");
     const { value } = context.req.valid("json");
     const metadata = await dependencies.secrets.set(name, value);
@@ -741,7 +756,10 @@ export function createApiApp(
     return context.json(metadata, 200);
   });
   app.openapi(routes.deleteSecret, (context) => {
-    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    requireAdmin(
+      context.get("auth").actor,
+      "Administrator access is required to change settings",
+    );
     const { name } = context.req.valid("param");
     const deleted = dependencies.secrets.delete(name);
     if (deleted) {
@@ -910,7 +928,10 @@ export function createApiApp(
     );
   });
   app.openapi(routes.createCalendar, (context) => {
-    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    requireAdmin(
+      context.get("auth").actor,
+      "Administrator access is required to change settings",
+    );
     return context.json(
       dependencies.repositories.calendar.create(context.req.valid("json")),
       201,
@@ -947,7 +968,10 @@ export function createApiApp(
     );
   });
   app.openapi(routes.createJob, async (context) => {
-    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    requireAdmin(
+      context.get("auth").actor,
+      "Administrator access is required to change settings",
+    );
     const input = context.req.valid("json");
     const manualJob = manualMaintenanceJob(input, dependencies);
     if (dependencies.queue !== undefined) {
@@ -984,7 +1008,10 @@ export function createApiApp(
     return context.json({ ...job, logs: [] }, 200);
   });
   app.openapi(routes.retryJob, async (context) => {
-    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    requireAdmin(
+      context.get("auth").actor,
+      "Administrator access is required to change settings",
+    );
     const queue = requireDurableQueue(dependencies);
     const previous = await queue.get(context.req.valid("param").id);
     if (!previous) throw notFound("Job not found");
@@ -1007,7 +1034,10 @@ export function createApiApp(
     return context.json(durableJobToContract(retried), 202);
   });
   app.openapi(routes.cancelJob, async (context) => {
-    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    requireAdmin(
+      context.get("auth").actor,
+      "Administrator access is required to change settings",
+    );
     const queue = requireDurableQueue(dependencies);
     const id = context.req.valid("param").id;
     const job = await queue.get(id);

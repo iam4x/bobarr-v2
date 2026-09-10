@@ -10,7 +10,7 @@ import type { Clock } from "../core";
 import type { AuthRepository, AuthenticatedSessionRecord } from "../db";
 
 import { bunPasswordHasher, type PasswordHasher } from "./passwords";
-import { projectCapabilities, requireAllowed, type Actor } from "./policy";
+import { projectCapabilities, type Actor } from "./policy";
 import {
   AppError,
   constantTimeEqual,
@@ -228,10 +228,6 @@ export class AuthService {
     actor: Actor,
     input: UpdateCredentialsRequest,
   ): Promise<{ username: string }> {
-    requireAllowed(actor, {
-      type: "change_own_password",
-      targetId: actor.account.id,
-    });
     const passwordHash =
       input.password === undefined
         ? undefined

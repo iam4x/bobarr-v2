@@ -47,8 +47,6 @@ export const ClientCapabilitiesSchema = z
   .object({
     rank: RankSchema,
     canManageSettings: z.boolean(),
-    canManageUsers: z.boolean(),
-    canInvite: z.boolean(),
   })
   .openapi("ClientCapabilities");
 

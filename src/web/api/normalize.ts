@@ -415,10 +415,7 @@ export function isSetupRequired(status?: SetupStatus): boolean {
 }
 
 export function isAuthenticated(session?: Session): boolean {
-  return (
-    session?.authenticated ??
-    Boolean(session?.user ?? session?.administrator ?? session?.admin)
-  );
+  return session?.authenticated ?? Boolean(session?.user);
 }
 
 export function normalizeSystemStatus(value: unknown): SystemStatus {
