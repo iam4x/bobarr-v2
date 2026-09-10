@@ -36,8 +36,11 @@ test("completes first-run setup and a real logout/login round trip", async ({
   page,
 }) => {
   await authenticate(page);
-  await page.goto("/settings#maintenance");
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.goto("/settings#security");
+  await page
+    .locator("#security")
+    .getByRole("button", { name: "Sign out" })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Sign in to Bobarr" }),
   ).toBeVisible();
