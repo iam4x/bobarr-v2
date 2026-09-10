@@ -88,6 +88,7 @@ import {
   SelectField,
   SkeletonGrid,
 } from "../components/ui";
+import { en, type Messages } from "../i18n/en";
 import { useUi } from "../i18n/ui";
 import {
   formatBytes,
@@ -126,6 +127,7 @@ export function LibrarySummary({
   filter?: LibraryFilter;
   onFilterChange?: (filter: LibraryFilter) => void;
 }) {
+  const { messages } = useUi();
   const renderValue = (key: LibraryFilter, value: number) => {
     if (!onFilterChange) return value;
     return (
@@ -141,21 +143,21 @@ export function LibrarySummary({
   };
 
   return (
-    <dl className="library-summary" aria-label="Library summary">
+    <dl className="library-summary" aria-label={messages.library.summary}>
       <div>
-        <dt>Downloaded</dt>
+        <dt>{messages.library.downloaded}</dt>
         <dd>{renderValue("available", summary.downloaded)}</dd>
       </div>
       <div>
-        <dt>Active</dt>
+        <dt>{messages.library.active}</dt>
         <dd>{renderValue("active", summary.active)}</dd>
       </div>
       <div>
-        <dt>Missing</dt>
+        <dt>{messages.library.missing}</dt>
         <dd>{renderValue("missing", summary.missing)}</dd>
       </div>
       <div>
-        <dt>Total</dt>
+        <dt>{messages.library.total}</dt>
         <dd>
           {onFilterChange ? (
             <button
@@ -199,8 +201,26 @@ function compactVoteCount(votes: number): string {
   return String(votes);
 }
 
-function downloadStateLabel(state: string): string {
-  return `${state.slice(0, 1).toUpperCase()}${state.slice(1)}`;
+function downloadStateLabel(state: string, messages: Messages = en): string {
+  const labels: Record<string, string> = {
+    searching: messages.status.searching,
+    queued: messages.status.queued,
+    downloading: messages.status.downloading,
+    organizing: messages.status.organizing,
+    available: messages.status.available,
+    missing: messages.status.missing,
+    failed: messages.status.failed,
+    unmonitored: messages.status.unmonitored,
+    paused: messages.status.paused,
+    seeding: messages.status.seeding,
+    checking: messages.status.checking,
+    completed: messages.status.completed,
+    pending: messages.status.pending,
+    running: messages.status.running,
+    retrying: messages.status.retrying,
+    cancelled: messages.status.cancelled,
+  };
+  return labels[state] ?? `${state.slice(0, 1).toUpperCase()}${state.slice(1)}`;
 }
 
 export type EpisodeDisplayState =
@@ -243,11 +263,12 @@ function utcDay(now: number): string {
 export function episodeDisplayStatus(
   episode: LibraryItem,
   now = Date.now(),
+  messages: Messages = en,
 ): EpisodeDisplayStatus {
   if (episode.acquisitionState === "available") {
     return {
       state: "ready",
-      label: "Ready",
+      label: messages.library.ready,
       tone: "success",
       active: false,
       needsAttention: false,
@@ -264,7 +285,7 @@ export function episodeDisplayStatus(
         | "queued"
         | "downloading"
         | "organizing",
-      label: downloadStateLabel(episode.acquisitionState),
+      label: downloadStateLabel(episode.acquisitionState, messages),
       tone: "info",
       active: true,
       needsAttention: false,
@@ -273,7 +294,7 @@ export function episodeDisplayStatus(
   if ((episode.storage?.fileCount ?? 0) > 0) {
     return {
       state: "ready",
-      label: "Ready",
+      label: messages.library.ready,
       tone: "success",
       active: false,
       needsAttention: false,
@@ -285,7 +306,7 @@ export function episodeDisplayStatus(
   ) {
     return {
       state: "unmonitored",
-      label: "Not monitored",
+      label: messages.library.notMonitored,
       tone: "neutral",
       active: false,
       needsAttention: false,
@@ -297,7 +318,7 @@ export function episodeDisplayStatus(
   if (airDay !== null && airDay >= today) {
     return {
       state: "upcoming",
-      label: "Upcoming",
+      label: messages.library.upcoming,
       tone: "neutral",
       active: false,
       needsAttention: false,
@@ -306,7 +327,7 @@ export function episodeDisplayStatus(
   if (airDay === null && episode.acquisitionState === "missing") {
     return {
       state: "tba",
-      label: "Air date TBA",
+      label: messages.library.airDateTba,
       tone: "neutral",
       active: false,
       needsAttention: false,
@@ -315,7 +336,7 @@ export function episodeDisplayStatus(
   if (episode.acquisitionState === "failed") {
     return {
       state: "failed",
-      label: "Needs attention",
+      label: messages.library.needsAttention,
       tone: "danger",
       active: false,
       needsAttention: true,
@@ -323,7 +344,7 @@ export function episodeDisplayStatus(
   }
   return {
     state: "missing",
-    label: "Aired · file missing",
+    label: messages.library.airedFileMissing,
     tone: "danger",
     active: false,
     needsAttention: true,
@@ -552,13 +573,14 @@ export function LibraryCard({
   const locationPath = activeDownload
     ? (activeDownloadPath ?? storage?.libraryPath)
     : (storage?.libraryPath ?? storage?.downloadPath);
-  let locationLabel = "Download folder";
-  if (activeDownload && activeDownloadPath) locationLabel = "Downloading to";
-  else if (storage?.libraryPath) locationLabel = "In library";
+  let locationLabel = messages.library.downloadFolder;
+  if (activeDownload && activeDownloadPath)
+    locationLabel = messages.library.downloadingTo;
+  else if (storage?.libraryPath) locationLabel = messages.library.inLibrary;
   const storageDetails = [
     storage?.quality ?? undefined,
     storage && storage.fileCount > 0
-      ? `${storage.fileCount} ${storage.fileCount === 1 ? "file" : "files"}`
+      ? messages.common.files({ count: storage.fileCount })
       : undefined,
     storage && storage.totalBytes > 0
       ? formatBytes(storage.totalBytes)
@@ -568,7 +590,7 @@ export function LibraryCard({
   const remainingGenres = Math.max(0, (item.genres?.length ?? 0) - 2);
   const cardTitle = locationPath
     ? `${item.title} · ${locationLabel}: ${locationPath}`
-    : `Open ${item.title} details`;
+    : messages.library.openDetails({ title: item.title });
   return (
     <article className="library-card">
       <div className="library-card__poster">
@@ -592,11 +614,20 @@ export function LibraryCard({
           {rating && rating.value > 0 ? (
             <span
               className="library-card__rating"
-              aria-label={`${rating.source.toUpperCase()} rating ${rating.value.toFixed(1)} out of 10${
+              aria-label={
                 rating.votes === null
-                  ? ""
-                  : `, ${rating.votes.toLocaleString()} votes`
-              }`}
+                  ? messages.common.ratingAria({
+                      source: rating.source.toUpperCase(),
+                      value: rating.value.toFixed(1),
+                      scale: 10,
+                    })
+                  : messages.common.ratingVotesAria({
+                      source: rating.source.toUpperCase(),
+                      value: rating.value.toFixed(1),
+                      scale: 10,
+                      votes: rating.votes.toLocaleString(),
+                    })
+              }
             >
               <Star size={13} fill="currentColor" aria-hidden="true" />
               <strong>{rating.value.toFixed(1)}</strong>
@@ -608,10 +639,13 @@ export function LibraryCard({
         </div>
         <div className="library-card__labels">
           <Badge tone={acquisitionTone(item.acquisitionState)}>
-            {item.acquisitionState}
+            {downloadStateLabel(item.acquisitionState, messages)}
           </Badge>
           {visibleGenres.length > 0 ? (
-            <span className="library-card__genres" aria-label="Genres">
+            <span
+              className="library-card__genres"
+              aria-label={messages.common.genres}
+            >
               {visibleGenres.map((genre) =>
                 onGenreSelect ? (
                   <button
@@ -639,26 +673,32 @@ export function LibraryCard({
             <div className="library-card__progress-heading">
               <span>
                 <ArrowDown size={13} aria-hidden="true" />
-                {downloadStateLabel(activeDownload.state)}
+                {downloadStateLabel(activeDownload.state, messages)}
               </span>
               <strong>{downloadPercent}%</strong>
             </div>
             <ProgressBar
               value={downloadPercent}
-              label={`${item.title} download progress`}
+              label={messages.common.downloadProgress({ title: item.title })}
             />
             <div className="library-card__download-stats">
               {activeDownload.totalBytes > 0 ? (
                 <span>
-                  {formatBytes(activeDownload.downloadedBytes)} of{" "}
-                  {formatBytes(activeDownload.totalBytes)}
+                  {messages.common.bytesOf({
+                    from: formatBytes(activeDownload.downloadedBytes),
+                    to: formatBytes(activeDownload.totalBytes),
+                  })}
                 </span>
               ) : null}
               {activeDownload.downloadRate > 0 ? (
                 <span>{formatRate(activeDownload.downloadRate)}</span>
               ) : null}
               {activeDownload.etaSeconds !== null ? (
-                <span>ETA {formatEta(activeDownload.etaSeconds)}</span>
+                <span>
+                  {messages.common.eta({
+                    value: formatEta(activeDownload.etaSeconds),
+                  })}
+                </span>
               ) : null}
             </div>
           </div>
@@ -672,15 +712,19 @@ export function LibraryCard({
           >
             <div>
               <span>
-                {episodeProgress?.available} of {episodeProgress?.total}{" "}
-                episodes ready
+                {messages.library.episodesReady({
+                  ready: episodeProgress?.available ?? 0,
+                  total: episodeProgress?.total ?? 0,
+                })}
               </span>
               <strong>{episodePercent}%</strong>
             </div>
             {!activeDownload ? (
               <ProgressBar
                 value={episodePercent}
-                label={`${item.title} episode availability`}
+                label={messages.library.episodeAvailability({
+                  title: item.title,
+                })}
               />
             ) : null}
           </div>
@@ -704,20 +748,22 @@ export function LibraryCard({
         {nextAirDate ? (
           <p className="library-card__date">
             <CalendarClock size={13} aria-hidden="true" />
-            Next episode {formatDate(nextAirDate)}
+            {messages.library.nextEpisode({
+              date: formatDate(nextAirDate) ?? messages.dates.unknown,
+            })}
           </p>
         ) : null}
 
         {!activeDownload && item.acquisitionState === "missing" ? (
           <p className="library-card__helper">
             <Search size={13} aria-hidden="true" />
-            No file yet · Open to find a release
+            {messages.library.noFileYet}
           </p>
         ) : null}
         {!activeDownload && item.acquisitionState === "failed" ? (
           <p className="library-card__helper library-card__helper--danger">
             <CircleAlert size={13} aria-hidden="true" />
-            Acquisition needs attention · Open to retry
+            {messages.library.acquisitionNeedsAttention}
           </p>
         ) : null}
         {!activeDownload &&
@@ -726,14 +772,14 @@ export function LibraryCard({
         libraryItemHasFile(item) ? (
           <p className="library-card__helper">
             <Settings2 size={13} aria-hidden="true" />
-            Open to replace or manage files
+            {messages.library.openToReplace}
           </p>
         ) : null}
       </div>
       <button
         type="button"
         className="library-card__hit-area"
-        aria-label={`Open ${item.title} details`}
+        aria-label={messages.library.openDetails({ title: item.title })}
         title={cardTitle}
         onClick={() => onManage(item)}
       />
@@ -852,22 +898,19 @@ function LibraryManualReleaseSearch({
   ]);
   const target = libraryReleaseTarget(item, selectedSeason, selectedEpisode);
   const hasValidTmdbId = isPositiveSafeInteger(item.tmdbId);
+  const { messages } = useUi();
 
   return (
     <div className="stack">
       <div>
         <Button type="button" size="sm" variant="ghost" onClick={onBack}>
-          Back to management
+          {messages.library.backToManagement}
         </Button>
-        <p className="muted">
-          Search Jackett and choose an eligible release. Tracker links and
-          credentials stay on the server; the browser receives only a
-          short-lived candidate ID.
-        </p>
+        <p className="muted">{messages.library.searchJackettHelp}</p>
       </div>
 
       {item.kind === "series" && seasonsLoading ? (
-        <InlineSpinner label="Loading monitored seasons…" />
+        <InlineSpinner label={messages.library.loadingMonitoredSeasons} />
       ) : null}
       {item.kind === "series" && seasonsError ? (
         <ErrorState error={seasonsError} onRetry={onRetrySeasons} />
@@ -878,8 +921,8 @@ function LibraryManualReleaseSearch({
       monitoredSeasons.length > 0 ? (
         <div className="form-grid">
           <SelectField
-            label="Season"
-            hint="Search a full season pack or narrow the search to an episode."
+            label={messages.library.seasonField}
+            hint={messages.library.seasonHint}
             value={selectedSeason ?? ""}
             onChange={(event) => {
               setSelectedSeason(Number(event.currentTarget.value));
@@ -889,13 +932,13 @@ function LibraryManualReleaseSearch({
           >
             {monitoredSeasons.map((season) => (
               <option value={season.seasonNumber ?? ""} key={season.id}>
-                Season {season.seasonNumber}
+                {messages.library.season({ n: season.seasonNumber ?? 0 })}
               </option>
             ))}
           </SelectField>
           <SelectField
-            label="Release target"
-            hint="Missing, failed, queued, and downloading episodes are listed individually."
+            label={messages.library.releaseTarget}
+            hint={messages.library.releaseTargetHint}
             value={selectedEpisode ?? "season"}
             disabled={episodeQuery.isLoading}
             onChange={(event) =>
@@ -906,7 +949,7 @@ function LibraryManualReleaseSearch({
               )
             }
           >
-            <option value="season">Entire season pack</option>
+            <option value="season">{messages.library.entireSeasonPack}</option>
             {actionableEpisodes.map((episode) => (
               <option value={episode.episodeNumber ?? ""} key={episode.id}>
                 S{String(selectedSeason).padStart(2, "0")}E
@@ -922,8 +965,8 @@ function LibraryManualReleaseSearch({
       !seasonsError &&
       monitoredSeasons.length === 0 ? (
         <EmptyState
-          title="No monitored seasons"
-          description="Return to management and select at least one season before searching releases."
+          title={messages.library.noMonitoredSeasons}
+          description={messages.library.noMonitoredSeasonsDescription}
         />
       ) : null}
       {episodeQuery.isError ? (
@@ -940,8 +983,7 @@ function LibraryManualReleaseSearch({
       ) : null}
       {!target && !hasValidTmdbId ? (
         <div className="notice notice--error" role="alert">
-          Bobarr cannot search this item because it does not have a valid TMDB
-          match.
+          {messages.library.noTmdbMatch}
         </div>
       ) : null}
     </div>
@@ -969,49 +1011,66 @@ function episodeDateCopy(
   episode: LibraryItem,
   status: EpisodeDisplayStatus,
   now = Date.now(),
+  messages: Messages = en,
 ): string {
-  if (status.state === "ready") return "File is ready in your library";
-  if (status.state === "searching") return "Checking indexers now";
-  if (status.state === "queued")
-    return "Release selected · waiting to download";
-  if (status.state === "organizing") return "Moving the file into your library";
+  if (status.state === "ready") return messages.library.fileReady;
+  if (status.state === "searching") return messages.library.checkingIndexers;
+  if (status.state === "queued") return messages.library.releaseSelected;
+  if (status.state === "organizing") return messages.library.movingFile;
   if (status.state === "downloading") {
     const progress = episode.activeDownload
-      ? `${toPercent(episode.activeDownload.progress)}% downloaded`
-      : "Download in progress";
+      ? messages.library.percentDownloaded({
+          percent: toPercent(episode.activeDownload.progress),
+        })
+      : messages.library.downloadInProgress;
     return episode.activeDownload?.etaSeconds === null ||
       episode.activeDownload?.etaSeconds === undefined
       ? progress
-      : `${progress} · ETA ${formatEta(episode.activeDownload.etaSeconds)}`;
+      : `${progress} · ${messages.common.eta({ value: formatEta(episode.activeDownload.etaSeconds) })}`;
   }
-  if (status.state === "failed") return "Automatic acquisition failed";
-  if (status.state === "unmonitored") return "Ignored by current monitoring";
-  if (status.state === "tba") return "The air date has not been announced";
-  if (releaseDay(episode) === utcDay(now)) return "Airs today";
+  if (status.state === "failed") return messages.library.automaticFailed;
+  if (status.state === "unmonitored")
+    return messages.library.ignoredByMonitoring;
+  if (status.state === "tba") return messages.library.airDateNotAnnounced;
+  if (releaseDay(episode) === utcDay(now)) return messages.library.airsToday;
   if (status.state === "upcoming")
-    return `Airs ${formatDate(episode.releaseDate!)}`;
-  return `Aired ${formatDate(episode.releaseDate!)} · no file in library`;
+    return messages.library.airsOn({
+      date: formatDate(episode.releaseDate!) ?? messages.dates.unknown,
+    });
+  return messages.library.airedMissingOn({
+    date: formatDate(episode.releaseDate!) ?? messages.dates.unknown,
+  });
 }
 
-function seasonStateCopy(season: LibraryItem, now = Date.now()): string {
+function seasonStateCopy(
+  season: LibraryItem,
+  now = Date.now(),
+  messages: Messages = en,
+): string {
   if (
     ["searching", "queued", "downloading", "organizing"].includes(
       season.acquisitionState,
     )
   ) {
-    return downloadStateLabel(season.acquisitionState);
+    return downloadStateLabel(season.acquisitionState, messages);
   }
   if (
     season.acquisitionState === "available" ||
     (season.storage?.fileCount ?? 0) > 0
   ) {
-    return season.monitorPolicy === "none" ? "Ready · monitoring off" : "Ready";
+    return season.monitorPolicy === "none"
+      ? messages.library.readyMonitoringOff
+      : messages.library.ready;
   }
-  if (season.monitorPolicy === "none") return "Not monitored";
-  if (season.acquisitionState === "failed") return "Needs attention";
+  if (season.monitorPolicy === "none") return messages.library.notMonitored;
+  if (season.acquisitionState === "failed")
+    return messages.library.needsAttention;
   const airDay = releaseDay(season);
-  if (airDay !== null && airDay >= utcDay(now)) return "Upcoming";
-  return season.acquisitionState === "missing" ? "Missing episodes" : "Tracked";
+  if (airDay !== null && airDay >= utcDay(now))
+    return messages.library.upcoming;
+  return season.acquisitionState === "missing"
+    ? messages.library.missingEpisodes
+    : messages.library.tracked;
 }
 
 export function TvSeriesManagement({
@@ -1053,6 +1112,7 @@ export function TvSeriesManagement({
   onManualSearch: (target?: { season: number; episode: number | null }) => void;
   onRemove: () => void;
 }) {
+  const { messages } = useUi();
   const queryClient = useQueryClient();
   const displaySeasons = useMemo(
     () =>
@@ -1088,11 +1148,14 @@ export function TvSeriesManagement({
     policy === "selected" &&
     selectedSeasons.length === 0 &&
     includeFutureSeasons;
-  let monitoringSettingsSummary = `${selectedSeasons.length} selected season${selectedSeasons.length === 1 ? "" : "s"}${includeFutureSeasons ? " · future seasons on" : ""}`;
+  let monitoringSettingsSummary = messages.library.selectedSeasonsSummary({
+    count: selectedSeasons.length,
+    future: includeFutureSeasons,
+  });
   if (policy === "none") {
-    monitoringSettingsSummary = "Automatic searches are off";
+    monitoringSettingsSummary = messages.library.automaticSearchesOff;
   } else if (futureOnly) {
-    monitoringSettingsSummary = "Future seasons only";
+    monitoringSettingsSummary = messages.library.futureSeasonsOnly;
   }
   const canConfigureMonitoring = isPositiveSafeInteger(item.tmdbId);
   const episodeQuery = useQuery({
@@ -1153,48 +1216,53 @@ export function TvSeriesManagement({
   );
   const storedFileCount = item.storage?.fileCount ?? 0;
   const selectedSeasonLabel = selectedSeasonNumber
-    ? `Season ${selectedSeasonNumber}`
-    : "this season";
+    ? messages.library.season({ n: selectedSeasonNumber })
+    : messages.library.thisSeason;
 
-  let guideTitle = "This season is on track";
-  let guideCopy = "There is nothing you need to do right now.";
+  let guideTitle = messages.library.seasonOnTrack;
+  let guideCopy = messages.library.nothingToDo;
   let guideTone = "success";
   if (futureOnly) {
-    guideTitle = "Watching for future seasons";
-    guideCopy =
-      "Current seasons stay unmonitored. Bobarr will add seasons announced after the current metadata baseline.";
+    guideTitle = messages.library.watchingFutureSeasons;
+    guideCopy = messages.library.watchingFutureSeasonsCopy;
     guideTone = "success";
   } else if (monitoringOff || !selectedSeasonIsMonitored) {
     guideTitle = monitoringOff
-      ? "Monitoring is off for this show"
-      : `${selectedSeasonLabel} is not monitored`;
+      ? messages.library.monitoringOffShow
+      : messages.library.seasonNotMonitored({ season: selectedSeasonLabel });
     guideCopy = canConfigureMonitoring
-      ? "Your existing files stay in the library. Choose seasons to let Bobarr fill gaps and follow future episodes."
-      : "Your existing files stay in the library. Confirm this show's TMDB match before turning monitoring on.";
+      ? messages.library.existingFilesStay
+      : messages.library.confirmTmdbBeforeMonitoring;
     guideTone = "info";
   } else if (seasonPackDownload) {
-    guideTitle = "The season pack is downloading";
-    guideCopy =
-      "Episode files will switch to Ready after Bobarr finishes organizing the pack.";
+    guideTitle = messages.library.seasonPackDownloadingTitle;
+    guideCopy = messages.library.seasonPackDownloadingCopy;
     guideTone = "info";
   } else if (summary.missing > 0) {
-    guideTitle = `${summary.missing} aired episode${summary.missing === 1 ? " is" : "s are"} missing`;
-    guideCopy =
-      "Bobarr has no library file for these episodes. Retry the automatic search or inspect current releases yourself.";
+    guideTitle = messages.library.airedMissingTitle({
+      count: summary.missing,
+    });
+    guideCopy = messages.library.airedMissingCopy;
     guideTone = "danger";
   } else if (summary.active > 0) {
-    guideTitle = `${summary.active} episode${summary.active === 1 ? " is" : "s are"} in progress`;
-    guideCopy =
-      "Bobarr is searching, downloading, or organizing them. No action is needed.";
+    guideTitle = messages.library.inProgressTitle({ count: summary.active });
+    guideCopy = messages.library.inProgressCopy;
     guideTone = "info";
   } else if (summary.upcoming > 0) {
-    guideTitle = "You are caught up";
+    guideTitle = messages.library.caughtUp;
     guideCopy = nextEpisode
-      ? `${episodeDateCopy(nextEpisode, episodeDisplayStatus(nextEpisode))}. Bobarr will search automatically.`
-      : "Future episodes will be searched automatically when they air.";
+      ? messages.library.willSearchAutomatically({
+          copy: episodeDateCopy(
+            nextEpisode,
+            episodeDisplayStatus(nextEpisode, Date.now(), messages),
+            Date.now(),
+            messages,
+          ),
+        })
+      : messages.library.futureEpisodesAuto;
   } else if (summary.total > 0 && summary.ready === summary.total) {
-    guideTitle = "Season complete";
-    guideCopy = "Every monitored episode is ready in your library.";
+    guideTitle = messages.library.seasonComplete;
+    guideCopy = messages.library.seasonCompleteCopy;
   }
 
   const openMonitoringSettings = () => {
@@ -1215,27 +1283,31 @@ export function TvSeriesManagement({
     }
     setSettingsOpen(true);
   };
-  let overviewTitle = "Episode monitoring is ready to configure";
+  let overviewTitle = messages.library.overviewReadyToConfigure;
   let overviewDescription =
-    item.overview ||
-    "Open a season to see every episode, its air date, and what Bobarr is doing next.";
+    item.overview || messages.library.overviewOpenSeason;
   if (monitoringOff) {
-    overviewTitle = "Monitoring is off";
+    overviewTitle = messages.library.monitoringIsOff;
     overviewDescription =
       storedFileCount > 0
-        ? `${storedFileCount} existing ${storedFileCount === 1 ? "file remains" : "files remain"} in your library. Browse downloaded seasons below or choose what Bobarr should monitor.`
-        : "No automatic searches will run. Choose what Bobarr should monitor or remove this title from the library.";
+        ? messages.library.existingFilesRemain({ count: storedFileCount })
+        : messages.library.noAutomaticSearches;
   } else if (futureOnly) {
-    overviewTitle = "Future season monitoring is on";
-    overviewDescription =
-      "Downloaded seasons remain in your library without being searched again. Newly announced seasons will be added automatically.";
+    overviewTitle = messages.library.futureSeasonMonitoringOn;
+    overviewDescription = messages.library.futureSeasonMonitoringCopy;
   } else if (overallTotal > 0) {
-    overviewTitle = `${overallReady} of ${overallTotal} monitored ${overallTotal === 1 ? "episode" : "episodes"} ${overallReady === 1 ? "is" : "are"} ready`;
+    overviewTitle = messages.library.monitoredEpisodesReady({
+      ready: overallReady,
+      total: overallTotal,
+    });
   }
 
   return (
     <div className="tv-management">
-      <section className="tv-overview" aria-label="Show library summary">
+      <section
+        className="tv-overview"
+        aria-label={messages.library.showSummary}
+      >
         <div className="tv-overview__poster" aria-hidden="true">
           {poster ? (
             <img src={poster} alt="" />
@@ -1244,14 +1316,18 @@ export function TvSeriesManagement({
           )}
         </div>
         <div className="tv-overview__copy">
-          <span className="tv-overview__eyebrow">Library health</span>
+          <span className="tv-overview__eyebrow">
+            {messages.library.libraryHealth}
+          </span>
           <h3>{overviewTitle}</h3>
           <p>{overviewDescription}</p>
           {!monitoringOff && overallTotal > 0 && overallPercent < 100 ? (
             <div className="tv-overview__progress">
               <ProgressBar
                 value={overallPercent}
-                label={`${item.title} overall episode availability`}
+                label={messages.library.overallEpisodeAvailability({
+                  title: item.title,
+                })}
               />
               <strong>{overallPercent}%</strong>
             </div>
@@ -1259,12 +1335,14 @@ export function TvSeriesManagement({
         </div>
       </section>
 
-      {seasonsLoading ? <InlineSpinner label="Loading seasons…" /> : null}
+      {seasonsLoading ? (
+        <InlineSpinner label={messages.library.loadingSeasons} />
+      ) : null}
       {seasonsError ? (
         <ErrorState error={seasonsError} onRetry={onRetrySeasons} />
       ) : null}
       {displaySeasons.length > 0 ? (
-        <nav className="tv-season-nav" aria-label="Seasons">
+        <nav className="tv-season-nav" aria-label={messages.library.seasons}>
           {displaySeasons.map((season) => (
             <button
               type="button"
@@ -1279,8 +1357,10 @@ export function TvSeriesManagement({
                 setSelectedSeasonNumber(season.seasonNumber ?? undefined)
               }
             >
-              <span>Season {season.seasonNumber}</span>
-              <small>{seasonStateCopy(season)}</small>
+              <span>
+                {messages.library.season({ n: season.seasonNumber ?? 0 })}
+              </span>
+              <small>{seasonStateCopy(season, Date.now(), messages)}</small>
             </button>
           ))}
         </nav>
@@ -1291,12 +1371,17 @@ export function TvSeriesManagement({
           <section className="tv-episodes" aria-labelledby="episode-list-title">
             <header className="tv-episodes__header">
               <div>
-                <span className="tv-overview__eyebrow">Episode status</span>
+                <span className="tv-overview__eyebrow">
+                  {messages.library.episodeStatus}
+                </span>
                 <h3 id="episode-list-title">{selectedSeasonLabel}</h3>
               </div>
               {episodes.length > 0 ? (
                 <span className="tv-episodes__count">
-                  {summary.ready} of {summary.total} ready
+                  {messages.library.readyOfTotal({
+                    ready: summary.ready,
+                    total: summary.total,
+                  })}
                 </span>
               ) : null}
             </header>
@@ -1305,37 +1390,42 @@ export function TvSeriesManagement({
               <div className="season-download" role="status">
                 <div>
                   <span>
-                    <ArrowDown size={15} aria-hidden="true" /> Season pack
-                    downloading
+                    <ArrowDown size={15} aria-hidden="true" />{" "}
+                    {messages.library.seasonPackDownloading}
                   </span>
                   <strong>{toPercent(seasonPackDownload.progress)}%</strong>
                 </div>
                 <ProgressBar
                   value={toPercent(seasonPackDownload.progress)}
-                  label={`${selectedSeasonLabel} pack download progress`}
+                  label={messages.library.packDownloadProgress({
+                    season: selectedSeasonLabel,
+                  })}
                 />
               </div>
             ) : null}
 
             {episodes.length > 0 ? (
-              <dl className="episode-summary" aria-label="Season summary">
+              <dl
+                className="episode-summary"
+                aria-label={messages.library.seasonSummary}
+              >
                 <div className="episode-summary__ready">
-                  <dt>Ready</dt>
+                  <dt>{messages.library.ready}</dt>
                   <dd>{summary.ready}</dd>
                 </div>
                 <div className="episode-summary__active">
-                  <dt>In progress</dt>
+                  <dt>{messages.library.inProgress}</dt>
                   <dd>{summary.active}</dd>
                 </div>
                 <div className="episode-summary__missing">
-                  <dt>Aired &amp; missing</dt>
+                  <dt>{messages.library.airedAndMissing}</dt>
                   <dd>{summary.missing}</dd>
                 </div>
                 <div>
                   <dt>
                     {summary.unmonitored > 0
-                      ? "Not monitored"
-                      : "Upcoming / TBA"}
+                      ? messages.library.notMonitored
+                      : messages.library.upcomingTba}
                   </dt>
                   <dd>
                     {summary.unmonitored > 0
@@ -1347,7 +1437,7 @@ export function TvSeriesManagement({
             ) : null}
 
             {episodeQuery.isLoading ? (
-              <InlineSpinner label="Loading episodes…" />
+              <InlineSpinner label={messages.library.loadingEpisodes} />
             ) : null}
             {episodeQuery.isError ? (
               <ErrorState
@@ -1357,14 +1447,18 @@ export function TvSeriesManagement({
             ) : null}
             {episodeQuery.isSuccess && episodes.length === 0 ? (
               <EmptyState
-                title="No episode details yet"
-                description="Bobarr has not received an episode schedule for this season yet."
+                title={messages.library.noEpisodeDetails}
+                description={messages.library.noEpisodeDetailsDescription}
               />
             ) : null}
             {episodes.length > 0 ? (
               <div className="episode-list" role="list">
                 {episodes.map((episode) => {
-                  const status = episodeDisplayStatus(episode);
+                  const status = episodeDisplayStatus(
+                    episode,
+                    Date.now(),
+                    messages,
+                  );
                   const episodeNumber = episode.episodeNumber!;
                   const code = `S${String(selectedSeasonNumber).padStart(2, "0")}E${String(episodeNumber).padStart(2, "0")}`;
                   const still = imageUrl(episode.posterPath, "w342");
@@ -1387,7 +1481,14 @@ export function TvSeriesManagement({
                       <div className="episode-row__copy">
                         <span>{code}</span>
                         <strong>{episode.title}</strong>
-                        <small>{episodeDateCopy(episode, status)}</small>
+                        <small>
+                          {episodeDateCopy(
+                            episode,
+                            status,
+                            Date.now(),
+                            messages,
+                          )}
+                        </small>
                       </div>
                       <Badge tone={status.tone} className="episode-row__status">
                         <EpisodeStatusIcon status={status} />
@@ -1401,9 +1502,20 @@ export function TvSeriesManagement({
                               className="button button--secondary button--sm"
                               href={file.downloadUrl}
                               download={file.name}
-                              aria-label={`Download ${code} ${episode.title}${episodeFiles.length > 1 ? ` — ${file.name}` : ""}`}
+                              aria-label={
+                                episodeFiles.length > 1
+                                  ? messages.library.downloadEpisodeFile({
+                                      code,
+                                      title: episode.title,
+                                      file: file.name,
+                                    })
+                                  : messages.library.downloadEpisode({
+                                      code,
+                                      title: episode.title,
+                                    })
+                              }
                             >
-                              <Download size={14} /> Download
+                              <Download size={14} /> {messages.common.download}
                             </a>
                           ))}
                           {canMutate && status.needsAttention ? (
@@ -1411,7 +1523,10 @@ export function TvSeriesManagement({
                               type="button"
                               size="sm"
                               variant="secondary"
-                              aria-label={`Find a release for ${code} ${episode.title}`}
+                              aria-label={messages.library.findReleaseFor({
+                                code,
+                                title: episode.title,
+                              })}
                               onClick={() =>
                                 onManualSearch({
                                   season: selectedSeasonNumber!,
@@ -1419,7 +1534,8 @@ export function TvSeriesManagement({
                                 })
                               }
                             >
-                              <Search size={14} /> Find release
+                              <Search size={14} />{" "}
+                              {messages.library.findRelease}
                             </Button>
                           ) : null}
                         </div>
@@ -1431,23 +1547,29 @@ export function TvSeriesManagement({
             ) : null}
           </section>
         ) : (
-          <section className="tv-episodes" aria-label="Episode status">
+          <section
+            className="tv-episodes"
+            aria-label={messages.library.episodeStatus}
+          >
             <EmptyState
               title={
                 seasonsLoading
-                  ? "Loading season details…"
-                  : "No season details yet"
+                  ? messages.library.loadingSeasonDetails
+                  : messages.library.noSeasonDetails
               }
               description={
                 seasonsError
-                  ? "Retry loading seasons above, or use the management options here."
-                  : "Choose monitoring settings to add seasons, or remove this title from Bobarr."
+                  ? messages.library.retrySeasonsDescription
+                  : messages.library.chooseMonitoringDescription
               }
             />
           </section>
         )}
 
-        <aside className="tv-guidance" aria-label="Recommended actions">
+        <aside
+          className="tv-guidance"
+          aria-label={messages.library.recommendedActions}
+        >
           <section
             className={`tv-guidance__card tv-guidance__card--${guideTone}`}
           >
@@ -1455,7 +1577,9 @@ export function TvSeriesManagement({
               <GuidanceIcon tone={guideTone} />
             </span>
             <div>
-              <span className="tv-overview__eyebrow">What to do next</span>
+              <span className="tv-overview__eyebrow">
+                {messages.library.whatToDoNext}
+              </span>
               <h3>{guideTitle}</h3>
               <p>{guideCopy}</p>
             </div>
@@ -1467,7 +1591,7 @@ export function TvSeriesManagement({
                 disabled={!canConfigureMonitoring}
                 onClick={openMonitoringSettings}
               >
-                <Settings2 size={15} /> Choose monitoring
+                <Settings2 size={15} /> {messages.library.chooseMonitoring}
               </Button>
             ) : null}
             {canMutate && selectedSeasonIsMonitored && firstMissing ? (
@@ -1480,7 +1604,7 @@ export function TvSeriesManagement({
                   })
                 }
               >
-                <Search size={15} /> Find first missing episode
+                <Search size={15} /> {messages.library.findFirstMissing}
               </Button>
             ) : null}
             {canMutate &&
@@ -1493,7 +1617,7 @@ export function TvSeriesManagement({
                 busy={retryMutation.isPending}
                 onClick={() => retryMutation.mutate(selectedSeason.id)}
               >
-                <RefreshCw size={15} /> Retry automatic search
+                <RefreshCw size={15} /> {messages.library.retryAutomaticSearch}
               </Button>
             ) : null}
             {retryMutation.isError ? (
@@ -1516,7 +1640,7 @@ export function TvSeriesManagement({
                 )
               }
             >
-              <Search size={15} /> Search any release manually…
+              <Search size={15} /> {messages.library.searchAnyRelease}
             </Button>
           ) : null}
 
@@ -1529,13 +1653,15 @@ export function TvSeriesManagement({
               <summary>
                 <Settings2 size={18} aria-hidden="true" />
                 <span>
-                  <strong>Monitoring settings</strong>
+                  <strong>{messages.library.monitoringSettings}</strong>
                   <small>{monitoringSettingsSummary}</small>
                 </span>
               </summary>
               <div className="tv-settings__content">
                 <label className="field">
-                  <span className="field__label">Automatic monitoring</span>
+                  <span className="field__label">
+                    {messages.library.automaticMonitoring}
+                  </span>
                   <SelectControl
                     value={policy}
                     disabled={!canConfigureMonitoring}
@@ -1543,18 +1669,24 @@ export function TvSeriesManagement({
                       onPolicyChange(event.target.value as MonitorPolicy)
                     }
                   >
-                    <option value="none">Do not monitor</option>
-                    <option value="selected">Selected seasons</option>
-                    <option value="all">All current seasons</option>
+                    <option value="none">
+                      {messages.library.doNotMonitor}
+                    </option>
+                    <option value="selected">
+                      {messages.library.selectedSeasons}
+                    </option>
+                    <option value="all">
+                      {messages.library.allCurrentSeasons}
+                    </option>
                   </SelectControl>
                   <span className="field__hint">
-                    Controls what Bobarr may search for automatically.
+                    {messages.library.automaticMonitoringHint}
                   </span>
                 </label>
                 {policy === "selected" ? (
                   <div
                     className="season-monitor__grid tv-settings__seasons"
-                    aria-label="Choose monitored seasons"
+                    aria-label={messages.library.chooseMonitoredSeasons}
                   >
                     {seasonOptions.map((season) => (
                       <label className="season-choice" key={season}>
@@ -1574,7 +1706,7 @@ export function TvSeriesManagement({
                             )
                           }
                         />
-                        <span>Season {season}</span>
+                        <span>{messages.library.season({ n: season })}</span>
                       </label>
                     ))}
                   </div>
@@ -1590,10 +1722,8 @@ export function TvSeriesManagement({
                       }
                     />
                     <span>
-                      <strong>Monitor future seasons</strong>
-                      <small>
-                        Add newly announced seasons after a metadata refresh.
-                      </small>
+                      <strong>{messages.library.monitorFutureSeasons}</strong>
+                      <small>{messages.library.monitorFutureSeasonsHint}</small>
                     </span>
                   </label>
                 ) : null}
@@ -1604,8 +1734,7 @@ export function TvSeriesManagement({
                 ) : null}
                 {!canConfigureMonitoring ? (
                   <div className="notice notice--warning" role="note">
-                    Confirm this show's TMDB match from the scan review before
-                    changing season monitoring.
+                    {messages.library.confirmTmdbMatchShow}
                   </div>
                 ) : null}
                 <Button
@@ -1619,7 +1748,7 @@ export function TvSeriesManagement({
                   }
                   onClick={onSave}
                 >
-                  <Check size={15} /> Save monitoring
+                  <Check size={15} /> {messages.library.saveMonitoring}
                 </Button>
               </div>
             </details>
@@ -1633,7 +1762,9 @@ export function TvSeriesManagement({
               onClick={onRemove}
             >
               <Trash2 size={15} />
-              {monitoringOff ? "Remove from library…" : "Remove show…"}
+              {monitoringOff
+                ? messages.library.removeFromLibrary
+                : messages.library.removeShow}
             </Button>
           ) : null}
         </aside>
@@ -1681,6 +1812,7 @@ export function MovieManagement({
   onBrowseSimilar?: () => void;
   onRemove: () => void;
 }) {
+  const { messages } = useUi();
   const [settingsOpen, setSettingsOpen] = useState(!libraryItemHasFile(item));
   const poster = imageUrl(item.posterPath, "w342");
   const hasLibraryFile = libraryItemHasFile(item);
@@ -1698,47 +1830,50 @@ export function MovieManagement({
   const storageDetails = [
     storage?.quality ?? undefined,
     storage && storage.fileCount > 0
-      ? `${storage.fileCount} ${storage.fileCount === 1 ? "file" : "files"}`
+      ? messages.common.files({ count: storage.fileCount })
       : undefined,
     storage && storage.totalBytes > 0
       ? formatBytes(storage.totalBytes)
       : undefined,
   ].filter((detail): detail is string => Boolean(detail));
 
-  let overviewTitle = "No file in your library";
+  let overviewTitle = messages.library.noFileInLibrary;
   let overviewCopy = monitoringOn
-    ? "Bobarr is monitoring this movie and can search for a release."
-    : "Automatic monitoring is off. Turn it on below if you want Bobarr to find this movie.";
+    ? messages.library.monitoringCanSearch
+    : messages.library.monitoringOffTurnOn;
   if (hasLibraryFile) {
-    overviewTitle = "Ready in your library";
+    overviewTitle = messages.library.readyInLibrary;
     overviewCopy = monitoringOn
-      ? "Your organized copy is ready. Monitoring stays on in case Bobarr needs to acquire it again."
-      : "Your organized copy is ready. Bobarr will leave it alone unless you choose a one-time replacement.";
+      ? messages.library.readyMonitoringOn
+      : messages.library.readyMonitoringOffMovie;
   } else if (activeDownload) {
-    overviewTitle = `${downloadStateLabel(activeDownload.state)} your movie`;
-    overviewCopy =
-      "Bobarr is working on the selected release. Progress and destination are shown below.";
+    overviewTitle = messages.library.workingOnRelease({
+      state: downloadStateLabel(activeDownload.state, messages),
+    });
+    overviewCopy = messages.library.workingOnReleaseCopy;
   } else if (item.acquisitionState === "failed") {
-    overviewTitle = "Automatic acquisition needs attention";
-    overviewCopy =
-      "No ready file was created. Retry the search or choose a release yourself.";
+    overviewTitle = messages.library.acquisitionNeedsAttentionTitle;
+    overviewCopy = messages.library.acquisitionNeedsAttentionCopy;
   } else if (item.monitorPolicy === "none") {
-    overviewTitle = "Not monitored and no file found";
+    overviewTitle = messages.library.notMonitoredNoFile;
   }
 
   const statusLabel = hasLibraryFile
-    ? "Available"
-    : downloadStateLabel(item.acquisitionState);
-  let monitoringSummary = "On · Bobarr can reacquire this movie if needed";
+    ? messages.status.available
+    : downloadStateLabel(item.acquisitionState, messages);
+  let monitoringSummary = messages.library.monitoringOnSummary;
   if (item.monitorPolicy === "none") {
     monitoringSummary = hasLibraryFile
-      ? "Off · one-time replacement is still available"
-      : "Off · Bobarr will not search";
+      ? messages.library.monitoringOffReplacement
+      : messages.library.monitoringOffNoSearch;
   }
 
   return (
     <div className="movie-management">
-      <section className="movie-overview" aria-label="Movie library summary">
+      <section
+        className="movie-overview"
+        aria-label={messages.library.movieSummary}
+      >
         <div className="movie-overview__poster" aria-hidden="true">
           {poster ? (
             <img src={poster} alt="" />
@@ -1749,7 +1884,9 @@ export function MovieManagement({
         <div className="movie-overview__copy">
           <div className="movie-overview__heading">
             <div>
-              <span className="tv-overview__eyebrow">Library status</span>
+              <span className="tv-overview__eyebrow">
+                {messages.library.libraryStatus}
+              </span>
               <h3>{overviewTitle}</h3>
             </div>
             <Badge tone={acquisitionTone(item.acquisitionState)}>
@@ -1770,7 +1907,7 @@ export function MovieManagement({
                 variant="secondary"
                 onClick={onBrowseSimilar}
               >
-                <Compass size={15} /> More like this
+                <Compass size={15} /> {messages.library.moreLikeThis}
               </Button>
             ) : null}
           </div>
@@ -1778,7 +1915,7 @@ export function MovieManagement({
             <div className="movie-overview__progress">
               <ProgressBar
                 value={toPercent(activeDownload.progress)}
-                label={`${item.title} download progress`}
+                label={messages.common.downloadProgress({ title: item.title })}
               />
               <strong>{toPercent(activeDownload.progress)}%</strong>
             </div>
@@ -1803,28 +1940,36 @@ export function MovieManagement({
             </span>
             <div>
               <span className="tv-overview__eyebrow">
-                {hasLibraryFile ? "Current copy" : "Acquisition"}
+                {hasLibraryFile
+                  ? messages.library.currentCopy
+                  : messages.library.acquisition}
               </span>
               <h3 id="movie-file-title">
-                {hasLibraryFile ? "Movie file" : "Find this movie"}
+                {hasLibraryFile
+                  ? messages.library.movieFile
+                  : messages.library.findThisMovie}
               </h3>
             </div>
           </header>
 
           {locationPath ? (
             <div className="movie-file-panel__location" title={locationPath}>
-              <small>{hasLibraryFile ? "In library" : "Downloading to"}</small>
+              <small>
+                {hasLibraryFile
+                  ? messages.library.inLibrary
+                  : messages.library.downloadingTo}
+              </small>
               <strong>{locationPath}</strong>
             </div>
           ) : (
             <div className="movie-file-panel__empty">
               <Film size={22} aria-hidden="true" />
               <span>
-                <strong>No organized file</strong>
+                <strong>{messages.library.noOrganizedFile}</strong>
                 <small>
                   {monitoringOn
-                    ? "Search for a release or retry automatic acquisition."
-                    : "Turn on monitoring to let Bobarr acquire one."}
+                    ? messages.library.searchOrRetry
+                    : messages.library.turnOnMonitoring}
                 </small>
               </span>
             </div>
@@ -1839,7 +1984,7 @@ export function MovieManagement({
           {downloadFiles.length > 0 ? (
             <div
               className="movie-file-panel__downloads"
-              aria-label="Movie downloads"
+              aria-label={messages.library.movieDownloads}
             >
               {downloadFiles.map((file) => (
                 <a
@@ -1851,31 +1996,36 @@ export function MovieManagement({
                 >
                   <Download size={15} />{" "}
                   {downloadFiles.length === 1
-                    ? "Download movie"
-                    : `Download ${file.name}`}
+                    ? messages.library.downloadMovie
+                    : messages.library.downloadNamed({ name: file.name })}
                 </a>
               ))}
             </div>
           ) : null}
 
           {activeDownload ? (
-            <dl className="movie-download-facts" aria-label="Download status">
+            <dl
+              className="movie-download-facts"
+              aria-label={messages.library.downloadStatus}
+            >
               <div>
-                <dt>Downloaded</dt>
+                <dt>{messages.library.downloaded}</dt>
                 <dd>
-                  {formatBytes(activeDownload.downloadedBytes)} of{" "}
-                  {formatBytes(activeDownload.totalBytes)}
+                  {messages.common.bytesOf({
+                    from: formatBytes(activeDownload.downloadedBytes),
+                    to: formatBytes(activeDownload.totalBytes),
+                  })}
                 </dd>
               </div>
               <div>
-                <dt>Speed</dt>
+                <dt>{messages.common.speed}</dt>
                 <dd>{formatRate(activeDownload.downloadRate)}</dd>
               </div>
               <div>
                 <dt>ETA</dt>
                 <dd>
                   {activeDownload.etaSeconds === null
-                    ? "Calculating"
+                    ? messages.common.calculating
                     : formatEta(activeDownload.etaSeconds)}
                 </dd>
               </div>
@@ -1888,38 +2038,34 @@ export function MovieManagement({
                 <div>
                   <h4>
                     {hasLibraryFile
-                      ? "Want a different copy?"
-                      : "Choose another release"}
+                      ? messages.library.wantDifferentCopy
+                      : messages.library.chooseAnotherRelease}
                   </h4>
                   <p>
                     {hasLibraryFile
-                      ? "Pick a one-time replacement without turning monitoring on. Your current library file stays in place until the new download is ready."
-                      : "Replace the active acquisition with a release you choose."}
+                      ? messages.library.replacementCopy
+                      : messages.library.replaceActive}
                   </p>
                 </div>
                 <Button type="button" onClick={onManualSearch}>
-                  <RefreshCw size={16} /> Choose replacement…
+                  <RefreshCw size={16} /> {messages.library.chooseReplacement}
                 </Button>
               </>
             ) : null}
             {canMutate && manualReleaseAction === "search" ? (
               <>
                 <div>
-                  <h4>Choose a release yourself</h4>
-                  <p>
-                    Review current Jackett results instead of waiting for the
-                    next automatic search.
-                  </p>
+                  <h4>{messages.library.chooseReleaseYourself}</h4>
+                  <p>{messages.library.reviewJackett}</p>
                 </div>
                 <Button type="button" onClick={onManualSearch}>
-                  <Search size={16} /> Search releases manually…
+                  <Search size={16} /> {messages.library.searchReleasesManually}
                 </Button>
               </>
             ) : null}
             {!hasTmdbMatch ? (
               <div className="notice notice--warning" role="note">
-                Confirm this movie's TMDB match before searching for a release.
-                Removal is still available.
+                {messages.library.confirmMovieTmdb}
               </div>
             ) : null}
             {canMutate && retryable ? (
@@ -1929,7 +2075,7 @@ export function MovieManagement({
                 busy={retryBusy}
                 onClick={onRetry}
               >
-                <RefreshCw size={16} /> Retry automatic search
+                <RefreshCw size={16} /> {messages.library.retryAutomaticSearch}
               </Button>
             ) : null}
             {retryError ? (
@@ -1940,7 +2086,10 @@ export function MovieManagement({
           </div>
         </section>
 
-        <aside className="movie-controls" aria-label="Movie management">
+        <aside
+          className="movie-controls"
+          aria-label={messages.library.movieManagement}
+        >
           {canMutate && showMonitoringSettings ? (
             <details
               className="tv-settings movie-settings"
@@ -1950,13 +2099,15 @@ export function MovieManagement({
               <summary>
                 <Settings2 size={18} aria-hidden="true" />
                 <span>
-                  <strong>Automatic monitoring</strong>
+                  <strong>{messages.library.automaticMonitoring}</strong>
                   <small>{monitoringSummary}</small>
                 </span>
               </summary>
               <div className="tv-settings__content">
                 <label className="field">
-                  <span className="field__label">Automatic monitoring</span>
+                  <span className="field__label">
+                    {messages.library.automaticMonitoring}
+                  </span>
                   <SelectControl
                     value={policy}
                     disabled={!hasTmdbMatch}
@@ -1966,13 +2117,15 @@ export function MovieManagement({
                   >
                     <option value="none">
                       {hasLibraryFile
-                        ? "Off — keep the current file only"
-                        : "Off — do not acquire this movie"}
+                        ? messages.library.offKeepCurrent
+                        : messages.library.offDoNotAcquire}
                     </option>
-                    <option value="all">On — search again if missing</option>
+                    <option value="all">
+                      {messages.library.onSearchIfMissing}
+                    </option>
                   </SelectControl>
                   <span className="field__hint">
-                    A one-time replacement does not require monitoring.
+                    {messages.library.replacementNoMonitoring}
                   </span>
                 </label>
                 {saveError ? (
@@ -1982,7 +2135,7 @@ export function MovieManagement({
                 ) : null}
                 {!hasTmdbMatch ? (
                   <div className="notice notice--warning" role="note">
-                    Confirm this movie's TMDB match before changing monitoring.
+                    {messages.library.confirmMovieTmdbMonitoring}
                   </div>
                 ) : null}
                 <Button
@@ -1991,7 +2144,7 @@ export function MovieManagement({
                   disabled={!hasTmdbMatch || policy === item.monitorPolicy}
                   onClick={onSave}
                 >
-                  <Check size={15} /> Save monitoring
+                  <Check size={15} /> {messages.library.saveMonitoring}
                 </Button>
               </div>
             </details>
@@ -2000,12 +2153,14 @@ export function MovieManagement({
           {canMutate ? (
             <section className="movie-removal">
               <div>
-                <span className="tv-overview__eyebrow">Library cleanup</span>
-                <h3>Remove this movie</h3>
+                <span className="tv-overview__eyebrow">
+                  {messages.library.libraryCleanup}
+                </span>
+                <h3>{messages.library.removeThisMovie}</h3>
                 <p>
                   {hasLibraryFile
-                    ? "Remove only Bobarr's record, or also delete the organized movie file. You choose on the next screen."
-                    : "Remove this movie from Bobarr and stop any future automatic searches."}
+                    ? messages.library.removeRecordOrFile
+                    : messages.library.removeMovieStopSearches}
                 </p>
               </div>
               <Button
@@ -2014,7 +2169,7 @@ export function MovieManagement({
                 className="danger-text"
                 onClick={onRemove}
               >
-                <Trash2 size={15} /> Remove from library…
+                <Trash2 size={15} /> {messages.library.removeFromLibrary}
               </Button>
             </section>
           ) : null}
@@ -2031,6 +2186,7 @@ function ManageLibraryDialog({
   item: LibraryItem | null;
   onClose: () => void;
 }) {
+  const { messages } = useUi();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const sessionQuery = useQuery({
@@ -2137,7 +2293,7 @@ function ManageLibraryDialog({
     return body;
   };
   const itemId = (): string => {
-    if (!item) throw new Error("Select a library item first.");
+    if (!item) throw new Error(messages.library.selectItemFirst);
     return item.id;
   };
   const updateMutation = useMutation({
@@ -2168,21 +2324,23 @@ function ManageLibraryDialog({
   });
   let dialogTitle =
     item?.kind === "series"
-      ? (item.title ?? "TV show details")
-      : (item?.title ?? "Movie details");
+      ? (item.title ?? messages.library.tvShowDetails)
+      : (item?.title ?? messages.library.movieDetails);
   if (manualSearchOpen) {
+    const title = item?.title ?? messages.library.titleFallback;
     dialogTitle =
       libraryManualReleaseAction(item) === "replace"
-        ? `Choose a replacement for ${item?.title ?? "title"}`
-        : `Find a release for ${item?.title ?? "title"}`;
+        ? messages.library.chooseReplacementFor({ title })
+        : messages.library.findReleaseForTitle({ title });
   }
-  if (confirmRemove) dialogTitle = "Remove from library?";
+  if (confirmRemove) dialogTitle = messages.library.removeFromLibraryQuestion;
   let dialogDescription: string | undefined;
   if (item && !manualSearchOpen && !confirmRemove) {
+    const year = item.year ? String(item.year) : messages.common.yearUnknown;
     dialogDescription =
       item.kind === "series"
-        ? `${item.year ?? "Year unknown"} · TV series · Episode status and monitoring`
-        : `${item.year ?? "Year unknown"} · Movie · File, replacement, and monitoring`;
+        ? messages.library.yearTvDescription({ year })
+        : messages.library.yearMovieDescription({ year });
   }
   let dialogSize: "sm" | "lg" | "xl" = "sm";
   if (manualSearchOpen) dialogSize = "lg";
@@ -2203,10 +2361,7 @@ function ManageLibraryDialog({
     >
       {confirmRemove ? (
         <div className="stack">
-          <p className="muted">
-            Choose whether to remove Bobarr's library record and which stored
-            data should also be deleted.
-          </p>
+          <p className="muted">{messages.library.chooseWhatToRemove}</p>
           <label className="check-row">
             <input
               type="checkbox"
@@ -2214,11 +2369,8 @@ function ManageLibraryDialog({
               onChange={(event) => setDeleteLibraryRecord(event.target.checked)}
             />
             <span>
-              <strong>Remove this title from Bobarr</strong>
-              <small>
-                Files stay on disk unless you select deletion below. A future
-                library scan may find the title again.
-              </small>
+              <strong>{messages.library.removeTitleFromBobarr}</strong>
+              <small>{messages.library.filesStayUnlessDeleted}</small>
             </span>
           </label>
           <label className="check-row">
@@ -2228,11 +2380,25 @@ function ManageLibraryDialog({
               onChange={(event) => setDeleteLibraryFiles(event.target.checked)}
             />
             <span>
-              <strong>Delete organized library files</strong>
+              <strong>{messages.library.deleteOrganizedFiles}</strong>
               <small>
                 {item?.storage && item.storage.fileCount > 0
-                  ? `Deletes ${item.storage.fileCount} ${item.storage.fileCount === 1 ? "file" : "files"}${item.storage.totalBytes > 0 ? ` (${formatBytes(item.storage.totalBytes)})` : ""} from your ${item.kind === "movie" ? "movies" : "television"} folder.`
-                  : "Removes files from your movies or television folder."}
+                  ? messages.library.deletesFilesFrom({
+                      files: messages.common.files({
+                        count: item.storage.fileCount,
+                      }),
+                      size:
+                        item.storage.totalBytes > 0
+                          ? messages.library.sizeInParens({
+                              size: formatBytes(item.storage.totalBytes),
+                            })
+                          : "",
+                      folder:
+                        item.kind === "movie"
+                          ? messages.library.moviesFolder
+                          : messages.library.televisionFolder,
+                    })
+                  : messages.library.removesFilesFromFolder}
               </small>
             </span>
           </label>
@@ -2246,8 +2412,8 @@ function ManageLibraryDialog({
               }}
             />
             <span>
-              <strong>Remove torrent from Transmission</strong>
-              <small>Stops seeding and removes its torrent record.</small>
+              <strong>{messages.library.removeTorrent}</strong>
+              <small>{messages.library.removeTorrentHint}</small>
             </span>
           </label>
           <label className="check-row">
@@ -2258,21 +2424,17 @@ function ManageLibraryDialog({
               onChange={(event) => setDeleteDownloadData(event.target.checked)}
             />
             <span>
-              <strong>Delete original download data</strong>
-              <small>This cannot be undone.</small>
+              <strong>{messages.library.deleteOriginalData}</strong>
+              <small>{messages.library.cannotBeUndone}</small>
             </span>
           </label>
           {deleteLibraryRecord && deleteLibraryFiles ? (
             <div className="notice notice--warning" role="note">
-              Bobarr will remove this title and its organized library files.
-              This cannot be undone.
+              {messages.library.willRemoveTitleAndFiles}
             </div>
           ) : null}
           {!deleteLibraryRecord ? (
-            <p className="muted">
-              The title remains visible as unmonitored unless its library record
-              is removed.
-            </p>
+            <p className="muted">{messages.library.remainsUnmonitored}</p>
           ) : null}
           {removeMutation.isError ? (
             <div className="notice notice--error">
@@ -2285,7 +2447,7 @@ function ManageLibraryDialog({
               variant="secondary"
               onClick={() => setConfirmRemove(false)}
             >
-              Back
+              {messages.common.back}
             </Button>
             <Button
               type="button"
@@ -2300,7 +2462,7 @@ function ManageLibraryDialog({
               }
               onClick={() => removeMutation.mutate()}
             >
-              <Trash2 size={16} /> Confirm removal
+              <Trash2 size={16} /> {messages.library.confirmRemoval}
             </Button>
           </div>
         </div>
@@ -2646,9 +2808,9 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
             })
           }
         >
-          {LIBRARY_SORT_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {librarySortLabel(option.value, messages)}
+          {LIBRARY_SORT_OPTIONS.map((sort) => (
+            <option key={sort} value={sort}>
+              {librarySortLabel(sort, messages)}
             </option>
           ))}
         </SelectField>
@@ -2687,9 +2849,9 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
           value={browse.ratingMin}
           onChange={(event) => updateBrowse({ ratingMin: event.target.value })}
         >
-          {LIBRARY_RATING_OPTIONS.map((option) => (
-            <option key={option.value || "any"} value={option.value}>
-              {libraryRatingLabel(option.value, messages)}
+          {LIBRARY_RATING_OPTIONS.map((value) => (
+            <option key={value || "any"} value={value}>
+              {libraryRatingLabel(value, messages)}
             </option>
           ))}
         </SelectField>
@@ -2698,9 +2860,9 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
           value={browse.quality}
           onChange={(event) => updateBrowse({ quality: event.target.value })}
         >
-          {LIBRARY_QUALITY_OPTIONS.map((option) => (
-            <option key={option.value || "any"} value={option.value}>
-              {libraryQualityLabel(option.value, messages)}
+          {LIBRARY_QUALITY_OPTIONS.map((value) => (
+            <option key={value || "any"} value={value}>
+              {libraryQualityLabel(value, messages)}
             </option>
           ))}
         </SelectField>
@@ -2745,31 +2907,13 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
       ) : null}
       {libraryQuery.data && items.length === 0 && !browsingDefault ? (
         <EmptyState
-          title={
-            !browsingDefault
-              ? "No matching titles"
-              : `No ${isMovies ? "movies" : "shows"} yet`
-          }
-          description={
-            !browsingDefault
-              ? "Change your filters to see more of your library."
-              : "Find a title and add it to start automatic monitoring."
-          }
-          action={
-            browsingDefault ? (
-              <Link
-                className="button button--primary button--md"
-                to="/discover"
-              >
-                <Compass size={16} /> Find a title
-              </Link>
-            ) : undefined
-          }
+          title={messages.library.noMatchingTitles}
+          description={messages.library.changeFilters}
         />
       ) : null}
       {items.length ? (
         <>
-          <div className="library-grid" aria-label="Library">
+          <div className="library-grid" aria-label={messages.library.grid}>
             {items.map((item) => (
               <LibraryCard
                 key={item.id}
@@ -2787,7 +2931,9 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
                 busy={libraryQuery.isFetchingNextPage}
                 onClick={() => void libraryQuery.fetchNextPage()}
               >
-                {libraryQuery.isFetchingNextPage ? "Loading…" : "Load more"}
+                {libraryQuery.isFetchingNextPage
+                  ? messages.common.loadingEllipsis
+                  : messages.common.loadMore}
               </Button>
             ) : null}
           </div>

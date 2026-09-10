@@ -235,7 +235,7 @@ describe("library manual release targets", () => {
 
   test("shows downloaded and total library counts", () => {
     const markup = renderWithUi(
-      LibrarySummary({
+      createElement(LibrarySummary, {
         summary: {
           total: 367,
           downloaded: 9,
