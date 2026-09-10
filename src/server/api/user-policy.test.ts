@@ -39,8 +39,6 @@ describe("user ranks, invites, and ownership", () => {
     expect(friend.session.capabilities).toEqual({
       rank: "user",
       canManageSettings: false,
-      canManageUsers: false,
-      canInvite: false,
     });
   });
 
@@ -320,7 +318,7 @@ describe("user ranks, invites, and ownership", () => {
     expect(me.status).toBe(200);
     expect(await me.json()).toMatchObject({
       user: { rank: "admin" },
-      capabilities: { canManageSettings: true, canInvite: true },
+      capabilities: { canManageSettings: true },
     });
 
     const demoted = await jsonRequest(

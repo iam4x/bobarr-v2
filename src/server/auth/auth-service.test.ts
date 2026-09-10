@@ -141,8 +141,6 @@ describe("authentication throttling", () => {
     expect(grant.response.capabilities).toEqual({
       rank: "user",
       canManageSettings: false,
-      canManageUsers: false,
-      canInvite: false,
     });
     const authenticated = fixture.service.authenticate(grant.sessionToken);
     expect(authenticated.actor.account.id).toBe(friend.id);

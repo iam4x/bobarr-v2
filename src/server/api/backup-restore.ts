@@ -9,7 +9,7 @@ import {
   CancelStagedRestoreSchema,
   StagedRestoreSchema,
 } from "../../contracts";
-import { requireAllowed } from "../auth/policy";
+import { requireAdmin } from "../auth/policy";
 import { AppError } from "../core";
 
 const STAGE_CONFIRMATION = "stage-restore";
@@ -20,7 +20,10 @@ export function registerBackupRestoreRoutes(
   dependencies: ApiDependencies,
 ): void {
   app.get("/api/v1/system/backups", async (context) => {
-    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    requireAdmin(
+      context.get("auth").actor,
+      "Administrator access is required to change settings",
+    );
     const restore = requireRestore(dependencies);
     const [backups, stagedRestore] = await Promise.all([
       restore.listVerifiedBackups(),
@@ -34,7 +37,10 @@ export function registerBackupRestoreRoutes(
   });
 
   app.post("/api/v1/system/restore", async (context) => {
-    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    requireAdmin(
+      context.get("auth").actor,
+      "Administrator access is required to change settings",
+    );
     const restore = requireRestore(dependencies);
     if (
       context.req.header("x-bobarr-restore-confirmation") !== STAGE_CONFIRMATION
@@ -94,7 +100,10 @@ export function registerBackupRestoreRoutes(
   });
 
   app.delete("/api/v1/system/restore", async (context) => {
-    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    requireAdmin(
+      context.get("auth").actor,
+      "Administrator access is required to change settings",
+    );
     if (
       context.req.header("x-bobarr-restore-confirmation") !==
       CANCEL_CONFIRMATION

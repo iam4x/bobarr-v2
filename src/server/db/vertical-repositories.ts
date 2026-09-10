@@ -210,14 +210,6 @@ export class DownloadRepository {
     return mapDownload(row);
   }
 
-  stampRequester(id: string, userId: number): void {
-    this.database.client
-      .update(downloads)
-      .set({ requestedByUserId: userId })
-      .where(eq(downloads.id, id))
-      .run();
-  }
-
   get(id: string): Download | undefined {
     const row = this.database.client
       .select()

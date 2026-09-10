@@ -279,6 +279,7 @@ export interface DownloadRecord {
   createdAt: number;
   updatedAt: number;
   lastEngineSeenAt: number | null;
+  requestedByUserId?: number;
 }
 
 export interface DownloadPatch {

@@ -45,6 +45,7 @@ export interface AcquisitionServiceOptions {
 export interface AddOptions {
   paused?: boolean;
   peerLimit?: number;
+  requestedByUserId?: number;
 }
 
 export interface ManualDownloadInput extends AddOptions {
@@ -188,6 +189,7 @@ export function createAcquisitionService(
     expectedInfoHash: string | null;
     paused?: boolean;
     peerLimit?: number;
+    requestedByUserId?: number;
   }): Promise<DownloadView> {
     validateTarget(input.target);
     const timestamp = now();
@@ -220,6 +222,7 @@ export function createAcquisitionService(
       createdAt: timestamp,
       updatedAt: timestamp,
       lastEngineSeenAt: null,
+      requestedByUserId: input.requestedByUserId,
     };
 
     // Persistence deliberately completes before the durable job is enqueued.
@@ -272,6 +275,7 @@ export function createAcquisitionService(
         protectedPayload.infoHash ?? sourceInfoHash(protectedPayload.source),
       paused: addOptions.paused,
       peerLimit: addOptions.peerLimit,
+      requestedByUserId: addOptions.requestedByUserId,
     });
   }
 
@@ -287,6 +291,7 @@ export function createAcquisitionService(
       expectedInfoHash,
       paused: input.paused,
       peerLimit: input.peerLimit,
+      requestedByUserId: input.requestedByUserId,
     });
   }
 
@@ -305,6 +310,7 @@ export function createAcquisitionService(
       expectedInfoHash: null,
       paused: input.paused,
       peerLimit: input.peerLimit,
+      requestedByUserId: input.requestedByUserId,
     });
   }
 

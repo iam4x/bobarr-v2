@@ -40,16 +40,6 @@ export interface Session {
   capabilities?: {
     rank: "admin" | "user";
     canManageSettings: boolean;
-    canManageUsers: boolean;
-    canInvite: boolean;
-  };
-  administrator?: {
-    id: string | number;
-    username: string;
-  };
-  admin?: {
-    id: string | number;
-    username: string;
   };
   csrfToken?: string;
   expiresAt?: string;

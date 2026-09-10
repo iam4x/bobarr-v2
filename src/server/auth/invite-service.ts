@@ -12,7 +12,7 @@ import type {
 } from "./auth-service";
 import type { PasswordHasher } from "./passwords";
 
-import { requireAllowed, type Actor, type Rank } from "./policy";
+import { requireAdmin, type Actor, type Rank } from "./policy";
 import {
   AppError,
   conflict,
@@ -99,7 +99,7 @@ export class InviteService {
     actor: Actor,
     options: { expiresInSeconds?: number } = {},
   ): Promise<{ id: string; token: string; expiresAt: string }> {
-    requireAllowed(actor, { type: "invite" });
+    requireAdmin(actor, "Administrator access is required to invite people");
     const now = this.clock.now().getTime();
     const expiresInSeconds =
       options.expiresInSeconds ?? DEFAULT_INVITE_TTL_SECONDS;
@@ -169,7 +169,7 @@ export class InviteService {
   }
 
   revoke(actor: Actor, id: string): void {
-    requireAllowed(actor, { type: "manage_users" });
+    requireAdmin(actor, "Administrator access is required to manage people");
     const row = this.invites.getById(id);
     if (row === undefined) throw notFound("Invite not found");
     const state = deriveInviteState(row, this.clock.now().getTime());
@@ -182,7 +182,7 @@ export class InviteService {
   }
 
   setRank(actor: Actor, id: number, rank: Rank): UserRow {
-    requireAllowed(actor, { type: "manage_users" });
+    requireAdmin(actor, "Administrator access is required to manage people");
     const target = this.accounts.getById(id);
     if (target === undefined) throw notFound("Account not found");
     if (target.rank === rank) return target;
@@ -201,7 +201,7 @@ export class InviteService {
   }
 
   deleteUser(actor: Actor, id: number): void {
-    requireAllowed(actor, { type: "manage_users" });
+    requireAdmin(actor, "Administrator access is required to manage people");
     const target = this.accounts.getById(id);
     if (target === undefined) throw notFound("Account not found");
     if (target.rank === "admin" && this.accounts.countByRank("admin") <= 1) {
@@ -218,7 +218,7 @@ export class InviteService {
     users: ReturnType<AuthRepository["listUsers"]>;
     invites: InviteRow[];
   } {
-    requireAllowed(actor, { type: "manage_users" });
+    requireAdmin(actor, "Administrator access is required to manage people");
     return {
       users: this.accounts.listUsers(),
       invites: this.invites.listAll(),

@@ -294,10 +294,7 @@ export function SettingsPage() {
     if (settingsQuery.data) reset(toForm(settingsQuery.data));
   }, [reset, settingsQuery.data]);
   useEffect(() => {
-    const username =
-      sessionQuery.data?.user?.username ??
-      sessionQuery.data?.admin?.username ??
-      sessionQuery.data?.administrator?.username;
+    const username = sessionQuery.data?.user?.username;
     if (username) {
       credentialsForm.reset({ username, password: "", confirmation: "" });
     }
