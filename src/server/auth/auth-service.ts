@@ -10,12 +10,18 @@ import type { Clock } from "../core";
 import type { AuthRepository, AuthenticatedSessionRecord } from "../db";
 
 import { bunPasswordHasher, type PasswordHasher } from "./passwords";
-import { projectCapabilities, type Actor } from "./policy";
+import {
+  projectCapabilities,
+  requireAdmin,
+  type Actor,
+  type Rank,
+} from "./policy";
 import {
   AppError,
   constantTimeEqual,
   createOpaqueToken,
   hashOpaqueToken,
+  notFound,
   systemClock,
   toIsoDate,
 } from "../core";
@@ -242,6 +248,44 @@ export class AuthService {
     );
     this.unknownLoginAttempts.clear();
     return { username: user.username };
+  }
+
+  listAccounts(actor: Actor) {
+    requireAdmin(actor, "Administrator access is required to manage people");
+    return this.repository.listUsers();
+  }
+
+  setRank(actor: Actor, id: number, rank: Rank) {
+    requireAdmin(actor, "Administrator access is required to manage people");
+    const target = this.repository.getById(id);
+    if (target === undefined) throw notFound("Account not found");
+    if (target.rank === rank) return target;
+    if (
+      target.rank === "admin" &&
+      rank === "user" &&
+      this.repository.countByRank("admin") <= 1
+    ) {
+      throw new AppError({
+        code: "conflict",
+        message: "The last administrator cannot be demoted",
+        status: 409,
+      });
+    }
+    return this.repository.setRank(id, rank, this.clock.now().getTime());
+  }
+
+  deleteAccount(actor: Actor, id: number): void {
+    requireAdmin(actor, "Administrator access is required to manage people");
+    const target = this.repository.getById(id);
+    if (target === undefined) throw notFound("Account not found");
+    if (target.rank === "admin" && this.repository.countByRank("admin") <= 1) {
+      throw new AppError({
+        code: "conflict",
+        message: "The last administrator cannot be deleted",
+        status: 409,
+      });
+    }
+    this.repository.deleteUser(id);
   }
 
   private issueSession(

@@ -500,7 +500,7 @@ describe("Bobarr backend API", () => {
     );
     expect(resetResponse.status).toBe(200);
     expect(await resetResponse.json()).toEqual({ reset: true });
-    expect(runtime.repositories.auth.getAdmin()).toMatchObject({
+    expect(runtime.repositories.auth.getById(1)).toMatchObject({
       failedLoginCount: 0,
       lockedUntil: null,
     });

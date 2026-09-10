@@ -197,9 +197,7 @@ export type LoginRequest = z.infer<typeof LoginRequestSchema>;
 export type UpdateCredentialsRequest = z.infer<
   typeof UpdateCredentialsRequestSchema
 >;
-export type UpdateAdminCredentialsRequest = UpdateCredentialsRequest;
 export type Account = z.infer<typeof AccountSchema>;
-export type Admin = Account;
 export type Rank = z.infer<typeof RankSchema>;
 export type ClientCapabilities = z.infer<typeof ClientCapabilitiesSchema>;
 export type AuthSession = z.infer<typeof AuthSessionSchema>;

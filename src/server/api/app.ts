@@ -680,12 +680,13 @@ export function createApiApp(
   });
   app.openapi(routes.listUsers, (context) => {
     const actor = context.get("auth").actor;
-    const listed = dependencies.invites.list(actor);
+    const users = dependencies.auth.listAccounts(actor);
+    const invites = dependencies.invites.listInvites(actor);
     const now = clock.now().getTime();
     return context.json(
       {
-        users: listed.users.map(toAccount),
-        invites: listed.invites.map((row) => {
+        users: users.map(toAccount),
+        invites: invites.map((row) => {
           const state = deriveInviteState(row, now);
           return {
             id: row.id,
@@ -720,7 +721,7 @@ export function createApiApp(
     return context.json({ revoked: true as const }, 200);
   });
   app.openapi(routes.updateUserRank, (context) => {
-    const user = dependencies.invites.setRank(
+    const user = dependencies.auth.setRank(
       context.get("auth").actor,
       context.req.valid("param").id,
       context.req.valid("json").rank,
@@ -728,7 +729,7 @@ export function createApiApp(
     return context.json(toAccount(user), 200);
   });
   app.openapi(routes.deleteUser, (context) => {
-    dependencies.invites.deleteUser(
+    dependencies.auth.deleteAccount(
       context.get("auth").actor,
       context.req.valid("param").id,
     );
