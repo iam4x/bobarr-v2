@@ -12,35 +12,20 @@ export interface LibraryBrowseFilters {
   quality: string;
 }
 
-export const LIBRARY_SORT_OPTIONS: Array<{
-  value: LibrarySort;
-  label: string;
-}> = [
-  { value: "added_at.desc", label: "Recently added" },
-  { value: "updated_at.desc", label: "Recently updated" },
-  { value: "title.asc", label: "Title A–Z" },
-  { value: "title.desc", label: "Title Z–A" },
-  { value: "year.desc", label: "Newest year" },
-  { value: "year.asc", label: "Oldest year" },
-  { value: "rating.desc", label: "Highest rated" },
-  { value: "rating.asc", label: "Lowest rated" },
+export const LIBRARY_SORT_OPTIONS: LibrarySort[] = [
+  "added_at.desc",
+  "updated_at.desc",
+  "title.asc",
+  "title.desc",
+  "year.desc",
+  "year.asc",
+  "rating.desc",
+  "rating.asc",
 ];
 
-export const LIBRARY_QUALITY_OPTIONS = [
-  { value: "", label: "Any quality" },
-  { value: "2160p", label: "2160p" },
-  { value: "1080p", label: "1080p" },
-  { value: "720p", label: "720p" },
-  { value: "480p", label: "480p" },
-];
+export const LIBRARY_QUALITY_OPTIONS = ["", "2160p", "1080p", "720p", "480p"];
 
-export const LIBRARY_RATING_OPTIONS = [
-  { value: "", label: "Any rating" },
-  { value: "6", label: "6.0+" },
-  { value: "7", label: "7.0+" },
-  { value: "7.5", label: "7.5+" },
-  { value: "8", label: "8.0+" },
-];
+export const LIBRARY_RATING_OPTIONS = ["", "6", "7", "7.5", "8"];
 
 export function librarySortLabel(
   sort: LibrarySort,

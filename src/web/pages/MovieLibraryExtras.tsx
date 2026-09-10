@@ -10,6 +10,7 @@ import {
   normalizeCatalogRecommendations,
 } from "../api/normalize";
 import { Button, EmptyState, InlineSpinner } from "../components/ui";
+import { useUi } from "../i18n/ui";
 import {
   formatRelativeDate,
   imageUrl,
@@ -19,7 +20,7 @@ import {
 
 const SHELF_LIMIT = 12;
 
-function episodeCode(item: LibraryItem): string {
+function episodeCode(item: LibraryItem, fallback: string): string {
   const season = item.seasonNumber;
   const episode = item.episodeNumber;
   if (
@@ -28,7 +29,7 @@ function episodeCode(item: LibraryItem): string {
     !Number.isSafeInteger(season) ||
     !Number.isSafeInteger(episode)
   ) {
-    return "Episode";
+    return fallback;
   }
   return `S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}`;
 }
@@ -42,13 +43,14 @@ function ShelfCard({
   onSelect: (item: LibraryItem) => void;
   subtitle?: string;
 }) {
+  const { messages } = useUi();
   const poster = imageUrl(item.posterPath, "w342");
   return (
     <button
       type="button"
       className="library-shelf-card"
       onClick={() => onSelect(item)}
-      aria-label={`Open ${item.title} details`}
+      aria-label={messages.library.openDetails({ title: item.title })}
     >
       <span className="library-shelf-card__poster" aria-hidden="true">
         {poster ? (
@@ -81,17 +83,22 @@ function EpisodeShelfCard({
   series: LibraryItem;
   onSelect: (series: LibraryItem) => void;
 }) {
+  const { messages } = useUi();
   const poster = imageUrl(series.posterPath ?? episode.posterPath, "w342");
   const acquiredAt =
     typeof episode.updatedAt === "string" ? episode.updatedAt : episode.addedAt;
   const relative = formatRelativeDate(acquiredAt);
-  const code = episodeCode(episode);
+  const code = episodeCode(episode, messages.library.episode);
   return (
     <button
       type="button"
       className="library-shelf-card library-shelf-card--episode"
       onClick={() => onSelect(series)}
-      aria-label={`Open ${series.title}, ${code} ${episode.title}`}
+      aria-label={messages.library.openSeriesEpisode({
+        series: series.title,
+        code,
+        episode: episode.title,
+      })}
     >
       <span className="library-shelf-card__poster" aria-hidden="true">
         {poster ? (
@@ -124,6 +131,7 @@ function LibraryShelf({
   loading: boolean;
   onSelect: (item: LibraryItem) => void;
 }) {
+  const { messages } = useUi();
   if (!loading && items.length === 0) return null;
   return (
     <section className="library-shelf" aria-label={title}>
@@ -134,7 +142,7 @@ function LibraryShelf({
         </div>
       </header>
       {loading ? (
-        <InlineSpinner label={`Loading ${title.toLowerCase()}…`} />
+        <InlineSpinner label={messages.library.loadingNamed({ name: title })} />
       ) : (
         <div className="library-shelf__rail">
           {items.map((item) => (
@@ -155,7 +163,11 @@ export function MediaLibraryShelves({
   enabled: boolean;
   onSelect: (item: LibraryItem) => void;
 }) {
-  const label = kind === "movie" ? "movies" : "shows";
+  const { messages } = useUi();
+  const label =
+    kind === "movie"
+      ? messages.library.moviesLabel
+      : messages.library.showsLabel;
   const recentQuery = useQuery({
     queryKey: ["library", "shelves", kind, "recent"],
     queryFn: ({ signal }) =>
@@ -290,8 +302,8 @@ export function MediaLibraryShelves({
   return (
     <div className="library-shelves">
       <LibraryShelf
-        title="Recently added"
-        description={`The newest ${label} to land in your library.`}
+        title={messages.library.recentlyAdded}
+        description={messages.library.recentlyAddedDescription({ label })}
         items={recent}
         loading={recentQuery.isLoading}
         onSelect={onSelect}
@@ -300,16 +312,16 @@ export function MediaLibraryShelves({
       (recentEpisodesQuery.isLoading || recentEpisodes.length > 0) ? (
         <section
           className="library-shelf"
-          aria-label="Recently downloaded episodes"
+          aria-label={messages.library.recentlyDownloadedEpisodes}
         >
           <header className="library-shelf__header">
             <div>
-              <h3>Recently downloaded episodes</h3>
-              <p>Fresh episode files that just landed in your library.</p>
+              <h3>{messages.library.recentlyDownloadedEpisodes}</h3>
+              <p>{messages.library.recentlyDownloadedEpisodesCopy}</p>
             </div>
           </header>
           {recentEpisodesQuery.isLoading ? (
-            <InlineSpinner label="Loading recently downloaded episodes…" />
+            <InlineSpinner label={messages.library.loadingRecentlyDownloaded} />
           ) : (
             <div className="library-shelf__rail">
               {recentEpisodes.map(({ episode, series }) => (
@@ -325,8 +337,8 @@ export function MediaLibraryShelves({
         </section>
       ) : null}
       <LibraryShelf
-        title="Needs attention"
-        description="Missing or failed acquisitions that still need a release."
+        title={messages.library.needsAttentionShelf}
+        description={messages.library.needsAttentionShelfCopy}
         items={attention}
         loading={
           attentionMissingQuery.isLoading || attentionFailedQuery.isLoading
@@ -334,8 +346,8 @@ export function MediaLibraryShelves({
         onSelect={onSelect}
       />
       <LibraryShelf
-        title="Highly rated"
-        description={`Your library ${label} rated 7.0 and above.`}
+        title={messages.library.highlyRated}
+        description={messages.library.highlyRatedCopy({ label })}
         items={rated}
         loading={ratedQuery.isLoading}
         onSelect={onSelect}
@@ -343,7 +355,10 @@ export function MediaLibraryShelves({
       {genreLeader ? (
         <LibraryShelf
           title={genreLeader.name}
-          description={`A shelf drawn from the ${genreLeader.name.toLowerCase()} ${label} you already keep.`}
+          description={messages.library.genreShelfCopy({
+            genre: genreLeader.name,
+            label,
+          })}
           items={collectionItems(genreQuery.data)}
           loading={genreQuery.isLoading}
           onSelect={onSelect}
@@ -370,32 +385,36 @@ export function LibraryEmptyGuidance({
   onScan: () => void;
   scanBusy: boolean;
 }) {
+  const { messages } = useUi();
   const isMovies = kind === "movie";
   return (
     <EmptyState
       title={
         isMovies
-          ? "Your movie library is ready to grow"
-          : "Your show library is ready to grow"
+          ? messages.library.moviesReadyToGrow
+          : messages.library.showsReadyToGrow
       }
-      description="Start with files you already have, or let Bobarr find something new."
+      description={messages.library.emptyGuidance}
       action={
         <div className="library-empty-actions">
           <Button type="button" busy={scanBusy} onClick={onScan}>
             <ScanSearch size={16} />{" "}
-            {isMovies ? "Scan existing movies" : "Scan existing shows"}
+            {isMovies
+              ? messages.library.scanExistingMovies
+              : messages.library.scanExistingShows}
           </Button>
           <Link
             className="button button--secondary button--md"
             to="/suggestions"
           >
-            <Sparkles size={16} /> Get suggestions
+            <Sparkles size={16} /> {messages.library.getSuggestions}
           </Link>
           <Link
             className="button button--secondary button--md"
             to={isMovies ? "/discover" : "/discover?kind=series"}
           >
-            {isMovies ? <Film size={16} /> : <Tv size={16} />} Browse Discover
+            {isMovies ? <Film size={16} /> : <Tv size={16} />}{" "}
+            {messages.library.browseDiscover}
           </Link>
         </div>
       }
@@ -422,6 +441,7 @@ export function LibraryAttentionStrip({
   onShowMissing: () => void;
   onShowFailed: () => void;
 }) {
+  const { messages } = useUi();
   if (missing + failed === 0) return null;
   return (
     <div className="library-attention" role="status">
@@ -429,11 +449,13 @@ export function LibraryAttentionStrip({
         <AlertTriangle size={18} />
       </span>
       <div className="library-attention__copy">
-        <strong>Library needs attention</strong>
+        <strong>{messages.library.needsAttentionStrip}</strong>
         <p>
-          {failed > 0 ? `${failed} failed` : null}
+          {failed > 0 ? messages.library.failedCount({ count: failed }) : null}
           {failed > 0 && missing > 0 ? " · " : null}
-          {missing > 0 ? `${missing} missing` : null}
+          {missing > 0
+            ? messages.library.missingCount({ count: missing })
+            : null}
         </p>
       </div>
       <div className="library-attention__actions">
@@ -444,7 +466,7 @@ export function LibraryAttentionStrip({
             variant="secondary"
             onClick={onShowFailed}
           >
-            Show failed
+            {messages.library.showFailed}
           </Button>
         ) : null}
         {missing > 0 ? (
@@ -454,7 +476,7 @@ export function LibraryAttentionStrip({
             variant="secondary"
             onClick={onShowMissing}
           >
-            Show missing
+            {messages.library.showMissing}
           </Button>
         ) : null}
       </div>
@@ -467,6 +489,7 @@ export function DiscoverForYouStrip({
 }: {
   onSelect: (item: CatalogItem) => void;
 }) {
+  const { messages } = useUi();
   const suggestionsQuery = useQuery({
     queryKey: ["catalog", "recommendations", "discover-strip"],
     queryFn: ({ signal }) =>
@@ -481,24 +504,31 @@ export function DiscoverForYouStrip({
     result?.groups.flatMap((group) => group.items).slice(0, 12) ?? [];
   if (suggestionsQuery.isLoading) {
     return (
-      <section className="discover-foryou" aria-label="For you">
-        <InlineSpinner label="Loading suggestions…" />
+      <section
+        className="discover-foryou"
+        aria-label={messages.suggestions.forYou}
+      >
+        <InlineSpinner label={messages.suggestions.loadingShelves} />
       </section>
     );
   }
   if (items.length === 0) return null;
   return (
-    <section className="discover-foryou" aria-label="For you">
+    <section
+      className="discover-foryou"
+      aria-label={messages.suggestions.forYou}
+    >
       <header className="discover-foryou__header">
         <div>
           <span className="eyebrow">
-            <Sparkles size={14} aria-hidden="true" /> For you
+            <Sparkles size={14} aria-hidden="true" />{" "}
+            {messages.suggestions.forYou}
           </span>
-          <h2>Suggestions from your library</h2>
-          <p>A quick mix before you dive into filters.</p>
+          <h2>{messages.suggestions.fromYourLibrary}</h2>
+          <p>{messages.suggestions.quickMix}</p>
         </div>
         <Link className="button button--ghost button--sm" to="/suggestions">
-          See all
+          {messages.suggestions.seeAll}
         </Link>
       </header>
       <div className="discover-foryou__rail">
@@ -510,7 +540,7 @@ export function DiscoverForYouStrip({
               className="library-shelf-card"
               key={`${item.kind}-${item.id}`}
               onClick={() => onSelect(item)}
-              aria-label={`View ${item.title}`}
+              aria-label={messages.catalog.viewTitle({ title: item.title })}
             >
               <span className="library-shelf-card__poster" aria-hidden="true">
                 {poster ? (
@@ -524,8 +554,10 @@ export function DiscoverForYouStrip({
               <span className="library-shelf-card__copy">
                 <strong>{item.title}</strong>
                 <small>
-                  {mediaYear(item) ?? "TBA"} ·{" "}
-                  {item.kind === "movie" ? "Movie" : "Series"}
+                  {mediaYear(item) ?? messages.dates.tba} ·{" "}
+                  {item.kind === "movie"
+                    ? messages.kind.movie
+                    : messages.kind.series}
                 </small>
               </span>
             </button>
@@ -545,6 +577,7 @@ export function DiscoverSearchJump({
   onChange: (value: string) => void;
   onSubmit: () => void;
 }) {
+  const { messages } = useUi();
   return (
     <form
       className="discover-search-jump"
@@ -558,12 +591,12 @@ export function DiscoverSearchJump({
       <input
         type="search"
         value={value}
-        placeholder="Search the catalog…"
-        aria-label="Search the catalog"
+        placeholder={messages.suggestions.searchCatalog}
+        aria-label={messages.suggestions.searchCatalogLabel}
         onChange={(event) => onChange(event.target.value)}
       />
       <Button type="submit" size="sm">
-        Search
+        {messages.search.submit}
       </Button>
     </form>
   );

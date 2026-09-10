@@ -35,14 +35,14 @@ export function PeopleSection({
         url: `${window.location.origin}/invite?token=${invite.token}`,
         expiresAt: invite.expiresAt,
       });
-      setNotice("Invite link created. Copy it now; it is shown only once.");
+      setNotice(messages.people.inviteCreated);
       void queryClient.invalidateQueries({ queryKey: ["users"] });
     },
   });
   const revokeInvite = useMutation({
     mutationFn: (id: string) => api.delete("revokeInvite", { params: { id } }),
     onSuccess: (_, id) => {
-      setNotice("Invite revoked.");
+      setNotice(messages.people.inviteRevoked);
       setCreatedInvite((current) => (current?.id === id ? undefined : current));
       void queryClient.invalidateQueries({ queryKey: ["users"] });
     },
@@ -51,7 +51,7 @@ export function PeopleSection({
     mutationFn: (id: number) =>
       api.delete("deleteUser", { params: { id: String(id) } }),
     onSuccess: () => {
-      setNotice("Account deleted.");
+      setNotice(messages.people.accountDeleted);
       void queryClient.invalidateQueries({ queryKey: ["users"] });
     },
   });
@@ -64,8 +64,8 @@ export function PeopleSection({
     onSuccess: (user) => {
       setNotice(
         user.rank === "admin"
-          ? `${user.username} is now an administrator.`
-          : `${user.username} is now a user.`,
+          ? messages.people.nowAdmin({ username: user.username })
+          : messages.people.nowUser({ username: user.username }),
       );
       void queryClient.invalidateQueries({ queryKey: ["users"] });
     },
@@ -102,10 +102,18 @@ export function PeopleSection({
           <li key={user.id}>
             <span>
               <strong>{user.username}</strong>
-              <small>{user.rank}</small>
+              <small>
+                {user.rank === "admin"
+                  ? messages.people.rankAdmin
+                  : messages.people.rankUser}
+              </small>
             </span>
             {user.id === currentId ? (
-              <Badge>{user.rank}</Badge>
+              <Badge>
+                {user.rank === "admin"
+                  ? messages.people.rankAdmin
+                  : messages.people.rankUser}
+              </Badge>
             ) : (
               <div className="backup-list__actions">
                 {user.rank === "user" ? (
@@ -130,7 +138,7 @@ export function PeopleSection({
                       updateRank.mutate({ id: user.id, rank: "user" })
                     }
                   >
-                    Make user
+                    {messages.people.makeUser}
                   </Button>
                 )}
                 {user.rank !== "admin" ? (
@@ -141,7 +149,7 @@ export function PeopleSection({
                     busy={deleteUser.isPending}
                     onClick={() => deleteUser.mutate(user.id)}
                   >
-                    Delete
+                    {messages.common.delete}
                   </Button>
                 ) : null}
               </div>
@@ -193,7 +201,7 @@ export function PeopleSection({
                   busy={revokeInvite.isPending}
                   onClick={() => revokeInvite.mutate(invite.id)}
                 >
-                  Revoke
+                  {messages.common.revoke}
                 </Button>
               </div>
             </li>
