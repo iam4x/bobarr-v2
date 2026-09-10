@@ -2,8 +2,6 @@ import type { CatalogItem, CatalogRecommendationGroup } from "../types";
 
 import { describe, expect, test } from "bun:test";
 
-import { renderToStaticMarkup } from "react-dom/server";
-
 import {
   suggestionCounts,
   suggestionGroupsForKind,
@@ -11,6 +9,7 @@ import {
   SuggestionKindTabs,
   SuggestionShelf,
 } from "./SuggestionsPage";
+import { renderWithUi } from "../i18n/test-utils";
 
 const movie: CatalogItem = {
   id: "movie-1",
@@ -88,7 +87,7 @@ describe("suggestion media tabs", () => {
   });
 
   test("renders an accessible tab list with one active tab", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <SuggestionKindTabs
         value="all"
         counts={{ all: 20, movie: 12, series: 8 }}
@@ -164,7 +163,7 @@ describe("suggestion rail controls", () => {
 
 describe("suggestion shelf", () => {
   test("explains its library source and exposes labelled scroll controls", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <SuggestionShelf group={movieGroup} onSelect={() => {}} />,
     );
 
@@ -186,7 +185,7 @@ describe("suggestion shelf", () => {
   });
 
   test("does not add redundant scroll buttons for a single recommendation", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <SuggestionShelf group={seriesGroup} onSelect={() => {}} />,
     );
 
@@ -196,7 +195,7 @@ describe("suggestion shelf", () => {
   });
 
   test("labels a legacy flat response honestly during rolling upgrades", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <SuggestionShelf group={legacyMovieGroup} onSelect={() => {}} />,
     );
 

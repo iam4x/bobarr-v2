@@ -1,3 +1,4 @@
+import type { Messages } from "../i18n/en";
 import type {
   CatalogActor,
   CatalogItem,
@@ -26,6 +27,7 @@ import { Link, useNavigate } from "react-router";
 import { ReleaseSearchPanel } from "./ReleaseSearchPanel";
 import { Badge, Button, Dialog, InlineSpinner, SelectField } from "./ui";
 import { api } from "../api/client";
+import { useUi } from "../i18n/ui";
 import { formatDate, imageUrl, initials, mediaYear } from "../lib/format";
 
 function stateTone(
@@ -38,8 +40,11 @@ function stateTone(
   return "neutral";
 }
 
-export function seasonYearLabel(season: CatalogSeason | undefined): string {
-  if (!season) return "Year unavailable";
+export function seasonYearLabel(
+  season: CatalogSeason | undefined,
+  messages: Messages,
+): string {
+  if (!season) return messages.catalog.yearUnavailable;
 
   const years = [
     season.airDate,
@@ -51,7 +56,7 @@ export function seasonYearLabel(season: CatalogSeason | undefined): string {
     })
     .filter((year) => Number.isSafeInteger(year));
 
-  if (years.length === 0) return "Year TBA";
+  if (years.length === 0) return messages.catalog.yearTba;
   const firstYear = Math.min(...years);
   const lastYear = Math.max(...years);
   return firstYear === lastYear
@@ -66,13 +71,14 @@ export function MediaCard({
   item: CatalogItem;
   onSelect: (item: CatalogItem) => void;
 }) {
+  const { messages } = useUi();
   const poster = imageUrl(item.posterPath, "w500");
   return (
     <article className="media-card">
       <button
         type="button"
         className="media-card__button"
-        aria-label={`View ${item.title}`}
+        aria-label={messages.catalog.viewTitle({ title: item.title })}
         onClick={() => onSelect(item)}
       >
         <span className="media-card__artwork">
@@ -93,14 +99,15 @@ export function MediaCard({
           {item.monitored ? (
             <span className="monitored-pill">
               <Check size={13} />
-              Tracked
+              {messages.catalog.tracked}
             </span>
           ) : null}
         </span>
         <span className="media-card__copy">
           <strong>{item.title}</strong>
           <span>
-            {mediaYear(item)} · {item.kind === "movie" ? "Movie" : "Series"}
+            {mediaYear(item) ?? messages.dates.tba} ·{" "}
+            {item.kind === "movie" ? messages.kind.movie : messages.kind.series}
           </span>
         </span>
       </button>
@@ -133,14 +140,21 @@ export function ExternalRatings({
 }: {
   ratings: CatalogItem["ratings"];
 }) {
+  const { messages } = useUi();
   if (!ratings?.imdb && !ratings?.rottenTomatoes) return null;
   return (
-    <dl className="external-ratings" aria-label="External ratings">
+    <dl
+      className="external-ratings"
+      aria-label={messages.catalog.externalRatings}
+    >
       {ratings.imdb ? (
         <div className="external-rating external-rating--imdb">
           <dt>IMDb</dt>
           <dd
-            aria-label={`IMDb rating ${ratings.imdb.value} out of ${ratings.imdb.scale}`}
+            aria-label={messages.catalog.imdbRating({
+              value: String(ratings.imdb.value),
+              scale: ratings.imdb.scale,
+            })}
           >
             {ratings.imdb.value.toFixed(1)}
             <span aria-hidden="true">/{ratings.imdb.scale}</span>
@@ -151,7 +165,9 @@ export function ExternalRatings({
         <div className="external-rating external-rating--tomatoes">
           <dt>Rotten Tomatoes</dt>
           <dd
-            aria-label={`Rotten Tomatoes rating ${ratings.rottenTomatoes.value} percent`}
+            aria-label={messages.catalog.tomatoesRating({
+              value: ratings.rottenTomatoes.value,
+            })}
           >
             {Math.round(ratings.rottenTomatoes.value)}%
           </dd>
@@ -182,18 +198,19 @@ export function MovieCast({
   loading?: boolean;
   onSelect: (actor: CatalogActor) => void;
 }) {
+  const { messages } = useUi();
   const visibleActors = actors?.slice(0, MOVIE_CAST_SKELETON_COUNT) ?? [];
   if (!loading && visibleActors.length === 0) return null;
 
   return (
     <section
       className="movie-cast"
-      aria-label="Top cast"
+      aria-label={messages.catalog.topCast}
       aria-busy={loading || undefined}
     >
       <div className="movie-cast__heading">
-        <span className="eyebrow">Top cast</span>
-        <h3>Actors</h3>
+        <span className="eyebrow">{messages.catalog.topCast}</span>
+        <h3>{messages.catalog.actors}</h3>
       </div>
       <div className="movie-cast__grid">
         {loading
@@ -217,7 +234,9 @@ export function MovieCast({
                   type="button"
                   className="actor-card"
                   key={actor.tmdbId}
-                  aria-label={`Discover movies with ${actor.name}`}
+                  aria-label={messages.catalog.discoverWith({
+                    name: actor.name,
+                  })}
                   onClick={() => onSelect(actor)}
                 >
                   <span className="actor-card__portrait">
@@ -295,6 +314,7 @@ export function MediaDetailDialog({
   selected: CatalogItem | null;
   onClose: () => void;
 }) {
+  const { messages } = useUi();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showReleases, setShowReleases] = useState(false);
@@ -509,7 +529,7 @@ export function MediaDetailDialog({
       title={item?.title ?? "Title details"}
       description={
         item
-          ? `${mediaYear(item)} · ${item.kind === "movie" ? "Movie" : "Series"}`
+          ? `${mediaYear(item) ?? messages.dates.tba} · ${item.kind === "movie" ? messages.kind.movie : messages.kind.series}`
           : undefined
       }
       onClose={() => {
@@ -675,7 +695,7 @@ export function MediaDetailDialog({
                         <small>
                           {seasonQuery?.isPending
                             ? "Loading year…"
-                            : seasonYearLabel(seasonQuery?.data)}
+                            : seasonYearLabel(seasonQuery?.data, messages)}
                         </small>
                       </span>
                     </label>
@@ -790,11 +810,12 @@ export function MediaDetailDialog({
 }
 
 export function CalendarMeta({ date }: { date?: string | null }) {
+  const { messages, locale } = useUi();
   if (!date) return null;
   return (
     <span className="icon-meta">
       <Calendar size={14} aria-hidden="true" />
-      {formatDate(date)}
+      {formatDate(date, locale) ?? messages.dates.unknown}
     </span>
   );
 }

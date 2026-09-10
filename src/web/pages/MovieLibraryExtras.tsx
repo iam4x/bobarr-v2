@@ -61,7 +61,7 @@ function ShelfCard({
         <strong>{item.title}</strong>
         <small>
           {subtitle ??
-            `${mediaYear(item)}${
+            `${mediaYear(item) ?? ""}${
               item.voteAverage || item.rating?.value
                 ? ` · ${(item.rating?.value ?? item.voteAverage ?? 0).toFixed(1)}`
                 : ""
@@ -524,7 +524,7 @@ export function DiscoverForYouStrip({
               <span className="library-shelf-card__copy">
                 <strong>{item.title}</strong>
                 <small>
-                  {mediaYear(item)} ·{" "}
+                  {mediaYear(item) ?? "TBA"} ·{" "}
                   {item.kind === "movie" ? "Movie" : "Series"}
                 </small>
               </span>

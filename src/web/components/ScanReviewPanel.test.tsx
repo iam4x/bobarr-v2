@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { renderToStaticMarkup } from "react-dom/server";
-
 import { ScanReviewCard, tmdbReference } from "./ScanReviewPanel";
+import { renderWithUi } from "../i18n/test-utils";
 
 describe("scan review surface", () => {
   test("recognizes exact TMDB IDs and movie URLs", () => {
@@ -19,7 +18,7 @@ describe("scan review surface", () => {
   });
 
   test("renders explicit, touch-friendly TMDB choices and a dismiss action", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <ScanReviewCard
         review={{
           id: "89b3e601-c3b1-4a65-93b0-5c5eefda38ab",
@@ -59,7 +58,7 @@ describe("scan review surface", () => {
   });
 
   test("offers a manual TMDB title search when the scanner found no candidates", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <ScanReviewCard
         review={{
           id: "89b3e601-c3b1-4a65-93b0-5c5eefda38ab",

@@ -11,6 +11,7 @@ import { normalizeCatalogRecommendations } from "../api/normalize";
 import { MediaCard, MediaDetailDialog } from "../components/Catalog";
 import { Page } from "../components/Page";
 import { Button, EmptyState, ErrorState, IconButton } from "../components/ui";
+import { useUi } from "../i18n/ui";
 import { imageUrl, initials } from "../lib/format";
 
 export type SuggestionKind = "all" | "movie" | "series";
@@ -78,26 +79,29 @@ export function SuggestionKindTabs({
   counts?: Record<SuggestionKind, number>;
   onChange: (kind: SuggestionKind) => void;
 }) {
+  const { messages } = useUi();
+  const kinds: Array<{ value: SuggestionKind; label: string }> = [
+    { value: "all", label: messages.kind.all },
+    { value: "movie", label: messages.nav.movies },
+    { value: "series", label: messages.kind.tvShows },
+  ];
   function moveFocus(event: KeyboardEvent<HTMLButtonElement>): void {
-    const currentIndex = suggestionKinds.findIndex(
-      (option) => option.value === value,
-    );
+    const currentIndex = kinds.findIndex((option) => option.value === value);
     let nextIndex: number | undefined;
 
     if (event.key === "ArrowRight") {
-      nextIndex = (currentIndex + 1) % suggestionKinds.length;
+      nextIndex = (currentIndex + 1) % kinds.length;
     } else if (event.key === "ArrowLeft") {
-      nextIndex =
-        (currentIndex - 1 + suggestionKinds.length) % suggestionKinds.length;
+      nextIndex = (currentIndex - 1 + kinds.length) % kinds.length;
     } else if (event.key === "Home") {
       nextIndex = 0;
     } else if (event.key === "End") {
-      nextIndex = suggestionKinds.length - 1;
+      nextIndex = kinds.length - 1;
     }
 
     if (nextIndex === undefined) return;
     event.preventDefault();
-    const next = suggestionKinds[nextIndex];
+    const next = kinds[nextIndex];
     if (!next) return;
     onChange(next.value);
     event.currentTarget.parentElement
@@ -109,9 +113,9 @@ export function SuggestionKindTabs({
     <div
       className="segmented suggestions-tabs"
       role="tablist"
-      aria-label="Suggestion type"
+      aria-label={messages.suggestions.type}
     >
-      {suggestionKinds.map((option) => {
+      {kinds.map((option) => {
         const active = option.value === value;
         return (
           <button
@@ -319,6 +323,7 @@ function SuggestionShelvesSkeleton() {
 }
 
 export function SuggestionsPage() {
+  const { messages } = useUi();
   const [kind, setKind] = useState<SuggestionKind>("all");
   const [cursor, setCursor] = useState<number>();
   const [selected, setSelected] = useState<CatalogItem | null>(null);
@@ -363,8 +368,8 @@ export function SuggestionsPage() {
 
   return (
     <Page
-      eyebrow="From your library"
-      title="Suggestions with a reason"
+      eyebrow={messages.suggestions.eyebrow}
+      title={messages.suggestions.title}
       description={description}
       actions={
         result?.nextCursor !== null && result?.nextCursor !== undefined ? (

@@ -3,6 +3,7 @@ import type { Messages } from "./en";
 import type { ReactNode } from "react";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown } from "lucide-react";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 import {
@@ -22,7 +23,6 @@ import {
 } from "./locale";
 import { api } from "../api/client";
 import { isAuthenticated } from "../api/normalize";
-import { SelectControl } from "../components/ui";
 
 export interface UiContextValue {
   locale: UiLocale;
@@ -140,21 +140,29 @@ export function UiProvider({ children }: { children: ReactNode }) {
 export function LocaleSwitcher({ labeled = false }: { labeled?: boolean }) {
   const { locale, messages, setLocale } = useUi();
   const select = (
-    <SelectControl
-      aria-label={labeled ? undefined : messages.locale.label}
-      value={locale}
-      onChange={(event) => {
-        const next = parseUiLocale(event.currentTarget.value);
-        if (next === null) return;
-        setLocale(next);
-      }}
-    >
-      {UI_LOCALES.map((value) => (
-        <option key={value} value={value}>
-          {NATIVE_LOCALE_NAMES[value]}
-        </option>
-      ))}
-    </SelectControl>
+    <span className="select-control">
+      <select
+        aria-label={labeled ? undefined : messages.locale.label}
+        value={locale}
+        onChange={(event) => {
+          const next = parseUiLocale(event.currentTarget.value);
+          if (next === null) return;
+          setLocale(next);
+        }}
+      >
+        {UI_LOCALES.map((value) => (
+          <option key={value} value={value}>
+            {NATIVE_LOCALE_NAMES[value]}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        className="select-control__icon"
+        aria-hidden="true"
+        size={18}
+        strokeWidth={2}
+      />
+    </span>
   );
   if (labeled) {
     return (

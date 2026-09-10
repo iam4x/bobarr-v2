@@ -10,10 +10,11 @@ import {
   JobPagination,
   ManualJobControls,
 } from "./ActivityPage";
+import { renderWithUi } from "../i18n/test-utils";
 
 describe("activity jobs browser", () => {
   test("defaults the download filter UI to active downloads", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <DownloadFilterBar value="active" onChange={() => {}} />,
     );
 
@@ -25,7 +26,7 @@ describe("activity jobs browser", () => {
   });
 
   test("renders an accessible exact-type filter with known durable jobs", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <JobFilterBar kind="library.scan.v1" busy={false} onChange={() => {}} />,
     );
 
@@ -36,7 +37,7 @@ describe("activity jobs browser", () => {
   });
 
   test("shows stable result bounds and disables unavailable page controls", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <JobPagination
         page={{ limit: 20, offset: 0, total: 43 }}
         busy={false}
@@ -54,7 +55,7 @@ describe("activity jobs browser", () => {
   });
 
   test("offers safe maintenance jobs for manual execution", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <ManualJobControls
         kind="library.scan.v1"
         busy={false}

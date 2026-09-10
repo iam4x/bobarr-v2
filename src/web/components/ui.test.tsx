@@ -1,12 +1,11 @@
 import { describe, expect, it } from "bun:test";
 
-import { renderToStaticMarkup } from "react-dom/server";
-
 import { Dialog, EmptyState, ProgressBar, SelectControl } from "./ui";
+import { renderWithUi } from "../i18n/test-utils";
 
 describe("accessible UI primitives", () => {
   it("renders progress with a bounded accessible value", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <ProgressBar value={140} label="Movie download" />,
     );
     expect(markup).toContain('role="progressbar"');
@@ -16,7 +15,7 @@ describe("accessible UI primitives", () => {
   });
 
   it("renders meaningful empty-state copy", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <EmptyState title="No movies" description="Find a title to begin." />,
     );
     expect(markup).toContain("No movies");
@@ -24,7 +23,7 @@ describe("accessible UI primitives", () => {
   });
 
   it("renders selects with one shared non-interactive chevron", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <SelectControl aria-label="Download status" defaultValue="active">
         <option value="active">Active</option>
       </SelectControl>,
@@ -39,7 +38,7 @@ describe("accessible UI primitives", () => {
   });
 
   it("keeps the Dialog API and adds a compact, non-interactive drag handle", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <Dialog open title="Native sheet" onClose={() => {}}>
         Content
       </Dialog>,

@@ -16,6 +16,7 @@ import {
   SegmentedControl,
   SkeletonGrid,
 } from "../components/ui";
+import { useUi } from "../i18n/ui";
 
 type SearchKind = "all" | "movie" | "series";
 export const SEARCH_DEBOUNCE_MS = 350;
@@ -33,6 +34,7 @@ export function currentSearchData<T>(
 }
 
 export function SearchPage() {
+  const { messages } = useUi();
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") ?? "";
   const kind = (searchParams.get("kind") as SearchKind | null) ?? "all";
@@ -120,9 +122,9 @@ export function SearchPage() {
 
   return (
     <Page
-      eyebrow="TMDB catalog"
-      title="Find your next favorite"
-      description="Search movies and television, then let Bobarr take care of the rest."
+      eyebrow={messages.search.eyebrow}
+      title={messages.search.title}
+      description={messages.search.description}
       wide
     >
       <form className="search-hero" role="search" onSubmit={submit}>
@@ -132,13 +134,13 @@ export function SearchPage() {
             type="search"
             value={draft}
             autoFocus
-            aria-label="Search movies and shows"
-            placeholder="Search movies and shows…"
+            aria-label={messages.search.inputLabel}
+            placeholder={messages.search.placeholder}
             onChange={(event) => setDraft(event.target.value)}
           />
           {draft ? (
             <IconButton
-              label="Clear search"
+              label={messages.search.clear}
               type="button"
               onClick={clearSearch}
             >
@@ -146,16 +148,16 @@ export function SearchPage() {
             </IconButton>
           ) : null}
           <button type="submit" className="search-box__submit">
-            Search
+            {messages.search.submit}
           </button>
         </div>
         <SegmentedControl
-          label="Media type"
+          label={messages.search.mediaType}
           value={kind}
           options={[
-            { value: "all", label: "Everything" },
-            { value: "movie", label: "Movies" },
-            { value: "series", label: "Shows" },
+            { value: "all", label: messages.kind.everything },
+            { value: "movie", label: messages.nav.movies },
+            { value: "series", label: messages.nav.shows },
           ]}
           onChange={changeKind}
         />
@@ -166,11 +168,8 @@ export function SearchPage() {
           <span className="search-prompt__orb">
             <Search size={29} />
           </span>
-          <h2>What are you looking for?</h2>
-          <p>
-            Search by title. Results are matched with TMDB metadata before
-            acquisition.
-          </p>
+          <h2>{messages.search.promptTitle}</h2>
+          <p>{messages.search.promptBody}</p>
         </div>
       ) : null}
       {hasDraft && searchQuery.isLoading ? <SkeletonGrid /> : null}
@@ -182,16 +181,20 @@ export function SearchPage() {
       ) : null}
       {result && result.items.length === 0 ? (
         <EmptyState
-          title="No matches"
-          description={`We couldn’t find anything matching “${query}”. Check the spelling or try another title.`}
+          title={messages.search.noMatchesTitle}
+          description={messages.search.noMatches({ query })}
         />
       ) : null}
       {result?.items.length ? (
         <section>
           <div className="section-heading">
             <div>
-              <span className="eyebrow">Results</span>
-              <h2>{result.totalItems ?? result.items.length} titles</h2>
+              <span className="eyebrow">{messages.search.results}</span>
+              <h2>
+                {messages.search.titleCount({
+                  count: result.totalItems ?? result.items.length,
+                })}
+              </h2>
             </div>
           </div>
           <MediaGrid items={result.items} onSelect={setSelected} />

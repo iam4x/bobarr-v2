@@ -85,6 +85,7 @@ import {
   SelectField,
   SkeletonGrid,
 } from "../components/ui";
+import { useUi } from "../i18n/ui";
 import {
   formatBytes,
   formatDate,
@@ -527,6 +528,7 @@ export function LibraryCard({
   onManage: (item: LibraryItem) => void;
   onGenreSelect?: (genreId: number) => void;
 }) {
+  const { messages } = useUi();
   const poster = imageUrl(item.posterPath, "w342");
   const rating =
     item.rating ??
@@ -578,7 +580,10 @@ export function LibraryCard({
           <div>
             <h3>{item.title}</h3>
             <p>
-              {mediaYear(item)} · {item.kind === "movie" ? "Movie" : "Series"}
+              {mediaYear(item) ?? messages.dates.tba} ·{" "}
+              {item.kind === "movie"
+                ? messages.kind.movie
+                : messages.kind.series}
             </p>
           </div>
           {rating && rating.value > 0 ? (
@@ -2380,6 +2385,7 @@ function ManageLibraryDialog({
 }
 
 export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
+  const { messages } = useUi();
   const queryClient = useQueryClient();
   const sessionQuery = useQuery({
     queryKey: ["auth", "session"],
@@ -2549,12 +2555,12 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
 
   return (
     <Page
-      eyebrow="Your library"
-      title={isMovies ? "Movies" : "Shows"}
+      eyebrow={messages.library.eyebrow}
+      title={isMovies ? messages.nav.movies : messages.nav.shows}
       description={
         isMovies
-          ? "Browse, filter, and keep every film acquisition on track."
-          : "Browse shows, catch new episodes, and keep monitoring on track."
+          ? messages.library.moviesDescription
+          : messages.library.showsDescription
       }
       actions={
         canManageSettings ? (
