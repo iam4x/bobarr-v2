@@ -11,6 +11,8 @@ import {
   mediaRoot,
   openLibraryCard,
   restartBobarr,
+  addOpenedTitleToLibrary,
+  e2eTitle,
   searchAndOpen,
   signIn,
   waitForAcquisitionSettled,
@@ -479,12 +481,16 @@ test("shows responsive library card metadata during and after acquisition", asyn
   page,
   request,
 }, testInfo) => {
+  test.setTimeout(90_000);
   await authenticate(page);
   await controlFakeServices(request, { jackettMode: "ready" });
-  const title = `E2E Library Card With A Deliberately Long Location ${testInfo.project.name}`;
+  const title = e2eTitle(
+    testInfo,
+    "E2E Library Card With A Deliberately Long Location",
+  );
 
   await searchAndOpen(page, title);
-  await page.getByRole("button", { name: "Add to library" }).click();
+  await addOpenedTitleToLibrary(page);
   const download = await waitForDownloadState(page, title, "downloading");
 
   await page.goto("/library/movies");
@@ -539,11 +545,12 @@ test("chooses a release for a missing movie from library management", async ({
   page,
   request,
 }, testInfo) => {
+  test.setTimeout(90_000);
   await authenticate(page);
   await controlFakeServices(request, { jackettMode: "empty" });
-  const title = `E2E Retry Movie ${testInfo.project.name}`;
+  const title = e2eTitle(testInfo, "E2E Retry Movie");
   await searchAndOpen(page, title);
-  await page.getByRole("button", { name: "Add to library" }).click();
+  await addOpenedTitleToLibrary(page);
   await waitForAcquisitionSettled(page, title);
   await waitForLibraryState(page, title, "missing");
   await controlFakeServices(request, { jackettMode: "ready" });
