@@ -42,7 +42,6 @@ import {
   SegmentedControl,
   SelectControl,
 } from "../components/ui";
-import { canMutateOwned } from "../lib/access";
 import {
   formatBytes,
   formatEta,
@@ -122,7 +121,7 @@ function downloadTone(
 
 function DownloadCard({
   download,
-  viewerRank,
+  canMutate,
   busyAction,
   onAction,
   onCancel,
@@ -130,7 +129,7 @@ function DownloadCard({
   onFileWanted,
 }: {
   download: Download;
-  viewerRank?: "admin" | "user";
+  canMutate: boolean;
   busyAction?: DownloadAction;
   onAction: (action: DownloadAction) => void;
   onCancel: () => void;
@@ -138,7 +137,6 @@ function DownloadCard({
   onFileWanted: (index: number, wanted: boolean) => void;
 }) {
   const progress = toPercent(download.progress);
-  const canMutate = canMutateOwned(viewerRank, download.requestedByMe);
   const canPause = ["queued", "downloading", "checking", "seeding"].includes(
     download.state,
   );
@@ -699,7 +697,6 @@ export function ActivityPage() {
     queryKey: ["auth", "session"],
     queryFn: ({ signal }) => api.get("currentSession", { signal }),
   });
-  const viewerRank = sessionQuery.data?.user?.rank;
   const canManageSettings =
     sessionQuery.data?.capabilities?.canManageSettings === true;
   const [tab, setTab] = useState<ActivityTab>("downloads");
@@ -926,7 +923,10 @@ export function ActivityPage() {
               <DownloadCard
                 key={download.id}
                 download={download}
-                viewerRank={viewerRank}
+                canMutate={
+                  sessionQuery.data?.user?.rank === "admin" ||
+                  download.requestedByMe === true
+                }
                 busyAction={
                   actionMutation.isPending &&
                   actionMutation.variables?.id === download.id

@@ -85,7 +85,6 @@ import {
   SelectField,
   SkeletonGrid,
 } from "../components/ui";
-import { canMutateOwned } from "../lib/access";
 import {
   formatBytes,
   formatDate,
@@ -1018,7 +1017,7 @@ export function TvSeriesManagement({
   includeFutureSeasons,
   saveBusy,
   saveError,
-  viewerRank,
+  canMutate,
   onPolicyChange,
   onSelectedSeasonsChange,
   onIncludeFutureSeasonsChange,
@@ -1037,7 +1036,7 @@ export function TvSeriesManagement({
   includeFutureSeasons: boolean;
   saveBusy: boolean;
   saveError?: string;
-  viewerRank?: "admin" | "user";
+  canMutate: boolean;
   onPolicyChange: (policy: MonitorPolicy) => void;
   onSelectedSeasonsChange: (seasons: number[]) => void;
   onIncludeFutureSeasonsChange: (include: boolean) => void;
@@ -1088,7 +1087,6 @@ export function TvSeriesManagement({
     monitoringSettingsSummary = "Future seasons only";
   }
   const canConfigureMonitoring = isPositiveSafeInteger(item.tmdbId);
-  const canMutate = canMutateOwned(viewerRank, item.ownedByMe);
   const episodeQuery = useQuery({
     queryKey: ["library", "episodes", selectedSeason?.id],
     queryFn: ({ signal }) =>
@@ -1647,7 +1645,7 @@ export function MovieManagement({
   saveError,
   retryBusy,
   retryError,
-  viewerRank,
+  canMutate,
   onPolicyChange,
   onSave,
   onRetry,
@@ -1666,7 +1664,7 @@ export function MovieManagement({
   saveError?: string;
   retryBusy: boolean;
   retryError?: string;
-  viewerRank?: "admin" | "user";
+  canMutate: boolean;
   onPolicyChange: (policy: MonitorPolicy) => void;
   onSave: () => void;
   onRetry: () => void;
@@ -1682,7 +1680,6 @@ export function MovieManagement({
   const monitoringOn = item.monitorPolicy !== "none";
   const showMonitoringSettings = !hasLibraryFile || monitoringOn;
   const manualReleaseAction = libraryManualReleaseAction(item);
-  const canMutate = canMutateOwned(viewerRank, item.ownedByMe);
   const retryable =
     monitoringOn && ["missing", "failed"].includes(item.acquisitionState);
   const activeDownload = item.activeDownload ?? null;
@@ -2032,6 +2029,8 @@ function ManageLibraryDialog({
     queryKey: ["auth", "session"],
     queryFn: ({ signal }) => api.get("currentSession", { signal }),
   });
+  const canMutate =
+    sessionQuery.data?.user?.rank === "admin" || item?.ownedByMe === true;
   const [policy, setPolicy] = useState<MonitorPolicy>(
     item?.monitorPolicy === "future"
       ? "selected"
@@ -2316,7 +2315,7 @@ function ManageLibraryDialog({
       {!confirmRemove && !manualSearchOpen && item?.kind === "series" ? (
         <TvSeriesManagement
           item={item}
-          viewerRank={sessionQuery.data?.user?.rank}
+          canMutate={canMutate}
           downloadFiles={downloadFiles}
           seasons={seasons}
           seasonsLoading={seasonQuery.isLoading}
@@ -2341,7 +2340,7 @@ function ManageLibraryDialog({
       {!confirmRemove && !manualSearchOpen && item?.kind === "movie" ? (
         <MovieManagement
           item={item}
-          viewerRank={sessionQuery.data?.user?.rank}
+          canMutate={canMutate}
           actors={movieDetailsQuery.data?.actors}
           actorsLoading={
             isPositiveSafeInteger(item.tmdbId) && movieDetailsQuery.isLoading
