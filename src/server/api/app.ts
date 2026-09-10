@@ -29,6 +29,7 @@ import { requestBodyLimitMiddleware } from "./request-body-limit";
 import { registerScanReviewRoutes } from "./scan-reviews";
 import {
   AcceptInviteRequestSchema,
+  AccountSchema,
   ApiErrorEnvelopeSchema,
   AppSettingsSchema,
   type AppSettings,
@@ -73,6 +74,7 @@ import {
   UpdateSettingsRequestSchema,
   UpdateCredentialsRequestSchema,
   UpdateCredentialsResponseSchema,
+  UpdateUserRankRequestSchema,
   UserParamsSchema,
   UsersResponseSchema,
 } from "../../contracts";
@@ -312,6 +314,20 @@ const routes = {
     request: { params: InviteParamsSchema },
     responses: {
       200: jsonResponse(RevokeInviteResponseSchema, "Revoked invite"),
+      default: errorResponse,
+    },
+  }),
+  updateUserRank: createRoute({
+    method: "patch",
+    path: "/api/v1/users/{id}",
+    tags: ["users"],
+    security: [{ sessionCookie: [] }],
+    request: {
+      params: UserParamsSchema,
+      body: jsonBody(UpdateUserRankRequestSchema),
+    },
+    responses: {
+      200: jsonResponse(AccountSchema, "Updated account rank"),
       default: errorResponse,
     },
   }),
@@ -693,6 +709,14 @@ export function createApiApp(
       context.req.valid("param").id,
     );
     return context.json({ revoked: true as const }, 200);
+  });
+  app.openapi(routes.updateUserRank, (context) => {
+    const user = dependencies.invites.setRank(
+      context.get("auth").actor,
+      context.req.valid("param").id,
+      context.req.valid("json").rank,
+    );
+    return context.json(toAccount(user), 200);
   });
   app.openapi(routes.deleteUser, (context) => {
     dependencies.invites.deleteUser(

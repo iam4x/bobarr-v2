@@ -286,6 +286,23 @@ export class AuthRepository {
     }
   }
 
+  setRank(id: number, rank: "admin" | "user", now: number): UserRow {
+    const user = this.database.client
+      .update(users)
+      .set({ rank, updatedAt: now })
+      .where(eq(users.id, id))
+      .returning()
+      .get();
+    if (!user) {
+      throw new AppError({
+        code: "not_found",
+        message: "Account not found",
+        status: 404,
+      });
+    }
+    return user;
+  }
+
   deleteUser(id: number): void {
     const deleted = this.database.client
       .delete(users)

@@ -4247,6 +4247,13 @@ textarea:focus-visible {
 .backup-list strong {
   font-size: 12px;
 }
+.backup-list__actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
 .backup-list small,
 .settings-muted {
   color: var(--text-muted);

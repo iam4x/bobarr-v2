@@ -1047,6 +1047,21 @@ function PeopleSection({ setNotice }: { setNotice: (notice: string) => void }) {
       void queryClient.invalidateQueries({ queryKey: ["users"] });
     },
   });
+  const updateRank = useMutation({
+    mutationFn: (input: { id: number; rank: "admin" | "user" }) =>
+      api.patch("updateUserRank", {
+        params: { id: String(input.id) },
+        body: { rank: input.rank },
+      }),
+    onSuccess: (user) => {
+      setNotice(
+        user.rank === "admin"
+          ? `${user.username} is now an administrator.`
+          : `${user.username} is now a user.`,
+      );
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
   const currentId = sessionQuery.data?.user?.id;
   const openInvites =
     peopleQuery.data?.invites.filter((invite) => invite.status === "open") ??
@@ -1060,7 +1075,10 @@ function PeopleSection({ setNotice }: { setNotice: (notice: string) => void }) {
         </span>
         <div>
           <h2>People</h2>
-          <p>Invite friends as users. They can add titles they then own.</p>
+          <p>
+            Invite friends as users. Promote someone when they should change
+            settings too.
+          </p>
         </div>
       </header>
       {peopleQuery.isError ? (
@@ -1073,18 +1091,47 @@ function PeopleSection({ setNotice }: { setNotice: (notice: string) => void }) {
               <strong>{user.username}</strong>
               <small>{user.rank}</small>
             </span>
-            {user.id !== currentId && user.rank !== "admin" ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                busy={deleteUser.isPending}
-                onClick={() => deleteUser.mutate(user.id)}
-              >
-                Delete
-              </Button>
-            ) : (
+            {user.id === currentId ? (
               <Badge>{user.rank}</Badge>
+            ) : (
+              <div className="backup-list__actions">
+                {user.rank === "user" ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    busy={updateRank.isPending}
+                    onClick={() =>
+                      updateRank.mutate({ id: user.id, rank: "admin" })
+                    }
+                  >
+                    Make admin
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    busy={updateRank.isPending}
+                    onClick={() =>
+                      updateRank.mutate({ id: user.id, rank: "user" })
+                    }
+                  >
+                    Make user
+                  </Button>
+                )}
+                {user.rank !== "admin" ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    busy={deleteUser.isPending}
+                    onClick={() => deleteUser.mutate(user.id)}
+                  >
+                    Delete
+                  </Button>
+                ) : null}
+              </div>
             )}
           </li>
         ))}

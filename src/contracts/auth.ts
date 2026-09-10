@@ -175,6 +175,13 @@ export const InvitePreviewQuerySchema = z
   })
   .openapi("InvitePreviewQuery");
 
+export const UpdateUserRankRequestSchema = z
+  .object({
+    rank: RankSchema,
+  })
+  .strict()
+  .openapi("UpdateUserRankRequest");
+
 export const DeleteUserResponseSchema = z
   .object({
     deleted: z.literal(true),
@@ -204,3 +211,4 @@ export type CreateInviteRequest = z.infer<typeof CreateInviteRequestSchema>;
 export type CreatedInvite = z.infer<typeof CreatedInviteSchema>;
 export type InviteListItem = z.infer<typeof InviteListItemSchema>;
 export type UsersResponse = z.infer<typeof UsersResponseSchema>;
+export type UpdateUserRankRequest = z.infer<typeof UpdateUserRankRequestSchema>;

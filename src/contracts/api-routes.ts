@@ -283,6 +283,17 @@ export const apiRoutes = {
     { expiresInSeconds?: number }
   >()("POST", "/users/invites"),
   revokeInvite: route<{ revoked: true }>()("DELETE", "/users/invites/:id"),
+  updateUserRank: route<
+    {
+      id: number;
+      username: string;
+      rank: "admin" | "user";
+      createdAt: string;
+      lastLoginAt: string | null;
+    },
+    never,
+    { rank: "admin" | "user" }
+  >()("PATCH", "/users/:id"),
   deleteUser: route<{ deleted: true }>()("DELETE", "/users/:id"),
   getSettings: route<AppSettings>()("GET", "/settings"),
   updateSettings: route<AppSettings, never, Partial<AppSettings>>()(
