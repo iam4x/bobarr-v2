@@ -846,9 +846,9 @@ test("adds validated magnet and metainfo downloads through the responsive dialog
     .locator(".download-card")
     .filter({ hasText: magnetTitle });
   await magnetCard.getByRole("button", { name: "Pause" }).click();
-  await expect(magnetCard).toContainText("paused");
+  await expect(magnetCard).toContainText("Paused");
   await magnetCard.getByRole("button", { name: "Resume" }).click();
-  await expect(magnetCard).toContainText("downloading");
+  await expect(magnetCard).toContainText("Downloading");
   await magnetCard.getByRole("button", { name: "Remove" }).click();
   const removeDialog = page.getByRole("dialog");
   await removeDialog.getByRole("button", { name: "Remove" }).click();
