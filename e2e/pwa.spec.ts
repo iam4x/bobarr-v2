@@ -56,7 +56,10 @@ test("uses one-tap controls and handle-only sheet gestures on a phone", async ({
   });
   await expect(sheet).toBeVisible();
   await expect(sheet).not.toHaveAttribute("data-sheet-settling");
-  await page.touchscreen.tap(12, 90);
+  await page.locator(".mobile-sheet-backdrop").click({
+    position: { x: 16, y: 8 },
+    force: true,
+  });
   await expect(sheet).toBeHidden();
 
   await more.tap();

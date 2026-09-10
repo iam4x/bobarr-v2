@@ -11,6 +11,7 @@ import {
   FolderCheck,
   HardDrive,
   KeyRound,
+  LogOut,
   Network,
   RefreshCw,
   RotateCcw,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
+import { useNavigate } from "react-router";
 import { z } from "zod";
 
 import { api } from "../api/client";
@@ -252,6 +254,7 @@ const connectionDefinitions: Array<[IntegrationKey, string]> = [
 ];
 
 export function SettingsPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState<string>();
   const [restoreFile, setRestoreFile] = useState<File>();
@@ -356,6 +359,13 @@ export function SettingsPage() {
       setRestoreConfirmation("");
       setRestoreFile(undefined);
       void backupsQuery.refetch();
+    },
+  });
+  const logoutMutation = useMutation({
+    mutationFn: () => api.post("logout"),
+    onSuccess: () => {
+      queryClient.clear();
+      navigate("/login", { replace: true });
     },
   });
   const resetLoginLockMutation = useMutation({
@@ -920,6 +930,23 @@ export function SettingsPage() {
                   onClick={() => resetLoginLockMutation.mutate()}
                 >
                   Reset
+                </Button>
+              </div>
+              <div>
+                <ShieldCheck size={20} />
+                <span>
+                  <strong>This session</strong>
+                  <small>
+                    Sign out this browser without interrupting background work.
+                  </small>
+                </span>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  busy={logoutMutation.isPending}
+                  onClick={() => logoutMutation.mutate()}
+                >
+                  <LogOut size={16} /> Sign out
                 </Button>
               </div>
             </div>
