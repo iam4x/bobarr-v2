@@ -44,6 +44,12 @@ import {
   type TorrentEngine,
   type TorrentSnapshot,
 } from "../application";
+import {
+  classifyLibraryAdd,
+  effectiveDownloadRequester,
+  effectiveMediaOwner,
+  requireAllowed,
+} from "../auth/policy";
 import { AppError, notFound } from "../core";
 import { aggregateChildAcquisitionState } from "../domain/media-state";
 import {
@@ -802,11 +808,13 @@ export function registerProductRoutes(
   );
 
   app.post("/api/v1/library", async (context) => {
+    const actor = context.get("auth").actor;
     const input = parse(MonitorMediaSchema, await context.req.json());
     const existing = dependencies.repositories.media.getByTmdb(
       input.kind,
       input.tmdbId,
     );
+    requireAllowed(actor, classifyLibraryAdd(existing));
     const settings =
       dependencies.repositories.settings.ensureDefaults().settings;
     const client = await requireIntegrations(dependencies).tmdb();
@@ -834,12 +842,13 @@ export function registerProductRoutes(
         language: settings.locale.language,
         signal: context.req.raw.signal,
       });
-      return context.json(libraryView(updated), 200);
+      return context.json(libraryView(updated, actor), 200);
     }
     const parent = dependencies.repositories.media.create({
       kind: input.kind,
       tmdbId: input.tmdbId,
       parentId: null,
+      createdByUserId: actor.account.id,
       seasonNumber: null,
       episodeNumber: null,
       title: details.title,
@@ -904,14 +913,19 @@ export function registerProductRoutes(
       parent.id,
     );
     dependencies.events?.publish("library.changed", { id: parent.id });
-    return context.json(libraryView(parent), 201);
+    return context.json(libraryView(parent, actor), 201);
   });
 
   app.patch("/api/v1/library/:id", async (context) => {
+    const actor = context.get("auth").actor;
     const id = parse(DownloadParamsSchema, context.req.param()).id;
     const input = parse(MonitorPatchSchema, await context.req.json());
     const current = dependencies.repositories.media.get(id);
     if (!current) throw notFound("Library item not found");
+    requireAllowed(actor, {
+      type: "mutate_media",
+      ownerId: effectiveMediaOwner(current),
+    });
     if (current.kind === "movie") {
       if (
         input.seasonNumbers !== undefined ||
@@ -924,7 +938,7 @@ export function registerProductRoutes(
         input,
         dependencies,
       });
-      return context.json(libraryView(updated));
+      return context.json(libraryView(updated, actor));
     }
     if (current.kind === "series") {
       if (current.tmdbId === null) {
@@ -958,7 +972,7 @@ export function registerProductRoutes(
         language: settings.locale.language,
         signal: context.req.raw.signal,
       });
-      return context.json(libraryView(updated));
+      return context.json(libraryView(updated, actor));
     }
     const tree = mediaTree(current, dependencies);
     for (const member of tree) {
@@ -985,13 +999,17 @@ export function registerProductRoutes(
     const item = dependencies.repositories.media.get(id);
     if (!item) throw notFound("Library item not found");
     dependencies.events?.publish("library.changed", { id });
-    return context.json(libraryView(item));
+    return context.json(libraryView(item, actor));
   });
 
   app.post("/api/v1/library/:id/retry", async (context) => {
     const id = parse(DownloadParamsSchema, context.req.param()).id;
     const item = dependencies.repositories.media.get(id);
     if (!item) throw notFound("Library item not found");
+    requireAllowed(context.get("auth").actor, {
+      type: "mutate_media",
+      ownerId: effectiveMediaOwner(item),
+    });
     if (item.monitorPolicy === "none") {
       throw conflictError("Resume monitoring before retrying this title");
     }
@@ -1037,6 +1055,10 @@ export function registerProductRoutes(
     );
     const item = dependencies.repositories.media.get(id);
     if (!item) throw notFound("Library item not found");
+    requireAllowed(context.get("auth").actor, {
+      type: "mutate_media",
+      ownerId: effectiveMediaOwner(item),
+    });
     if (item.monitorPolicy === "none" && !input.candidateId) {
       throw conflictError(
         "Choose a release for a one-time replacement, or resume monitoring for an automatic replacement",
@@ -1173,6 +1195,7 @@ export function registerProductRoutes(
   });
 
   app.get("/api/v1/library/:id/files/:fileId/download", async (context) => {
+    requireAllowed(context.get("auth").actor, { type: "download" });
     const { id, fileId } = parse(LibraryFileParamsSchema, context.req.param());
     const item = dependencies.repositories.media.get(id);
     if (!item) throw notFound("Library item not found");
@@ -1203,6 +1226,7 @@ export function registerProductRoutes(
   });
 
   app.post("/api/v1/library/scan", async (context) => {
+    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
     const body = parse(
       z.object({ kind: CatalogKindSchema.optional() }),
       await context.req.json().catch(() => ({})),
@@ -1235,6 +1259,10 @@ export function registerProductRoutes(
     }
     const item = dependencies.repositories.media.get(id);
     if (!item) throw notFound("Library item not found");
+    requireAllowed(context.get("auth").actor, {
+      type: "mutate_media",
+      ownerId: effectiveMediaOwner(item),
+    });
     const deleteLibraryRecord =
       input.deleteLibraryRecord ||
       (input.deleteLibraryFiles &&
@@ -1344,14 +1372,21 @@ export function registerProductRoutes(
       dependencies,
       context.req.raw.signal,
     );
+    const actor = context.get("auth").actor;
     return context.json({
-      downloads,
-      items: downloads,
+      downloads: downloads.map((download) =>
+        withDownloadOwnership(download, actor.account.id),
+      ),
+      items: downloads.map((download) =>
+        withDownloadOwnership(download, actor.account.id),
+      ),
       page: { limit: query.limit, offset: query.offset, total: result.total },
     });
   });
 
   app.post("/api/v1/downloads", async (context) => {
+    const actor = context.get("auth").actor;
+    requireAllowed(actor, { type: "download" });
     const service = await requireAcquisition(dependencies);
     const contentType = context.req.header("content-type") ?? "";
     let download;
@@ -1400,6 +1435,12 @@ export function registerProductRoutes(
           ? dependencies.repositories.media.get(mediaId)
           : undefined;
         candidateTarget = media;
+        if (media) {
+          requireAllowed(actor, {
+            type: "mutate_media",
+            ownerId: effectiveMediaOwner(media),
+          });
+        }
         if (media && hasRecordedFiles(media, dependencies)) {
           replacementTarget = media;
         }
@@ -1444,10 +1485,17 @@ export function registerProductRoutes(
       download.id,
     );
     dependencies.events?.publish("download.changed", { id: download.id });
+    dependencies.repositories.downloads.stampRequester(
+      download.id,
+      actor.account.id,
+    );
     const publicDownload = dependencies.repositories.downloads.get(download.id);
     if (!publicDownload)
       throw internalError("Queued download was not persisted");
-    return context.json(publicDownload, 202);
+    return context.json(
+      withDownloadOwnership(publicDownload, actor.account.id),
+      202,
+    );
   });
 
   app.post("/api/v1/downloads/:id/pause", async (context) => {
@@ -1458,6 +1506,12 @@ export function registerProductRoutes(
   });
   app.post("/api/v1/downloads/:id/retry", async (context) => {
     const id = parse(DownloadParamsSchema, context.req.param()).id;
+    const existing = dependencies.repositories.downloads.get(id);
+    if (!existing) throw notFound("Download not found");
+    requireAllowed(context.get("auth").actor, {
+      type: "mutate_download",
+      requesterId: effectiveDownloadRequester(existing),
+    });
     const download = await acquisitionCall(() =>
       requireAcquisition(dependencies).then((service) =>
         service.retryDownload(id),
@@ -1474,6 +1528,10 @@ export function registerProductRoutes(
     const input = parse(DownloadFilesSchema, await context.req.json());
     const download = dependencies.repositories.downloads.get(id);
     if (!download) throw notFound("Download not found");
+    requireAllowed(context.get("auth").actor, {
+      type: "mutate_download",
+      requesterId: effectiveDownloadRequester(download),
+    });
     if (!download.externalId)
       throw conflictError("Download has not been submitted to Transmission");
     const owned = await requireOwnedTorrent(
@@ -1498,6 +1556,10 @@ export function registerProductRoutes(
     );
     const download = dependencies.repositories.downloads.get(id);
     if (!download) throw notFound("Download not found");
+    requireAllowed(context.get("auth").actor, {
+      type: "mutate_download",
+      requesterId: effectiveDownloadRequester(download),
+    });
     const owned = download.externalId
       ? await findOwnedTorrentForRemoval(
           download,
@@ -1573,6 +1635,7 @@ export function registerProductRoutes(
   });
 
   app.post("/api/v1/system/backups", async (context) => {
+    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
     if (!dependencies.backup) throw unavailable("Backups are unavailable");
     const result = await dependencies.backup();
     recordActivity(
@@ -1586,6 +1649,7 @@ export function registerProductRoutes(
   });
 
   app.post("/api/v1/settings/integrations/:key/test", async (context) => {
+    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
     const { key } = parse(IntegrationParamsSchema, context.req.param());
     const status = await requireIntegrations(dependencies).test(key);
     dependencies.events?.publish("service.changed", {
@@ -1597,6 +1661,7 @@ export function registerProductRoutes(
   });
 
   app.post("/api/v1/settings/storage/validate", async (context) => {
+    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
     const input = parse(StorageValidationSchema, await context.req.json());
     return context.json(await validateStorage(input));
   });
@@ -2790,15 +2855,23 @@ export async function ensureMonitoredSeasons(options: {
   return changedSeasons;
 }
 
-function libraryView(item: LibraryItem) {
+function libraryView(item: LibraryItem, actor: { account: { id: number } }) {
   const metadata = item.metadata;
   return {
     ...item,
+    ownedByMe: item.createdByUserId === actor.account.id,
     posterPath: item.posterUrl,
     overview:
       typeof metadata["overview"] === "string" ? metadata["overview"] : "",
     releaseDate: item.releaseDate,
     addedAt: item.createdAt,
+  };
+}
+
+function withDownloadOwnership(download: Download, actorId: number): Download {
+  return {
+    ...download,
+    requestedByMe: download.requestedByUserId === actorId,
   };
 }
 
@@ -3262,6 +3335,10 @@ async function controlDownload(
   const id = parse(DownloadParamsSchema, context.req.param()).id;
   const download = dependencies.repositories.downloads.get(id);
   if (!download) throw notFound("Download not found");
+  requireAllowed(context.get("auth").actor, {
+    type: "mutate_download",
+    requesterId: effectiveDownloadRequester(download),
+  });
   if (!download.externalId)
     throw conflictError("Download has not been submitted to Transmission");
   const owned = await requireOwnedTorrent(

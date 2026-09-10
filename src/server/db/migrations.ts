@@ -307,6 +307,74 @@ const migrations: readonly Migration[] = [
       WHERE acquisition_state = 'removed';
     `,
   },
+  {
+    version: 6,
+    name: "users_and_ownership",
+    sql: `
+      CREATE TABLE users (
+        id INTEGER PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        password_hash TEXT NOT NULL,
+        rank TEXT NOT NULL CHECK (rank IN ('admin', 'user')),
+        failed_login_count INTEGER NOT NULL DEFAULT 0,
+        locked_until INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        last_login_at INTEGER
+      );
+      INSERT INTO users (
+        id, username, password_hash, rank, failed_login_count, locked_until,
+        created_at, updated_at, last_login_at
+      )
+      SELECT
+        id, username, password_hash, 'admin', failed_login_count, locked_until,
+        created_at, updated_at, last_login_at
+      FROM admins;
+
+      CREATE TABLE sessions_new (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL,
+        csrf_hash TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        last_seen_at INTEGER NOT NULL,
+        revoked_at INTEGER,
+        user_agent TEXT,
+        ip_address TEXT
+      );
+      INSERT INTO sessions_new (
+        id, user_id, token_hash, csrf_hash, created_at, expires_at,
+        last_seen_at, revoked_at, user_agent, ip_address
+      )
+      SELECT
+        id, admin_id, token_hash, csrf_hash, created_at, expires_at,
+        last_seen_at, revoked_at, user_agent, ip_address
+      FROM sessions;
+      DROP TABLE sessions;
+      DROP TABLE admins;
+      ALTER TABLE sessions_new RENAME TO sessions;
+      CREATE INDEX sessions_user_id_index ON sessions(user_id);
+      CREATE UNIQUE INDEX sessions_token_hash_unique ON sessions(token_hash);
+      CREATE INDEX sessions_expires_at_index ON sessions(expires_at);
+
+      ALTER TABLE media_items ADD COLUMN created_by_user_id INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE downloads ADD COLUMN requested_by_user_id INTEGER NOT NULL DEFAULT 1;
+
+      CREATE TABLE invites (
+        id TEXT PRIMARY KEY,
+        token_hash TEXT NOT NULL,
+        created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        accepted_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        accepted_at INTEGER,
+        revoked_at INTEGER
+      );
+      CREATE UNIQUE INDEX invites_token_hash_unique ON invites(token_hash);
+      CREATE INDEX invites_created_by_index ON invites(created_by);
+    `,
+  },
 ];
 
 export const LATEST_DATABASE_MIGRATION =

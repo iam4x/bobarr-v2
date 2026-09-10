@@ -6,11 +6,11 @@ import {
   Archive,
   AlertTriangle,
   CheckCircle2,
+  Copy,
   Database,
   FolderCheck,
   HardDrive,
   KeyRound,
-  LogOut,
   Network,
   RefreshCw,
   RotateCcw,
@@ -18,10 +18,11 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   UploadCloud,
+  UserPlus,
+  Users,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { useNavigate } from "react-router";
 import { z } from "zod";
 
 import { api } from "../api/client";
@@ -251,7 +252,6 @@ const connectionDefinitions: Array<[IntegrationKey, string]> = [
 ];
 
 export function SettingsPage() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState<string>();
   const [restoreFile, setRestoreFile] = useState<File>();
@@ -292,6 +292,7 @@ export function SettingsPage() {
   }, [reset, settingsQuery.data]);
   useEffect(() => {
     const username =
+      sessionQuery.data?.user?.username ??
       sessionQuery.data?.admin?.username ??
       sessionQuery.data?.administrator?.username;
     if (username) {
@@ -357,20 +358,13 @@ export function SettingsPage() {
       void backupsQuery.refetch();
     },
   });
-  const logoutMutation = useMutation({
-    mutationFn: () => api.post("logout"),
-    onSuccess: () => {
-      queryClient.clear();
-      navigate("/login", { replace: true });
-    },
-  });
   const resetLoginLockMutation = useMutation({
     mutationFn: () => api.post("resetLoginLock"),
     onSuccess: () => setNotice("Temporary sign-in lock and failures reset."),
   });
   const updateCredentialsMutation = useMutation({
     mutationFn: (value: CredentialsForm) =>
-      api.patch("updateAdminCredentials", {
+      api.patch("updateCredentials", {
         body: {
           username: value.username,
           ...(value.password ? { password: value.password } : {}),
@@ -826,23 +820,6 @@ export function SettingsPage() {
                 />
               </div>
               <div>
-                <ShieldCheck size={20} />
-                <span>
-                  <strong>Administrator session</strong>
-                  <small>
-                    Sign out this browser without interrupting background work.
-                  </small>
-                </span>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  busy={logoutMutation.isPending}
-                  onClick={() => logoutMutation.mutate()}
-                >
-                  <LogOut size={16} /> Sign out
-                </Button>
-              </div>
-              <div>
                 <KeyRound size={20} />
                 <span>
                   <strong>Offline password reset</strong>
@@ -953,6 +930,8 @@ export function SettingsPage() {
             ) : null}
           </section>
 
+          <PeopleSection setNotice={setNotice} />
+
           <div className="settings-savebar">
             <span>
               {isDirty
@@ -1031,5 +1010,125 @@ export function SettingsPage() {
         </div>
       </Dialog>
     </Page>
+  );
+}
+
+function PeopleSection({ setNotice }: { setNotice: (notice: string) => void }) {
+  const queryClient = useQueryClient();
+  const sessionQuery = useQuery({
+    queryKey: ["auth", "session"],
+    queryFn: ({ signal }) => api.get("currentSession", { signal }),
+  });
+  const peopleQuery = useQuery({
+    queryKey: ["users"],
+    queryFn: ({ signal }) => api.get("listUsers", { signal }),
+  });
+  const [inviteLink, setInviteLink] = useState<string>();
+  const createInvite = useMutation({
+    mutationFn: () => api.post("createInvite", { body: {} }),
+    onSuccess: (invite) => {
+      setInviteLink(`${window.location.origin}/invite?token=${invite.token}`);
+      setNotice("Invite link created. Copy it now; it is shown only once.");
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+  const revokeInvite = useMutation({
+    mutationFn: (id: string) => api.delete("revokeInvite", { params: { id } }),
+    onSuccess: () => {
+      setNotice("Invite revoked.");
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+  const deleteUser = useMutation({
+    mutationFn: (id: number) =>
+      api.delete("deleteUser", { params: { id: String(id) } }),
+    onSuccess: () => {
+      setNotice("Account deleted.");
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
+    },
+  });
+  const currentId = sessionQuery.data?.user?.id;
+  const openInvites =
+    peopleQuery.data?.invites.filter((invite) => invite.status === "open") ??
+    [];
+
+  return (
+    <section className="settings-section" id="people">
+      <header>
+        <span className="settings-section__icon">
+          <Users size={20} />
+        </span>
+        <div>
+          <h2>People</h2>
+          <p>Invite friends as users. They can add titles they then own.</p>
+        </div>
+      </header>
+      {peopleQuery.isError ? (
+        <p className="field__error">{peopleQuery.error.message}</p>
+      ) : null}
+      <ul className="backup-list">
+        {(peopleQuery.data?.users ?? []).map((user) => (
+          <li key={user.id}>
+            <span>
+              <strong>{user.username}</strong>
+              <small>{user.rank}</small>
+            </span>
+            {user.id !== currentId && user.rank !== "admin" ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                busy={deleteUser.isPending}
+                onClick={() => deleteUser.mutate(user.id)}
+              >
+                Delete
+              </Button>
+            ) : (
+              <Badge>{user.rank}</Badge>
+            )}
+          </li>
+        ))}
+      </ul>
+      <div className="backup-actions">
+        <Button
+          type="button"
+          variant="secondary"
+          busy={createInvite.isPending}
+          onClick={() => createInvite.mutate()}
+        >
+          <UserPlus size={16} /> Invite someone
+        </Button>
+        {inviteLink ? (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => void navigator.clipboard.writeText(inviteLink)}
+          >
+            <Copy size={16} /> Copy invite link
+          </Button>
+        ) : null}
+      </div>
+      {openInvites.length > 0 ? (
+        <ul className="backup-list">
+          {openInvites.map((invite) => (
+            <li key={invite.id}>
+              <span>
+                <strong>Open invite</strong>
+                <small>Expires {formatDate(invite.expiresAt)}</small>
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                busy={revokeInvite.isPending}
+                onClick={() => revokeInvite.mutate(invite.id)}
+              >
+                Revoke
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   );
 }

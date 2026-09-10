@@ -95,12 +95,13 @@ module boundaries and safety invariants.
 
 ## Security model
 
-Bobarr supports one authenticated administrator. Passwords use Argon2id. Only a
-hash of each session token is stored, cookies are HttpOnly and SameSite, and
-CSRF tokens protect authenticated mutations. Connector secrets are encrypted at
-rest with `/config/master.key` or `BOBARR_MASTER_KEY`. Tracker passkeys and
-complete magnet query strings are never returned to the browser or written to
-logs.
+First-run setup creates the administrator. Admins invite users from Settings.
+Users can add and download titles they own. They cannot change settings or
+mutate titles they did not add. Passwords use Argon2id. Only a hash of each
+session token is stored, cookies are HttpOnly and SameSite, and CSRF tokens
+protect authenticated mutations. Connector secrets are encrypted at rest with
+`/config/master.key` or `BOBARR_MASTER_KEY`. Tracker passkeys and complete
+magnet query strings are never returned to the browser or written to logs.
 
 Treat `/config` and `/media` as sensitive. Put Bobarr behind HTTPS before
 exposing it outside a trusted network.

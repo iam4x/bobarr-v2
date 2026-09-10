@@ -20,8 +20,9 @@ import { isAuthenticated, isSetupRequired } from "./api/normalize";
 import { AppShell, RootLoading } from "./components/AppShell";
 import { Brand } from "./components/Brand";
 import { Button } from "./components/ui";
+import { AccountPage } from "./pages/AccountPage";
 import { ActivityPage } from "./pages/ActivityPage";
-import { LoginPage, SetupPage } from "./pages/AuthPages";
+import { InvitePage, LoginPage, SetupPage } from "./pages/AuthPages";
 import { CalendarPage } from "./pages/CalendarPage";
 import { DiscoverPage } from "./pages/DiscoverPage";
 import { LibraryPage } from "./pages/LibraryPage";
@@ -65,6 +66,12 @@ function ProtectedApp() {
     return <Navigate to="/setup" replace state={{ from: location }} />;
   if (sessionQuery.isError || !isAuthenticated(sessionQuery.data))
     return <Navigate to="/login" replace state={{ from: location }} />;
+  if (
+    location.pathname.startsWith("/settings") &&
+    sessionQuery.data?.capabilities?.canManageSettings === false
+  ) {
+    return <Navigate to="/discover" replace />;
+  }
   return <AppShell />;
 }
 
@@ -92,6 +99,7 @@ function RouteError() {
 const router = createBrowserRouter([
   { path: "/setup", element: <SetupPage />, errorElement: <RouteError /> },
   { path: "/login", element: <LoginPage />, errorElement: <RouteError /> },
+  { path: "/invite", element: <InvitePage />, errorElement: <RouteError /> },
   {
     path: "/",
     element: <ProtectedApp />,
@@ -106,6 +114,7 @@ const router = createBrowserRouter([
       { path: "library/shows", element: <LibraryPage kind="series" /> },
       { path: "calendar", element: <CalendarPage /> },
       { path: "activity", element: <ActivityPage /> },
+      { path: "account", element: <AccountPage /> },
       { path: "settings", element: <SettingsPage /> },
     ],
   },

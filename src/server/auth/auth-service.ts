@@ -3,13 +3,14 @@ import type {
   CurrentSession,
   LoginRequest,
   SetupRequest,
-  UpdateAdminCredentialsRequest,
+  UpdateCredentialsRequest,
 } from "../../contracts";
 import type { BackendConfig } from "../config";
 import type { Clock } from "../core";
 import type { AuthRepository, AuthenticatedSessionRecord } from "../db";
 
 import { bunPasswordHasher, type PasswordHasher } from "./passwords";
+import { projectCapabilities, requireAllowed, type Actor } from "./policy";
 import {
   AppError,
   constantTimeEqual,
@@ -18,7 +19,7 @@ import {
   systemClock,
   toIsoDate,
 } from "../core";
-import { toAdmin } from "../db";
+import { toAccount } from "../db";
 
 export interface RequestMetadata {
   userAgent?: string;
@@ -32,7 +33,7 @@ export interface SessionGrant {
 
 export interface AuthenticatedRequest {
   sessionId: string;
-  adminId: number;
+  actor: Actor;
   current: CurrentSession;
 }
 
@@ -97,7 +98,7 @@ export class AuthService {
     );
     this.repository.recordSuccessfulLogin(admin.id, now);
     return this.issueSession(
-      this.repository.getAdmin() ?? admin,
+      this.repository.getById(admin.id) ?? admin,
       metadata,
       now,
     );
@@ -115,9 +116,9 @@ export class AuthService {
       });
     }
 
-    const admin = this.repository.getAdminByUsername(input.username);
+    const account = this.repository.getByUsername(input.username);
     const loginLockEnabled = this.loginLockEnabled();
-    if (admin === undefined) {
+    if (account === undefined) {
       const now = this.clock.now().getTime();
       const throttleKey = unknownThrottleKey(input.username, metadata);
       const throttle = this.unknownLoginAttempts.get(throttleKey);
@@ -148,20 +149,20 @@ export class AuthService {
     const now = this.clock.now().getTime();
     if (
       loginLockEnabled &&
-      admin.lockedUntil !== null &&
-      admin.lockedUntil > now
+      account.lockedUntil !== null &&
+      account.lockedUntil > now
     ) {
       throw accountLocked();
     }
 
     const valid = await this.passwordHasher.verify(
       input.password,
-      admin.passwordHash,
+      account.passwordHash,
     );
     if (!valid) {
       if (!loginLockEnabled) throw invalidCredentials();
       const failure = this.repository.recordFailedLogin(
-        admin.id,
+        account.id,
         this.config.loginFailureLimit,
         now + this.config.loginLockSeconds * 1000,
         now,
@@ -171,9 +172,9 @@ export class AuthService {
       throw invalidCredentials();
     }
 
-    this.repository.recordSuccessfulLogin(admin.id, now);
-    const refreshedAdmin = this.repository.getAdmin() ?? admin;
-    return this.issueSession(refreshedAdmin, metadata, now);
+    this.repository.recordSuccessfulLogin(account.id, now);
+    const refreshed = this.repository.getById(account.id) ?? account;
+    return this.issueSession(refreshed, metadata, now);
   }
 
   authenticate(
@@ -218,21 +219,25 @@ export class AuthService {
     this.repository.revokeSession(sessionId, this.clock.now().getTime());
   }
 
-  resetLoginLock(adminId: number): void {
-    this.repository.resetLoginLock(adminId, this.clock.now().getTime());
+  resetLoginLock(_actor?: Actor): void {
+    this.repository.resetAllLoginLocks(this.clock.now().getTime());
     this.unknownLoginAttempts.clear();
   }
 
-  async updateAdminCredentials(
-    adminId: number,
-    input: UpdateAdminCredentialsRequest,
+  async updateOwnCredentials(
+    actor: Actor,
+    input: UpdateCredentialsRequest,
   ): Promise<{ username: string }> {
+    requireAllowed(actor, {
+      type: "change_own_password",
+      targetId: actor.account.id,
+    });
     const passwordHash =
       input.password === undefined
         ? undefined
         : await this.passwordHasher.hash(input.password);
-    const admin = this.repository.updateAdminCredentials(
-      adminId,
+    const user = this.repository.updateCredentials(
+      actor.account.id,
       {
         username: input.username,
         ...(passwordHash === undefined ? {} : { passwordHash }),
@@ -240,11 +245,11 @@ export class AuthService {
       this.clock.now().getTime(),
     );
     this.unknownLoginAttempts.clear();
-    return { username: admin.username };
+    return { username: user.username };
   }
 
   private issueSession(
-    admin: NonNullable<ReturnType<AuthRepository["getAdmin"]>>,
+    user: NonNullable<ReturnType<AuthRepository["getById"]>>,
     metadata: RequestMetadata,
     now: number,
   ): SessionGrant {
@@ -254,7 +259,7 @@ export class AuthService {
     const expiresAt = now + this.config.sessionTtlSeconds * 1000;
     this.repository.createSession({
       id: crypto.randomUUID(),
-      adminId: admin.id,
+      userId: user.id,
       tokenHash: hashOpaqueToken(sessionToken),
       csrfHash: hashOpaqueToken(csrfToken),
       createdAt: now,
@@ -262,10 +267,12 @@ export class AuthService {
       userAgent: metadata.userAgent?.slice(0, 500) ?? null,
       ipAddress: metadata.ipAddress?.slice(0, 100) ?? null,
     });
+    const account = toAccount(user);
     return {
       sessionToken,
       response: {
-        admin: toAdmin(admin),
+        user: account,
+        capabilities: projectCapabilities(account.rank),
         csrfToken,
         expiresAt: toIsoDate(expiresAt),
       },
@@ -275,11 +282,16 @@ export class AuthService {
   private toAuthenticatedRequest(
     record: AuthenticatedSessionRecord,
   ): AuthenticatedRequest {
+    const account = toAccount(record.user);
     return {
       sessionId: record.session.id,
-      adminId: record.admin.id,
+      actor: {
+        sessionId: record.session.id,
+        account,
+      },
       current: {
-        admin: toAdmin(record.admin),
+        user: account,
+        capabilities: projectCapabilities(account.rank),
         expiresAt: toIsoDate(record.session.expiresAt),
       },
     };

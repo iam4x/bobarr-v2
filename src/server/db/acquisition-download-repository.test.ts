@@ -155,7 +155,7 @@ describe("durable acquisition download repository", () => {
         .query("DELETE FROM schema_migrations WHERE version = 5")
         .run();
 
-      expect(runMigrations(database.sqlite)).toBe(5);
+      expect(runMigrations(database.sqlite)).toBe(6);
       expect(
         database.sqlite
           .query<
@@ -177,7 +177,7 @@ describe("durable acquisition download repository", () => {
   test("keeps legacy public rows readable and outside reconciliation", async () => {
     const database = await openBackendDatabase(":memory:");
     try {
-      expect(database.migrationVersion).toBe(5);
+      expect(database.migrationVersion).toBe(6);
       const publicRepository = createRepositories(database).downloads;
       const legacy = publicRepository.create(
         CreateDownloadInputSchema.parse({ title: "Legacy download" }),

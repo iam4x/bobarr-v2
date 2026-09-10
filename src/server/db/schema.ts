@@ -9,28 +9,29 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-export const admins = sqliteTable(
-  "admins",
+export const users = sqliteTable(
+  "users",
   {
     id: integer("id").primaryKey(),
     username: text("username").notNull(),
     passwordHash: text("password_hash").notNull(),
+    rank: text("rank", { enum: ["admin", "user"] }).notNull(),
     failedLoginCount: integer("failed_login_count").notNull().default(0),
     lockedUntil: integer("locked_until"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
     lastLoginAt: integer("last_login_at"),
   },
-  (table) => [uniqueIndex("admins_username_unique").on(table.username)],
+  (table) => [uniqueIndex("users_username_unique").on(table.username)],
 );
 
 export const sessions = sqliteTable(
   "sessions",
   {
     id: text("id").primaryKey(),
-    adminId: integer("admin_id")
+    userId: integer("user_id")
       .notNull()
-      .references(() => admins.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "cascade" }),
     tokenHash: text("token_hash").notNull(),
     csrfHash: text("csrf_hash").notNull(),
     createdAt: integer("created_at").notNull(),
@@ -42,8 +43,30 @@ export const sessions = sqliteTable(
   },
   (table) => [
     uniqueIndex("sessions_token_hash_unique").on(table.tokenHash),
-    index("sessions_admin_id_index").on(table.adminId),
+    index("sessions_user_id_index").on(table.userId),
     index("sessions_expires_at_index").on(table.expiresAt),
+  ],
+);
+
+export const invites = sqliteTable(
+  "invites",
+  {
+    id: text("id").primaryKey(),
+    tokenHash: text("token_hash").notNull(),
+    createdBy: integer("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+    acceptedBy: integer("accepted_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    acceptedAt: integer("accepted_at"),
+    revokedAt: integer("revoked_at"),
+  },
+  (table) => [
+    uniqueIndex("invites_token_hash_unique").on(table.tokenHash),
+    index("invites_created_by_index").on(table.createdBy),
   ],
 );
 
@@ -104,6 +127,10 @@ export const mediaItems = sqliteTable(
     metadataJson: text("metadata_json").notNull().default("{}"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
+    createdByUserId: integer("created_by_user_id")
+      .notNull()
+      .default(1)
+      .references(() => users.id),
   },
   (table) => [
     uniqueIndex("media_items_kind_tmdb_id_unique").on(table.kind, table.tmdbId),
@@ -273,6 +300,10 @@ export const downloads = sqliteTable(
       .default(false),
     peerLimit: integer("peer_limit"),
     lastEngineSeenAt: integer("last_engine_seen_at"),
+    requestedByUserId: integer("requested_by_user_id")
+      .notNull()
+      .default(1)
+      .references(() => users.id),
   },
   (table) => [
     uniqueIndex("downloads_client_external_id_unique").on(
@@ -402,8 +433,9 @@ export const libraryScanReviews = sqliteTable(
 );
 
 export const databaseSchema = {
-  admins,
+  users,
   sessions,
+  invites,
   appSettings,
   encryptedSecrets,
   mediaItems,

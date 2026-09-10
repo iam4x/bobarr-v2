@@ -34,6 +34,8 @@ export const LibraryItemSchema = z
     metadata: z.record(z.string(), z.unknown()),
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema,
+    createdByUserId: z.number().int().positive(),
+    ownedByMe: z.boolean().optional(),
   })
   .openapi("LibraryItem");
 
@@ -87,6 +89,7 @@ export const CreateLibraryItemRequestSchema = z
     acquisitionState: AcquisitionStateSchema.optional(),
     releaseDate: IsoDateTimeSchema.nullable().default(null),
     metadata: z.record(z.string(), z.unknown()).default({}),
+    createdByUserId: z.number().int().positive().optional(),
   })
   .strict()
   .superRefine((value, context) => {

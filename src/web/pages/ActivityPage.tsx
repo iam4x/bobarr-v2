@@ -42,6 +42,7 @@ import {
   SegmentedControl,
   SelectControl,
 } from "../components/ui";
+import { canMutateOwned } from "../lib/access";
 import {
   formatBytes,
   formatEta,
@@ -121,6 +122,7 @@ function downloadTone(
 
 function DownloadCard({
   download,
+  viewerRank,
   busyAction,
   onAction,
   onCancel,
@@ -128,6 +130,7 @@ function DownloadCard({
   onFileWanted,
 }: {
   download: Download;
+  viewerRank?: "admin" | "user";
   busyAction?: DownloadAction;
   onAction: (action: DownloadAction) => void;
   onCancel: () => void;
@@ -135,6 +138,7 @@ function DownloadCard({
   onFileWanted: (index: number, wanted: boolean) => void;
 }) {
   const progress = toPercent(download.progress);
+  const canMutate = canMutateOwned(viewerRank, download.requestedByMe);
   const canPause = ["queued", "downloading", "checking", "seeding"].includes(
     download.state,
   );
@@ -189,7 +193,7 @@ function DownloadCard({
                   <input
                     type="checkbox"
                     checked={file.wanted}
-                    disabled={busyFileIndex === file.index}
+                    disabled={!canMutate || busyFileIndex === file.index}
                     onChange={(event) =>
                       onFileWanted(file.index, event.target.checked)
                     }
@@ -207,44 +211,46 @@ function DownloadCard({
           </details>
         ) : null}
       </div>
-      <div className="download-card__actions">
-        {canPause ? (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            busy={busyAction === "pause"}
-            onClick={() => onAction("pause")}
-          >
-            <CirclePause size={16} /> Pause
+      {canMutate ? (
+        <div className="download-card__actions">
+          {canPause ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              busy={busyAction === "pause"}
+              onClick={() => onAction("pause")}
+            >
+              <CirclePause size={16} /> Pause
+            </Button>
+          ) : null}
+          {canResume ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              busy={busyAction === "resume"}
+              onClick={() => onAction("resume")}
+            >
+              <CirclePlay size={16} /> Resume
+            </Button>
+          ) : null}
+          {canRetry ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              busy={busyAction === "retry"}
+              onClick={() => onAction("retry")}
+            >
+              <RotateCcw size={16} /> Retry
+            </Button>
+          ) : null}
+          <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+            <Trash2 size={16} /> Remove
           </Button>
-        ) : null}
-        {canResume ? (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            busy={busyAction === "resume"}
-            onClick={() => onAction("resume")}
-          >
-            <CirclePlay size={16} /> Resume
-          </Button>
-        ) : null}
-        {canRetry ? (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            busy={busyAction === "retry"}
-            onClick={() => onAction("retry")}
-          >
-            <RotateCcw size={16} /> Retry
-          </Button>
-        ) : null}
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-          <Trash2 size={16} /> Remove
-        </Button>
-      </div>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -689,6 +695,13 @@ function HistoryList({ events }: { events: ActivityEvent[] }) {
 
 export function ActivityPage() {
   const queryClient = useQueryClient();
+  const sessionQuery = useQuery({
+    queryKey: ["auth", "session"],
+    queryFn: ({ signal }) => api.get("currentSession", { signal }),
+  });
+  const viewerRank = sessionQuery.data?.user?.rank;
+  const canManageSettings =
+    sessionQuery.data?.capabilities?.canManageSettings === true;
   const [tab, setTab] = useState<ActivityTab>("downloads");
   const [addOpen, setAddOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<Download | null>(null);
@@ -913,6 +926,7 @@ export function ActivityPage() {
               <DownloadCard
                 key={download.id}
                 download={download}
+                viewerRank={viewerRank}
                 busyAction={
                   actionMutation.isPending &&
                   actionMutation.variables?.id === download.id
@@ -956,15 +970,17 @@ export function ActivityPage() {
       ) : null}
       {tab === "jobs" ? (
         <div className="job-browser">
-          <ManualJobControls
-            kind={manualJobKind}
-            busy={createJobMutation.isPending}
-            onChange={(kind) => {
-              setManualJobKind(kind);
-              createJobMutation.reset();
-            }}
-            onRun={() => createJobMutation.mutate(manualJobKind)}
-          />
+          {canManageSettings ? (
+            <ManualJobControls
+              kind={manualJobKind}
+              busy={createJobMutation.isPending}
+              onChange={(kind) => {
+                setManualJobKind(kind);
+                createJobMutation.reset();
+              }}
+              onRun={() => createJobMutation.mutate(manualJobKind)}
+            />
+          ) : null}
           {createJobMutation.isSuccess ? (
             <div className="notice notice--success" role="status">
               <CheckCircle2 size={17} /> {formatJobKind(manualJobKind)} queued.

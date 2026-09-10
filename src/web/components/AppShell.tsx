@@ -1,6 +1,6 @@
 import type { SystemStatus } from "../types";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   CalendarDays,
@@ -9,19 +9,21 @@ import {
   Compass,
   Film,
   Library,
+  LogOut,
   Menu,
   Search,
   Settings,
   Sparkles,
   Tv,
+  UserRound,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 
 import { Brand } from "./Brand";
 import { ModalLayer } from "./ModalLayer";
-import { Badge, classNames, IconButton } from "./ui";
+import { Badge, Button, classNames, IconButton } from "./ui";
 import { api } from "../api/client";
 import { normalizeSystemStatus } from "../api/normalize";
 import { useServerEvents } from "../hooks/useServerEvents";
@@ -45,10 +47,21 @@ const libraryNavigation: NavigationItem[] = [
   { label: "Calendar", to: "/calendar", icon: CalendarDays },
 ];
 
-const systemNavigation: NavigationItem[] = [
-  { label: "Activity", to: "/activity", icon: Activity },
-  { label: "Settings", to: "/settings", icon: Settings },
-];
+const activityNavigation: NavigationItem = {
+  label: "Activity",
+  to: "/activity",
+  icon: Activity,
+};
+const settingsNavigation: NavigationItem = {
+  label: "Settings",
+  to: "/settings",
+  icon: Settings,
+};
+const accountNavigation: NavigationItem = {
+  label: "Account",
+  to: "/account",
+  icon: UserRound,
+};
 
 function DesktopNavLink({ item }: { item: NavigationItem }) {
   const Icon = item.icon;
@@ -66,7 +79,7 @@ function DesktopNavLink({ item }: { item: NavigationItem }) {
   );
 }
 
-function StatusPill({ status }: { status?: SystemStatus }) {
+function StatusPill({ status, to }: { status?: SystemStatus; to: string }) {
   let tone = "danger";
   let label = "Service unavailable";
   if (status?.status === "ready") {
@@ -77,7 +90,7 @@ function StatusPill({ status }: { status?: SystemStatus }) {
     label = "Service degraded";
   }
   return (
-    <NavLink className="service-pill" to="/settings#connections" title={label}>
+    <NavLink className="service-pill" to={to} title={label}>
       <span
         className={classNames("status-dot", `status-dot--${tone}`)}
         aria-hidden="true"
@@ -91,6 +104,25 @@ export function AppShell() {
   const [moreOpen, setMoreOpen] = useState(false);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const sessionQuery = useQuery({
+    queryKey: ["auth", "session"],
+    queryFn: ({ signal }) => api.get("currentSession", { signal }),
+  });
+  const canManageSettings =
+    sessionQuery.data?.capabilities?.canManageSettings === true;
+  const username = sessionQuery.data?.user?.username;
+  const systemNavigation: NavigationItem[] = canManageSettings
+    ? [activityNavigation, settingsNavigation]
+    : [activityNavigation];
+  const logoutMutation = useMutation({
+    mutationFn: () => api.post("logout"),
+    onSuccess: () => {
+      queryClient.clear();
+      navigate("/login", { replace: true });
+    },
+  });
   const statusQuery = useQuery({
     queryKey: ["system", "status"],
     queryFn: async ({ signal }) =>
@@ -138,7 +170,26 @@ export function AppShell() {
         </nav>
 
         <div className="nav-rail__footer">
-          <StatusPill status={statusQuery.data} />
+          <StatusPill
+            status={statusQuery.data}
+            to={canManageSettings ? "/settings#connections" : "/discover"}
+          />
+          <div className="nav-rail__account">
+            {username ? (
+              <NavLink className="nav-rail__username" to="/account">
+                {username}
+              </NavLink>
+            ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              busy={logoutMutation.isPending}
+              onClick={() => logoutMutation.mutate()}
+            >
+              <LogOut size={15} /> Sign out
+            </Button>
+          </div>
           <span className="version-label">Bobarr v2</span>
         </div>
       </aside>
@@ -227,6 +278,7 @@ export function AppShell() {
             ...primaryNavigation.slice(2),
             ...libraryNavigation,
             ...systemNavigation.slice(1),
+            accountNavigation,
           ].map((item) => {
             const Icon = item.icon;
             return (
@@ -240,7 +292,18 @@ export function AppShell() {
             );
           })}
         </nav>
-        <StatusPill status={statusQuery.data} />
+        <StatusPill
+          status={statusQuery.data}
+          to={canManageSettings ? "/settings#connections" : "/discover"}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          busy={logoutMutation.isPending}
+          onClick={() => logoutMutation.mutate()}
+        >
+          <LogOut size={16} /> Sign out
+        </Button>
       </ModalLayer>
     </div>
   );

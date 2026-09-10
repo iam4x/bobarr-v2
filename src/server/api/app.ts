@@ -1,5 +1,10 @@
 import type { AcquisitionService } from "../application";
-import type { AuthenticatedRequest, AuthService, SecretVault } from "../auth";
+import type {
+  AuthenticatedRequest,
+  AuthService,
+  InviteService,
+  SecretVault,
+} from "../auth";
 import type { BackendConfig } from "../config";
 import type { Clock, Logger } from "../core";
 import type { BackendDatabase, Repositories } from "../db";
@@ -23,6 +28,7 @@ import { registerProductRoutes } from "./product";
 import { requestBodyLimitMiddleware } from "./request-body-limit";
 import { registerScanReviewRoutes } from "./scan-reviews";
 import {
+  AcceptInviteRequestSchema,
   ApiErrorEnvelopeSchema,
   AppSettingsSchema,
   type AppSettings,
@@ -30,11 +36,17 @@ import {
   CalendarListResponseSchema,
   CalendarQuerySchema,
   CreateCalendarEventRequestSchema,
+  CreateInviteRequestSchema,
   CreateJobRequestSchema,
   CreateLibraryItemRequestSchema,
+  CreatedInviteSchema,
   CurrentSessionSchema,
   DeleteLibraryItemResponseSchema,
   DeleteSecretResponseSchema,
+  DeleteUserResponseSchema,
+  InviteParamsSchema,
+  InvitePreviewQuerySchema,
+  InvitePreviewSchema,
   JobParamsSchema,
   JobSchema,
   JobsListResponseSchema,
@@ -49,6 +61,7 @@ import {
   LoginRequestSchema,
   LogoutResponseSchema,
   ResetLoginLockResponseSchema,
+  RevokeInviteResponseSchema,
   SecretListResponseSchema,
   SecretMetadataSchema,
   SecretParamsSchema,
@@ -58,10 +71,15 @@ import {
   SetupStatusSchema,
   SystemStatusSchema,
   UpdateSettingsRequestSchema,
-  UpdateAdminCredentialsRequestSchema,
-  UpdateAdminCredentialsResponseSchema,
+  UpdateCredentialsRequestSchema,
+  UpdateCredentialsResponseSchema,
+  UserParamsSchema,
+  UsersResponseSchema,
 } from "../../contracts";
-import { AppError, notFound, systemClock } from "../core";
+import { deriveInviteState } from "../auth";
+import { requireAllowed } from "../auth/policy";
+import { AppError, notFound, systemClock, toIsoDate } from "../core";
+import { toAccount } from "../db";
 import { durableJobToContract, validateCronExpression } from "../jobs";
 
 interface ApiVariables {
@@ -84,6 +102,7 @@ export interface ApiDependencies {
   database: BackendDatabase;
   repositories: Repositories;
   auth: AuthService;
+  invites: InviteService;
   secrets: SecretVault;
   queue?: JobQueue;
   events?: EventHub;
@@ -172,10 +191,7 @@ const routes = {
     tags: ["auth"],
     request: { body: jsonBody(LoginRequestSchema) },
     responses: {
-      200: jsonResponse(
-        AuthSessionSchema,
-        "Authenticated administrator session",
-      ),
+      200: jsonResponse(AuthSessionSchema, "Authenticated session"),
       default: errorResponse,
     },
   }),
@@ -185,7 +201,7 @@ const routes = {
     tags: ["auth"],
     security: [{ sessionCookie: [] }],
     responses: {
-      200: jsonResponse(CurrentSessionSchema, "Current administrator session"),
+      200: jsonResponse(CurrentSessionSchema, "Current session"),
       default: errorResponse,
     },
   }),
@@ -233,17 +249,80 @@ const routes = {
       default: errorResponse,
     },
   }),
-  updateAdminCredentials: createRoute({
+  updateCredentials: createRoute({
     method: "patch",
-    path: "/api/v1/settings/security/admin",
-    tags: ["settings"],
+    path: "/api/v1/auth/credentials",
+    tags: ["auth"],
     security: [{ sessionCookie: [] }],
-    request: { body: jsonBody(UpdateAdminCredentialsRequestSchema) },
+    request: { body: jsonBody(UpdateCredentialsRequestSchema) },
     responses: {
       200: jsonResponse(
-        UpdateAdminCredentialsResponseSchema,
-        "Updated administrator sign-in credentials",
+        UpdateCredentialsResponseSchema,
+        "Updated sign-in credentials",
       ),
+      default: errorResponse,
+    },
+  }),
+  invitePreview: createRoute({
+    method: "get",
+    path: "/api/v1/invites/preview",
+    tags: ["auth"],
+    request: { query: InvitePreviewQuerySchema },
+    responses: {
+      200: jsonResponse(InvitePreviewSchema, "Open invite preview"),
+      default: errorResponse,
+    },
+  }),
+  acceptInvite: createRoute({
+    method: "post",
+    path: "/api/v1/invites/accept",
+    tags: ["auth"],
+    request: { body: jsonBody(AcceptInviteRequestSchema) },
+    responses: {
+      201: jsonResponse(AuthSessionSchema, "Accepted invite and signed in"),
+      default: errorResponse,
+    },
+  }),
+  listUsers: createRoute({
+    method: "get",
+    path: "/api/v1/users",
+    tags: ["users"],
+    security: [{ sessionCookie: [] }],
+    responses: {
+      200: jsonResponse(UsersResponseSchema, "People and invites"),
+      default: errorResponse,
+    },
+  }),
+  createInvite: createRoute({
+    method: "post",
+    path: "/api/v1/users/invites",
+    tags: ["users"],
+    security: [{ sessionCookie: [] }],
+    request: { body: jsonBody(CreateInviteRequestSchema) },
+    responses: {
+      201: jsonResponse(CreatedInviteSchema, "Created invite"),
+      default: errorResponse,
+    },
+  }),
+  revokeInvite: createRoute({
+    method: "delete",
+    path: "/api/v1/users/invites/{id}",
+    tags: ["users"],
+    security: [{ sessionCookie: [] }],
+    request: { params: InviteParamsSchema },
+    responses: {
+      200: jsonResponse(RevokeInviteResponseSchema, "Revoked invite"),
+      default: errorResponse,
+    },
+  }),
+  deleteUser: createRoute({
+    method: "delete",
+    path: "/api/v1/users/{id}",
+    tags: ["users"],
+    security: [{ sessionCookie: [] }],
+    request: { params: UserParamsSchema },
+    responses: {
+      200: jsonResponse(DeleteUserResponseSchema, "Deleted account"),
       default: errorResponse,
     },
   }),
@@ -524,15 +603,17 @@ export function createApiApp(
     deleteCookie(context, csrfCookieName(dependencies.config), { path: "/" });
     return context.json({ loggedOut: true as const }, 200);
   });
-  app.openapi(routes.getSettings, (context) =>
-    context.json(
+  app.openapi(routes.getSettings, (context) => {
+    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    return context.json(
       withoutSecretInputs(
         dependencies.repositories.settings.ensureDefaults().settings,
       ),
       200,
-    ),
-  );
+    );
+  });
   app.openapi(routes.updateSettings, async (context) => {
+    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
     const patch = context.req.valid("json");
     validateSchedulePatch(patch);
     await persistSecretInputs(dependencies.secrets, patch);
@@ -546,20 +627,86 @@ export function createApiApp(
     return context.json(withoutSecretInputs(updated.settings), 200);
   });
   app.openapi(routes.resetLoginLock, (context) => {
-    dependencies.auth.resetLoginLock(context.get("auth").adminId);
+    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    dependencies.auth.resetLoginLock(context.get("auth").actor);
     return context.json({ reset: true as const }, 200);
   });
-  app.openapi(routes.updateAdminCredentials, async (context) => {
-    const result = await dependencies.auth.updateAdminCredentials(
-      context.get("auth").adminId,
+  app.openapi(routes.updateCredentials, async (context) => {
+    const result = await dependencies.auth.updateOwnCredentials(
+      context.get("auth").actor,
       context.req.valid("json"),
     );
     return context.json(result, 200);
   });
-  app.openapi(routes.listSecrets, (context) =>
-    context.json({ secrets: dependencies.secrets.list() }, 200),
+  app.openapi(routes.invitePreview, (context) =>
+    context.json(
+      dependencies.invites.preview(context.req.valid("query").token),
+      200,
+    ),
   );
+  app.openapi(routes.acceptInvite, async (context) => {
+    const grant = await dependencies.invites.accept(
+      context.req.valid("json"),
+      requestMetadata(context.req.raw),
+    );
+    setSessionCookie(context, dependencies.config, grant.sessionToken);
+    setCsrfCookie(context, dependencies.config, grant.response.csrfToken);
+    return context.json(grant.response, 201);
+  });
+  app.openapi(routes.listUsers, (context) => {
+    const actor = context.get("auth").actor;
+    const listed = dependencies.invites.list(actor);
+    const now = clock.now().getTime();
+    return context.json(
+      {
+        users: listed.users.map(toAccount),
+        invites: listed.invites.map((row) => {
+          const state = deriveInviteState(row, now);
+          return {
+            id: row.id,
+            status: state.status,
+            createdAt: toIsoDate(row.createdAt),
+            expiresAt: toIsoDate(row.expiresAt),
+            acceptedAt:
+              row.acceptedAt === null ? null : toIsoDate(row.acceptedAt),
+            revokedAt: row.revokedAt === null ? null : toIsoDate(row.revokedAt),
+            acceptedBy: row.acceptedBy,
+          };
+        }),
+      },
+      200,
+    );
+  });
+  app.openapi(routes.createInvite, async (context) => {
+    const body = context.req.valid("json");
+    const invite = await dependencies.invites.create(
+      context.get("auth").actor,
+      body.expiresInSeconds === undefined
+        ? {}
+        : { expiresInSeconds: body.expiresInSeconds },
+    );
+    return context.json(invite, 201);
+  });
+  app.openapi(routes.revokeInvite, (context) => {
+    dependencies.invites.revoke(
+      context.get("auth").actor,
+      context.req.valid("param").id,
+    );
+    return context.json({ revoked: true as const }, 200);
+  });
+  app.openapi(routes.deleteUser, (context) => {
+    dependencies.invites.deleteUser(
+      context.get("auth").actor,
+      context.req.valid("param").id,
+    );
+    return context.json({ deleted: true as const }, 200);
+  });
+  app.openapi(routes.listSecrets, (context) => {
+    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    return context.json({ secrets: dependencies.secrets.list() }, 200);
+  });
   app.openapi(routes.setSecret, async (context) => {
+    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
     const { name } = context.req.valid("param");
     const { value } = context.req.valid("json");
     const metadata = await dependencies.secrets.set(name, value);
@@ -570,6 +717,7 @@ export function createApiApp(
     return context.json(metadata, 200);
   });
   app.openapi(routes.deleteSecret, (context) => {
+    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
     const { name } = context.req.valid("param");
     const deleted = dependencies.secrets.delete(name);
     if (deleted) {
@@ -662,6 +810,7 @@ export function createApiApp(
     const liveById = new Map(
       liveDownloads.map((download) => [download.id, download]),
     );
+    const actor = context.get("auth").actor;
     const items = result.items.map((item) => {
       const projection = projections.get(item.id);
       const selectedDownload = projection?.download ?? null;
@@ -675,6 +824,7 @@ export function createApiApp(
           : null;
       return {
         ...item,
+        ownedByMe: item.createdByUserId === actor.account.id,
         rating: libraryCardRating(item.metadata),
         storage: {
           libraryPath: projection?.libraryPath ?? null,
@@ -722,7 +872,11 @@ export function createApiApp(
       context.req.valid("param").id,
     );
     if (item === undefined) throw notFound("Library item not found");
-    return context.json(item, 200);
+    const actor = context.get("auth").actor;
+    return context.json(
+      { ...item, ownedByMe: item.createdByUserId === actor.account.id },
+      200,
+    );
   });
   app.openapi(routes.listCalendar, (context) => {
     const query = context.req.valid("query");
@@ -731,12 +885,13 @@ export function createApiApp(
       200,
     );
   });
-  app.openapi(routes.createCalendar, (context) =>
-    context.json(
+  app.openapi(routes.createCalendar, (context) => {
+    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
+    return context.json(
       dependencies.repositories.calendar.create(context.req.valid("json")),
       201,
-    ),
-  );
+    );
+  });
   app.openapi(routes.listJobs, async (context) => {
     const query = context.req.valid("query");
     if (dependencies.queue !== undefined) {
@@ -768,6 +923,7 @@ export function createApiApp(
     );
   });
   app.openapi(routes.createJob, async (context) => {
+    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
     const input = context.req.valid("json");
     const manualJob = manualMaintenanceJob(input, dependencies);
     if (dependencies.queue !== undefined) {
@@ -804,6 +960,7 @@ export function createApiApp(
     return context.json({ ...job, logs: [] }, 200);
   });
   app.openapi(routes.retryJob, async (context) => {
+    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
     const queue = requireDurableQueue(dependencies);
     const previous = await queue.get(context.req.valid("param").id);
     if (!previous) throw notFound("Job not found");
@@ -826,6 +983,7 @@ export function createApiApp(
     return context.json(durableJobToContract(retried), 202);
   });
   app.openapi(routes.cancelJob, async (context) => {
+    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
     const queue = requireDurableQueue(dependencies);
     const id = context.req.valid("param").id;
     const job = await queue.get(id);
@@ -851,7 +1009,7 @@ export function createApiApp(
       info: {
         title: "Bobarr API",
         version: dependencies.config.version,
-        description: "Single-user media discovery and download management API",
+        description: "Media discovery and download management API",
       },
     });
     return context.json(
@@ -948,6 +1106,8 @@ function authenticationMiddleware(
     "/api/v1/setup/status",
     "/api/v1/setup",
     "/api/v1/auth/login",
+    "/api/v1/invites/preview",
+    "/api/v1/invites/accept",
   ]);
   return async (context, next) => {
     if (publicPaths.has(context.req.path)) {

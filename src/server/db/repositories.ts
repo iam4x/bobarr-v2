@@ -15,13 +15,14 @@ import {
 } from "drizzle-orm";
 
 import {
-  admins,
   appSettings,
   calendarEvents,
   encryptedSecrets,
+  invites,
   jobRecords,
   libraryItems,
   sessions,
+  users,
 } from "./schema";
 import {
   ActivityRepository,
@@ -33,7 +34,7 @@ import {
 } from "./vertical-repositories";
 import {
   AppSettingsSchema,
-  type Admin,
+  type Account,
   type AppSettings,
   type CalendarEvent,
   type CreateCalendarEventRequest,
@@ -59,20 +60,21 @@ import {
   toIsoDate,
 } from "../core";
 
-type AdminRow = typeof admins.$inferSelect;
+type UserRow = typeof users.$inferSelect;
 type SessionRow = typeof sessions.$inferSelect;
+type InviteRow = typeof invites.$inferSelect;
 type LibraryItemRow = typeof libraryItems.$inferSelect;
 type CalendarEventRow = typeof calendarEvents.$inferSelect;
 type JobRow = typeof jobRecords.$inferSelect;
 
 export interface AuthenticatedSessionRecord {
   session: SessionRow;
-  admin: AdminRow;
+  user: UserRow;
 }
 
 export interface NewSessionRecord {
   id: string;
-  adminId: number;
+  userId: number;
   tokenHash: string;
   csrfHash: string;
   createdAt: number;
@@ -81,43 +83,75 @@ export interface NewSessionRecord {
   ipAddress: string | null;
 }
 
+export type { UserRow, InviteRow };
+
 export class AuthRepository {
   constructor(private readonly database: BackendDatabase) {}
 
   isSetupComplete(): boolean {
     return (
       this.database.client
-        .select({ id: admins.id })
-        .from(admins)
+        .select({ id: users.id })
+        .from(users)
         .limit(1)
         .get() !== undefined
     );
   }
 
-  getAdminByUsername(username: string): AdminRow | undefined {
+  getById(id: number): UserRow | undefined {
     return this.database.client
       .select()
-      .from(admins)
-      .where(sql`lower(${admins.username}) = lower(${username})`)
+      .from(users)
+      .where(eq(users.id, id))
       .get();
   }
 
-  getAdmin(): AdminRow | undefined {
+  getByUsername(username: string): UserRow | undefined {
     return this.database.client
       .select()
-      .from(admins)
-      .where(eq(admins.id, 1))
+      .from(users)
+      .where(sql`lower(${users.username}) = lower(${username})`)
       .get();
   }
 
-  createAdmin(username: string, passwordHash: string, now: number): AdminRow {
+  getBootstrapAdmin(): UserRow | undefined {
+    return this.getById(1);
+  }
+
+  getAdmin(): UserRow | undefined {
+    return this.getBootstrapAdmin();
+  }
+
+  getAdminByUsername(username: string): UserRow | undefined {
+    return this.getByUsername(username);
+  }
+
+  countByRank(rank: "admin" | "user"): number {
+    const row = this.database.client
+      .select({ count: sql<number>`count(*)` })
+      .from(users)
+      .where(eq(users.rank, rank))
+      .get();
+    return Number(row?.count ?? 0);
+  }
+
+  listUsers(): UserRow[] {
+    return this.database.client
+      .select()
+      .from(users)
+      .orderBy(asc(users.id))
+      .all();
+  }
+
+  createAdmin(username: string, passwordHash: string, now: number): UserRow {
     try {
       return this.database.client
-        .insert(admins)
+        .insert(users)
         .values({
           id: 1,
           username,
           passwordHash,
+          rank: "admin",
           createdAt: now,
           updatedAt: now,
         })
@@ -133,79 +167,138 @@ export class AuthRepository {
     }
   }
 
+  createUser(username: string, passwordHash: string, now: number): UserRow {
+    try {
+      return this.database.client
+        .insert(users)
+        .values({
+          username,
+          passwordHash,
+          rank: "user",
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning()
+        .get();
+    } catch (error) {
+      throw new AppError({
+        code: "conflict",
+        message: "That username is already taken",
+        status: 409,
+        cause: error,
+      });
+    }
+  }
+
   recordFailedLogin(
-    adminId: number,
+    userId: number,
     failureLimit: number,
     lockUntil: number,
     now: number,
   ): { failedLoginCount: number; lockedUntil: number | null } {
     const row = this.database.client
-      .update(admins)
+      .update(users)
       .set({
-        failedLoginCount: sql`${admins.failedLoginCount} + 1`,
+        failedLoginCount: sql`${users.failedLoginCount} + 1`,
         lockedUntil: sql`CASE
-          WHEN ${admins.failedLoginCount} + 1 >= ${failureLimit}
+          WHEN ${users.failedLoginCount} + 1 >= ${failureLimit}
           THEN ${lockUntil}
-          ELSE ${admins.lockedUntil}
+          ELSE ${users.lockedUntil}
         END`,
         updatedAt: now,
       })
-      .where(eq(admins.id, adminId))
+      .where(eq(users.id, userId))
       .returning({
-        failedLoginCount: admins.failedLoginCount,
-        lockedUntil: admins.lockedUntil,
+        failedLoginCount: users.failedLoginCount,
+        lockedUntil: users.lockedUntil,
       })
       .get();
-    if (!row) throw new Error("Administrator disappeared during sign-in");
+    if (!row) throw new Error("Account disappeared during sign-in");
     return row;
   }
 
-  recordSuccessfulLogin(adminId: number, now: number): void {
+  recordSuccessfulLogin(userId: number, now: number): void {
     this.database.client
-      .update(admins)
+      .update(users)
       .set({
         failedLoginCount: 0,
         lockedUntil: null,
         lastLoginAt: now,
         updatedAt: now,
       })
-      .where(eq(admins.id, adminId))
+      .where(eq(users.id, userId))
       .run();
   }
 
-  resetLoginLock(adminId: number, now: number): void {
+  resetLoginLock(userId: number, now: number): void {
     this.database.client
-      .update(admins)
+      .update(users)
       .set({
         failedLoginCount: 0,
         lockedUntil: null,
         updatedAt: now,
       })
-      .where(eq(admins.id, adminId))
+      .where(eq(users.id, userId))
       .run();
   }
 
-  updateAdminCredentials(
-    adminId: number,
+  resetAllLoginLocks(now: number): void {
+    this.database.client
+      .update(users)
+      .set({
+        failedLoginCount: 0,
+        lockedUntil: null,
+        updatedAt: now,
+      })
+      .run();
+  }
+
+  updateCredentials(
+    userId: number,
     input: { username: string; passwordHash?: string },
     now: number,
-  ): AdminRow {
-    const admin = this.database.client
-      .update(admins)
-      .set({
-        username: input.username,
-        ...(input.passwordHash === undefined
-          ? {}
-          : { passwordHash: input.passwordHash }),
-        failedLoginCount: 0,
-        lockedUntil: null,
-        updatedAt: now,
-      })
-      .where(eq(admins.id, adminId))
-      .returning()
+  ): UserRow {
+    try {
+      const user = this.database.client
+        .update(users)
+        .set({
+          username: input.username,
+          ...(input.passwordHash === undefined
+            ? {}
+            : { passwordHash: input.passwordHash }),
+          failedLoginCount: 0,
+          lockedUntil: null,
+          updatedAt: now,
+        })
+        .where(eq(users.id, userId))
+        .returning()
+        .get();
+      if (!user) throw new Error("Account disappeared during update");
+      return user;
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      throw new AppError({
+        code: "conflict",
+        message: "That username is already taken",
+        status: 409,
+        cause: error,
+      });
+    }
+  }
+
+  deleteUser(id: number): void {
+    const deleted = this.database.client
+      .delete(users)
+      .where(eq(users.id, id))
+      .returning({ id: users.id })
       .get();
-    if (!admin) throw new Error("Administrator disappeared during update");
-    return admin;
+    if (deleted === undefined) {
+      throw new AppError({
+        code: "not_found",
+        message: "Account not found",
+        status: 404,
+      });
+    }
   }
 
   createSession(record: NewSessionRecord): SessionRow {
@@ -219,13 +312,12 @@ export class AuthRepository {
   getSessionByTokenHash(
     tokenHash: string,
   ): AuthenticatedSessionRecord | undefined {
-    const row = this.database.client
-      .select({ session: sessions, admin: admins })
+    return this.database.client
+      .select({ session: sessions, user: users })
       .from(sessions)
-      .innerJoin(admins, eq(sessions.adminId, admins.id))
+      .innerJoin(users, eq(sessions.userId, users.id))
       .where(eq(sessions.tokenHash, tokenHash))
       .get();
-    return row;
   }
 
   touchSession(id: string, now: number): void {
@@ -249,6 +341,92 @@ export class AuthRepository {
       .delete(sessions)
       .where(lte(sessions.expiresAt, now))
       .run();
+  }
+
+  revokeAllSessionsForUser(userId: number, now: number): void {
+    this.database.client
+      .update(sessions)
+      .set({ revokedAt: now })
+      .where(eq(sessions.userId, userId))
+      .run();
+  }
+}
+
+export class InviteRepository {
+  constructor(private readonly database: BackendDatabase) {}
+
+  insertOpen(input: {
+    id: string;
+    tokenHash: string;
+    createdBy: number;
+    createdAt: number;
+    expiresAt: number;
+  }): InviteRow {
+    return this.database.client.insert(invites).values(input).returning().get();
+  }
+
+  getById(id: string): InviteRow | undefined {
+    return this.database.client
+      .select()
+      .from(invites)
+      .where(eq(invites.id, id))
+      .get();
+  }
+
+  getByTokenHash(tokenHash: string): InviteRow | undefined {
+    return this.database.client
+      .select()
+      .from(invites)
+      .where(eq(invites.tokenHash, tokenHash))
+      .get();
+  }
+
+  listAll(): InviteRow[] {
+    return this.database.client
+      .select()
+      .from(invites)
+      .orderBy(desc(invites.createdAt))
+      .all();
+  }
+
+  acceptIfOpen(input: {
+    tokenHash: string;
+    acceptedBy: number;
+    now: number;
+  }): { createdBy: number } | undefined {
+    const row = this.database.client
+      .update(invites)
+      .set({
+        acceptedBy: input.acceptedBy,
+        acceptedAt: input.now,
+      })
+      .where(
+        and(
+          eq(invites.tokenHash, input.tokenHash),
+          isNull(invites.acceptedAt),
+          isNull(invites.revokedAt),
+          gte(invites.expiresAt, input.now),
+        ),
+      )
+      .returning({ createdBy: invites.createdBy })
+      .get();
+    return row;
+  }
+
+  revokeIfOpen(id: string, now: number): boolean {
+    const row = this.database.client
+      .update(invites)
+      .set({ revokedAt: now })
+      .where(
+        and(
+          eq(invites.id, id),
+          isNull(invites.acceptedAt),
+          isNull(invites.revokedAt),
+        ),
+      )
+      .returning({ id: invites.id })
+      .get();
+    return row !== undefined;
   }
 }
 
@@ -481,6 +659,11 @@ export class LibraryRepository {
 
   create(input: CreateLibraryItemRequest): LibraryItem {
     const now = this.clock.now().getTime();
+    const inheritedOwner =
+      input.createdByUserId ??
+      (input.parentId === null || input.parentId === undefined
+        ? undefined
+        : this.get(input.parentId)?.createdByUserId);
     try {
       const row = this.database.client
         .insert(libraryItems)
@@ -501,6 +684,9 @@ export class LibraryRepository {
           metadataJson: JSON.stringify(input.metadata),
           createdAt: now,
           updatedAt: now,
+          ...(inheritedOwner === undefined
+            ? {}
+            : { createdByUserId: inheritedOwner }),
         })
         .returning()
         .get();
@@ -1080,6 +1266,7 @@ export class JobRepository {
 
 export interface Repositories {
   auth: AuthRepository;
+  invites: InviteRepository;
   settings: SettingsRepository;
   secrets: SecretRepository;
   library: LibraryRepository;
@@ -1101,6 +1288,7 @@ export function createRepositories(
   const library = new LibraryRepository(database, clock);
   const repositories: Repositories = {
     auth: new AuthRepository(database),
+    invites: new InviteRepository(database),
     settings: new SettingsRepository(database, clock),
     secrets: new SecretRepository(database),
     library,
@@ -1118,13 +1306,18 @@ export function createRepositories(
   return repositories;
 }
 
-export function toAdmin(row: AdminRow): Admin {
+export function toAccount(row: UserRow): Account {
   return {
     id: row.id,
     username: row.username,
+    rank: row.rank,
     createdAt: toIsoDate(row.createdAt),
     lastLoginAt: row.lastLoginAt === null ? null : toIsoDate(row.lastLoginAt),
   };
+}
+
+export function toAdmin(row: UserRow): Account {
+  return toAccount(row);
 }
 
 function mapLibraryItem(row: LibraryItemRow): LibraryItem {
@@ -1145,6 +1338,7 @@ function mapLibraryItem(row: LibraryItemRow): LibraryItem {
     metadata: parseJsonObject(row.metadataJson, "library metadata"),
     createdAt: toIsoDate(row.createdAt),
     updatedAt: toIsoDate(row.updatedAt),
+    createdByUserId: row.createdByUserId,
   };
 }
 
