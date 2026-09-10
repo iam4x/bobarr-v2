@@ -16,6 +16,9 @@ export default defineConfig({
     baseURL: `http://127.0.0.1:${port}`,
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
+    launchOptions: {
+      args: ["--disable-gpu", "--disable-software-rasterizer"],
+    },
   },
   webServer: [
     {
