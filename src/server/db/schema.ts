@@ -21,6 +21,7 @@ export const users = sqliteTable(
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
     lastLoginAt: integer("last_login_at"),
+    uiLocale: text("ui_locale", { enum: ["en", "fr"] }),
   },
   (table) => [uniqueIndex("users_username_unique").on(table.username)],
 );

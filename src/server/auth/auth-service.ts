@@ -1,8 +1,10 @@
 import type {
+  Account,
   AuthSession,
   CurrentSession,
   LoginRequest,
   SetupRequest,
+  UiLocale,
   UpdateCredentialsRequest,
 } from "../../contracts";
 import type { BackendConfig } from "../config";
@@ -248,6 +250,16 @@ export class AuthService {
     );
     this.unknownLoginAttempts.clear();
     return { username: user.username };
+  }
+
+  updateUiLocale(actor: Actor, uiLocale: UiLocale): Account {
+    return toAccount(
+      this.repository.updateUiLocale(
+        actor.account.id,
+        uiLocale,
+        this.clock.now().getTime(),
+      ),
+    );
   }
 
   listAccounts(actor: Actor) {

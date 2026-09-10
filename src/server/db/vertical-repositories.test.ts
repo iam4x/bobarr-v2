@@ -58,7 +58,7 @@ describe("core vertical-slice persistence", () => {
     const database = await openBackendDatabase(":memory:");
     try {
       const repositories = createRepositories(database, clock);
-      expect(database.migrationVersion).toBe(6);
+      expect(database.migrationVersion).toBe(7);
 
       const series = repositories.media.create(
         CreateLibraryItemRequestSchema.parse({

@@ -274,6 +274,23 @@ export class AuthRepository {
     }
   }
 
+  updateUiLocale(userId: number, uiLocale: "en" | "fr", now: number): UserRow {
+    const user = this.database.client
+      .update(users)
+      .set({ uiLocale, updatedAt: now })
+      .where(eq(users.id, userId))
+      .returning()
+      .get();
+    if (!user) {
+      throw new AppError({
+        code: "not_found",
+        message: "Account not found",
+        status: 404,
+      });
+    }
+    return user;
+  }
+
   setRank(id: number, rank: "admin" | "user", now: number): UserRow {
     const user = this.database.client
       .update(users)
@@ -1240,6 +1257,7 @@ export function toAccount(row: UserRow): Account {
     rank: row.rank,
     createdAt: toIsoDate(row.createdAt),
     lastLoginAt: row.lastLoginAt === null ? null : toIsoDate(row.lastLoginAt),
+    uiLocale: row.uiLocale,
   };
 }
 

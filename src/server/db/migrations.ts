@@ -375,6 +375,13 @@ const migrations: readonly Migration[] = [
       CREATE INDEX invites_created_by_index ON invites(created_by);
     `,
   },
+  {
+    version: 7,
+    name: "user_ui_locale",
+    sql: `
+      ALTER TABLE users ADD COLUMN ui_locale TEXT CHECK (ui_locale IS NULL OR ui_locale IN ('en', 'fr'));
+    `,
+  },
 ];
 
 export const LATEST_DATABASE_MIGRATION =

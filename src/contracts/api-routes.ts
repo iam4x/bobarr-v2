@@ -250,6 +250,18 @@ export const apiRoutes = {
     never,
     { username: string; password?: string }
   >()("PATCH", "/auth/credentials"),
+  updateUiLocale: route<
+    {
+      id: number;
+      username: string;
+      rank: "admin" | "user";
+      createdAt: string;
+      lastLoginAt: string | null;
+      uiLocale: "en" | "fr" | null;
+    },
+    never,
+    { uiLocale: "en" | "fr" }
+  >()("PATCH", "/auth/ui-locale"),
   previewInvite: route<
     { status: "open"; expiresAt: string },
     { token: string }
@@ -266,6 +278,7 @@ export const apiRoutes = {
       rank: "admin" | "user";
       createdAt: string;
       lastLoginAt: string | null;
+      uiLocale: "en" | "fr" | null;
     }>;
     invites: Array<{
       id: string;
@@ -290,6 +303,7 @@ export const apiRoutes = {
       rank: "admin" | "user";
       createdAt: string;
       lastLoginAt: string | null;
+      uiLocale: "en" | "fr" | null;
     },
     never,
     { rank: "admin" | "user" }

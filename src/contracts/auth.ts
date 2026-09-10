@@ -33,6 +33,8 @@ export const LoginRequestSchema = z
 
 export const RankSchema = z.enum(["admin", "user"]).openapi("Rank");
 
+export const UiLocaleSchema = z.enum(["en", "fr"]).openapi("UiLocale");
+
 export const AccountSchema = z
   .object({
     id: z.number().int().positive(),
@@ -40,6 +42,7 @@ export const AccountSchema = z
     rank: RankSchema,
     createdAt: IsoDateTimeSchema,
     lastLoginAt: IsoDateTimeSchema.nullable(),
+    uiLocale: UiLocaleSchema.nullable(),
   })
   .openapi("Account");
 
@@ -99,6 +102,13 @@ export const UpdateCredentialsResponseSchema = z
     username: UsernameSchema,
   })
   .openapi("UpdateCredentialsResponse");
+
+export const UpdateUiLocaleRequestSchema = z
+  .object({
+    uiLocale: UiLocaleSchema,
+  })
+  .strict()
+  .openapi("UpdateUiLocaleRequest");
 
 export const InvitePreviewSchema = z
   .object({
@@ -199,6 +209,8 @@ export type UpdateCredentialsRequest = z.infer<
 >;
 export type Account = z.infer<typeof AccountSchema>;
 export type Rank = z.infer<typeof RankSchema>;
+export type UiLocale = z.infer<typeof UiLocaleSchema>;
+export type UpdateUiLocaleRequest = z.infer<typeof UpdateUiLocaleRequestSchema>;
 export type ClientCapabilities = z.infer<typeof ClientCapabilitiesSchema>;
 export type AuthSession = z.infer<typeof AuthSessionSchema>;
 export type CurrentSession = z.infer<typeof CurrentSessionSchema>;

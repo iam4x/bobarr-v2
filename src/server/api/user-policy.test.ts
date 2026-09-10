@@ -4,9 +4,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import { initializeBackend } from "./initialize";
 import {
+  AccountSchema,
   ApiErrorEnvelopeSchema,
   AuthSessionSchema,
   CreatedInviteSchema,
+  CurrentSessionSchema,
   InvitePreviewSchema,
   LibraryItemSchema,
   UsersResponseSchema,
@@ -27,6 +29,7 @@ describe("user ranks, invites, and ownership", () => {
       id: 1,
       username: "admin",
       rank: "admin",
+      uiLocale: null,
     });
     expect(admin.session.capabilities.canManageSettings).toBe(true);
 
@@ -365,6 +368,64 @@ describe("user ranks, invites, and ownership", () => {
     const body = LibraryItemSchema.parse(await response.json());
     expect(body.createdByUserId).toBe(1);
     expect(body.ownedByMe).toBe(true);
+  });
+
+  test("regular users can patch their own UI locale", async () => {
+    const runtime = await createRuntime();
+    const admin = await setupAdmin(runtime);
+    const friend = await inviteFriend(runtime, admin.headers);
+    expect(friend.session.user.uiLocale).toBeNull();
+
+    const patched = await jsonRequest(
+      runtime,
+      "/api/v1/auth/ui-locale",
+      "PATCH",
+      { uiLocale: "fr" },
+      friend.headers,
+    );
+    expect(patched.status).toBe(200);
+    expect(AccountSchema.parse(await patched.json())).toMatchObject({
+      id: friend.session.user.id,
+      username: "friend",
+      rank: "user",
+      uiLocale: "fr",
+    });
+
+    const me = await runtime.app.request("/api/v1/auth/me", {
+      headers: { cookie: friend.headers.cookie },
+    });
+    expect(me.status).toBe(200);
+    expect(CurrentSessionSchema.parse(await me.json()).user.uiLocale).toBe(
+      "fr",
+    );
+
+    const rejected = await jsonRequest(
+      runtime,
+      "/api/v1/auth/ui-locale",
+      "PATCH",
+      { uiLocale: "de" },
+      friend.headers,
+    );
+    expect(rejected.status).toBe(422);
+
+    const rankPatch = await jsonRequest(
+      runtime,
+      `/api/v1/users/${friend.session.user.id}`,
+      "PATCH",
+      { rank: "user", uiLocale: "en" },
+      admin.headers,
+    );
+    expect(rankPatch.status).toBe(422);
+  });
+
+  test("migration 7 adds a nullable ui_locale column", async () => {
+    const runtime = await createRuntime();
+    expect(runtime.database.migrationVersion).toBe(7);
+    const columns = runtime.database.sqlite
+      .query<{ name: string; notnull: number }, []>("PRAGMA table_info(users)")
+      .all();
+    const uiLocale = columns.find((column) => column.name === "ui_locale");
+    expect(uiLocale).toMatchObject({ name: "ui_locale", notnull: 0 });
   });
 });
 

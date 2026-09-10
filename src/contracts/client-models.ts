@@ -36,6 +36,7 @@ export interface Session {
     rank: "admin" | "user";
     createdAt?: string;
     lastLoginAt?: string | null;
+    uiLocale?: "en" | "fr" | null;
   };
   capabilities?: {
     rank: "admin" | "user";

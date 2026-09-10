@@ -55,12 +55,12 @@ describe("staged database restore", () => {
     expect(listed[0]).toMatchObject({
       name: "bobarr-2026-07-21T12-00-00-000Z.sqlite",
       verified: true,
-      migrationVersion: 6,
+      migrationVersion: 7,
     });
 
     const staged = await restore.stageRestore(candidateBytes);
     expect(staged).toMatchObject({
-      migrationVersion: 6,
+      migrationVersion: 7,
       restartRequired: true,
     });
     expect(await restore.getStagedRestore()).toEqual(staged);

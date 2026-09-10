@@ -36,6 +36,13 @@
       "when": 1784665200000,
       "tag": "0004_users_and_ownership",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1784665800000,
+      "tag": "0005_user_ui_locale",
+      "breakpoints": true
     }
   ]
 }

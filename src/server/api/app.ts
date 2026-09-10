@@ -35,6 +35,7 @@ import {
 } from "./session-http";
 import { registerUserRoutes } from "./users";
 import {
+  AccountSchema,
   ApiErrorEnvelopeSchema,
   AppSettingsSchema,
   type AppSettings,
@@ -72,6 +73,7 @@ import {
   UpdateSettingsRequestSchema,
   UpdateCredentialsRequestSchema,
   UpdateCredentialsResponseSchema,
+  UpdateUiLocaleRequestSchema,
 } from "../../contracts";
 import { requireAdmin } from "../auth/policy";
 import { AppError, notFound, systemClock } from "../core";
@@ -255,6 +257,17 @@ const routes = {
         UpdateCredentialsResponseSchema,
         "Updated sign-in credentials",
       ),
+      default: errorResponse,
+    },
+  }),
+  updateUiLocale: createRoute({
+    method: "patch",
+    path: "/api/v1/auth/ui-locale",
+    tags: ["auth"],
+    security: [{ sessionCookie: [] }],
+    request: { body: jsonBody(UpdateUiLocaleRequestSchema) },
+    responses: {
+      200: jsonResponse(AccountSchema, "Updated UI language"),
       default: errorResponse,
     },
   }),
@@ -578,6 +591,13 @@ export function createApiApp(
       context.req.valid("json"),
     );
     return context.json(result, 200);
+  });
+  app.openapi(routes.updateUiLocale, (context) => {
+    const account = dependencies.auth.updateUiLocale(
+      context.get("auth").actor,
+      context.req.valid("json").uiLocale,
+    );
+    return context.json(account, 200);
   });
   registerUserRoutes(app, dependencies);
   app.openapi(routes.listSecrets, (context) => {
