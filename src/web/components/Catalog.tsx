@@ -20,7 +20,7 @@ import {
   Search,
   Star,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 
 import { ReleaseSearchPanel } from "./ReleaseSearchPanel";
@@ -298,6 +298,7 @@ export function MediaDetailDialog({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showReleases, setShowReleases] = useState(false);
+  const releasePanelRef = useRef<HTMLDivElement>(null);
   const [message, setMessage] = useState<string>();
   const [addedLibraryId, setAddedLibraryId] = useState<string>();
   const [selectedSeason, setSelectedSeason] = useState<number>();
@@ -362,6 +363,26 @@ export function MediaDetailDialog({
       void queryClient.invalidateQueries({ queryKey: ["catalog"] });
     },
   });
+
+  useEffect(() => {
+    if (!showReleases) return;
+    const node = releasePanelRef.current;
+    if (!node) return;
+    const frame = requestAnimationFrame(() => {
+      const scroller = node.closest(".dialog");
+      if (scroller instanceof HTMLElement) {
+        const top =
+          node.getBoundingClientRect().top -
+          scroller.getBoundingClientRect().top +
+          scroller.scrollTop -
+          12;
+        scroller.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+        return;
+      }
+      node.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [showReleases]);
 
   useEffect(() => {
     setSelectedSeason(undefined);
@@ -747,17 +768,19 @@ export function MediaDetailDialog({
           ) : null}
 
           {showReleases ? (
-            <ReleaseSearchPanel
-              key={`${item.kind}:${item.tmdbId}:${selectedSeason ?? "title"}`}
-              target={{
-                tmdbId: item.tmdbId,
-                kind: item.kind,
-                ...(item.kind === "series" && selectedSeason !== undefined
-                  ? { season: selectedSeason }
-                  : {}),
-              }}
-              onQueued={() => setMessage(undefined)}
-            />
+            <div ref={releasePanelRef}>
+              <ReleaseSearchPanel
+                key={`${item.kind}:${item.tmdbId}:${selectedSeason ?? "title"}`}
+                target={{
+                  tmdbId: item.tmdbId,
+                  kind: item.kind,
+                  ...(item.kind === "series" && selectedSeason !== undefined
+                    ? { season: selectedSeason }
+                    : {}),
+                }}
+                onQueued={() => setMessage(undefined)}
+              />
+            </div>
           ) : null}
         </div>
       ) : null}
