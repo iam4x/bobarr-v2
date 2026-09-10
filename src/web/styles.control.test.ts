@@ -31,5 +31,29 @@ describe("control spacing tokens", () => {
     expect(css).toMatch(
       /\.backup-actions\s*\{[^}]*gap:\s*var\(--control-gap\)/,
     );
+    expect(css).toMatch(
+      /\.backup-actions \+ \.backup-list\s*\{[^}]*margin-top:\s*12px/,
+    );
+  });
+
+  it("vertically centers the discover search icon", () => {
+    expect(css).toMatch(
+      /\.discover-search-jump\s*\{[^}]*align-items:\s*center/,
+    );
+    expect(css).toMatch(
+      /\.discover-search-jump > svg\s*\{[^}]*flex:\s*0 0 auto/,
+    );
+  });
+
+  it("keeps calendar release cards compact", () => {
+    expect(css).toMatch(
+      /\.calendar-item\s*\{[^}]*grid-template-columns:\s*36px 1fr auto/,
+    );
+    expect(css).toMatch(/\.calendar-item__poster\s*\{[^}]*height:\s*50px/);
+  });
+
+  it("does not keep an unstyled account username in the rail footer", () => {
+    expect(css).not.toContain("nav-rail__username");
+    expect(css).not.toContain("nav-rail__account");
   });
 });

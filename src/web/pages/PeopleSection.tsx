@@ -20,19 +20,28 @@ export function PeopleSection({
     queryKey: ["users"],
     queryFn: ({ signal }) => api.get("listUsers", { signal }),
   });
-  const [inviteLink, setInviteLink] = useState<string>();
+  const [createdInvite, setCreatedInvite] = useState<{
+    id: string;
+    url: string;
+    expiresAt: string;
+  }>();
   const createInvite = useMutation({
     mutationFn: () => api.post("createInvite", { body: {} }),
     onSuccess: (invite) => {
-      setInviteLink(`${window.location.origin}/invite?token=${invite.token}`);
+      setCreatedInvite({
+        id: invite.id,
+        url: `${window.location.origin}/invite?token=${invite.token}`,
+        expiresAt: invite.expiresAt,
+      });
       setNotice("Invite link created. Copy it now; it is shown only once.");
       void queryClient.invalidateQueries({ queryKey: ["users"] });
     },
   });
   const revokeInvite = useMutation({
     mutationFn: (id: string) => api.delete("revokeInvite", { params: { id } }),
-    onSuccess: () => {
+    onSuccess: (_, id) => {
       setNotice("Invite revoked.");
+      setCreatedInvite((current) => (current?.id === id ? undefined : current));
       void queryClient.invalidateQueries({ queryKey: ["users"] });
     },
   });
@@ -60,9 +69,17 @@ export function PeopleSection({
     },
   });
   const currentId = sessionQuery.data?.user?.id;
-  const openInvites =
+  const listedOpenInvites =
     peopleQuery.data?.invites.filter((invite) => invite.status === "open") ??
     [];
+  const openInvites =
+    createdInvite &&
+    !listedOpenInvites.some((invite) => invite.id === createdInvite.id)
+      ? [
+          { id: createdInvite.id, expiresAt: createdInvite.expiresAt },
+          ...listedOpenInvites,
+        ]
+      : listedOpenInvites;
 
   return (
     <section className="settings-section" id="people">
@@ -142,15 +159,6 @@ export function PeopleSection({
         >
           <UserPlus size={16} /> Invite someone
         </Button>
-        {inviteLink ? (
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => void navigator.clipboard.writeText(inviteLink)}
-          >
-            <Copy size={16} /> Copy invite link
-          </Button>
-        ) : null}
       </div>
       {openInvites.length > 0 ? (
         <ul className="backup-list">
@@ -160,15 +168,29 @@ export function PeopleSection({
                 <strong>Open invite</strong>
                 <small>Expires {formatDate(invite.expiresAt)}</small>
               </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                busy={revokeInvite.isPending}
-                onClick={() => revokeInvite.mutate(invite.id)}
-              >
-                Revoke
-              </Button>
+              <div className="backup-list__actions">
+                {createdInvite?.id === invite.id ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      void navigator.clipboard.writeText(createdInvite.url)
+                    }
+                  >
+                    <Copy size={16} /> Copy invite link
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  busy={revokeInvite.isPending}
+                  onClick={() => revokeInvite.mutate(invite.id)}
+                >
+                  Revoke
+                </Button>
+              </div>
             </li>
           ))}
         </ul>

@@ -588,16 +588,6 @@ textarea:focus-visible {
   margin-top: auto;
   padding: 0 7px;
 }
-.nav-rail__account {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.nav-rail__username {
-  color: var(--text-soft);
-  font-size: 12px;
-  padding-inline: 8px;
-}
 .service-pill {
   min-height: var(--control-height);
   display: flex;
@@ -2978,12 +2968,16 @@ textarea:focus-visible {
 }
 .discover-search-jump {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: var(--control-gap);
   padding: 4px 4px 4px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
+}
+.discover-search-jump > svg {
+  flex: 0 0 auto;
+  color: var(--text-muted);
 }
 .discover-search-jump input {
   flex: 1;
@@ -3498,18 +3492,18 @@ textarea:focus-visible {
 .calendar-list {
   display: flex;
   flex-direction: column;
-  gap: 31px;
+  gap: 20px;
 }
 .calendar-day {
   display: grid;
-  grid-template-columns: 145px 1fr;
-  gap: 23px;
+  grid-template-columns: 120px 1fr;
+  gap: 16px;
 }
 .calendar-day > header {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  padding-top: 10px;
+  gap: 4px;
+  padding-top: 4px;
 }
 .calendar-day > header > span:last-child {
   color: var(--text-muted);
@@ -3530,29 +3524,29 @@ textarea:focus-visible {
 .calendar-day__items {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 .calendar-item {
   min-width: 0;
   display: grid;
-  grid-template-columns: 55px 1fr auto;
+  grid-template-columns: 36px 1fr auto;
   align-items: center;
-  gap: 12px;
-  padding: 9px;
+  gap: 10px;
+  padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
 }
 .calendar-item__poster {
-  width: 55px;
-  height: 76px;
+  width: 36px;
+  height: 50px;
   overflow: hidden;
   display: grid;
   place-items: center;
-  border-radius: 8px;
+  border-radius: 6px;
   color: var(--text-muted);
   background: var(--surface-3);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
 }
 .calendar-item__poster img {
@@ -3562,21 +3556,21 @@ textarea:focus-visible {
 }
 .calendar-item h3 {
   overflow: hidden;
-  margin-bottom: 3px;
+  margin-bottom: 1px;
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .calendar-item p {
   overflow: hidden;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   color: var(--text-muted);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .calendar-item > svg {
-  margin-right: 7px;
+  margin-right: 4px;
   color: var(--text-muted);
 }
 
@@ -4273,6 +4267,9 @@ textarea:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: var(--control-gap);
+  margin-top: 12px;
+}
+.backup-actions + .backup-list {
   margin-top: 12px;
 }
 .backup-list small,
