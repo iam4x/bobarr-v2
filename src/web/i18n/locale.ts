@@ -46,17 +46,8 @@ export function localeAfterAuth(sources: {
   navigator?: unknown;
   pending: boolean;
 }): { locale: UiLocale; shouldPersist: boolean } {
-  if (sources.pending) {
-    return {
-      locale: resolveUiLocale({
-        guest: sources.guest,
-        navigator: sources.navigator,
-      }),
-      shouldPersist: true,
-    };
-  }
   const profile = parseUiLocale(sources.user);
-  if (profile === null) {
+  if (sources.pending || profile === null) {
     return {
       locale: resolveUiLocale({
         guest: sources.guest,

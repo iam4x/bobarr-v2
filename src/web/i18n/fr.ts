@@ -5,6 +5,10 @@ export const fr = {
     label: "Langue",
     switch: "Langue de l’interface",
   },
+  crash: {
+    title: "L’interface s’est arrêtée de façon inattendue",
+    reload: "Recharger Bobarr",
+  },
   common: {
     loading: "Chargement",
     loadingEllipsis: "Chargement…",

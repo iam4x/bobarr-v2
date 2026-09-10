@@ -20,6 +20,7 @@ import { isAuthenticated, isSetupRequired } from "./api/normalize";
 import { AppShell, RootLoading } from "./components/AppShell";
 import { Brand } from "./components/Brand";
 import { Button } from "./components/ui";
+import { catalogs, readGuestLocale, resolveUiLocale } from "./i18n/locale";
 import { UiProvider, useUi } from "./i18n/ui";
 import { AccountPage } from "./pages/AccountPage";
 import { ActivityPage } from "./pages/ActivityPage";
@@ -143,16 +144,24 @@ class AppErrorBoundary extends Component<
 
   override render() {
     if (this.state.error) {
+      const messages =
+        catalogs[
+          resolveUiLocale({
+            guest: readGuestLocale(),
+            navigator:
+              typeof navigator === "undefined" ? undefined : navigator.language,
+          })
+        ];
       return (
         <main className="route-error">
           <Brand />
           <span className="route-error__icon">
             <AlertTriangle size={28} />
           </span>
-          <h1>The interface stopped unexpectedly</h1>
+          <h1>{messages.crash.title}</h1>
           <p>{this.state.error.message}</p>
           <Button type="button" onClick={() => window.location.reload()}>
-            <RotateCcw size={17} /> Reload Bobarr
+            <RotateCcw size={17} /> {messages.crash.reload}
           </Button>
         </main>
       );

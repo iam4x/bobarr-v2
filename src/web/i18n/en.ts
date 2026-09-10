@@ -3,6 +3,10 @@ export const en = {
     label: "Language",
     switch: "Interface language",
   },
+  crash: {
+    title: "The interface stopped unexpectedly",
+    reload: "Reload Bobarr",
+  },
   common: {
     loading: "Loading",
     loadingEllipsis: "Loading…",

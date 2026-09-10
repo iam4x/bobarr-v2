@@ -1,4 +1,3 @@
-import type { Session } from "../types";
 import type { Messages } from "./en";
 import type { ReactNode } from "react";
 
@@ -72,14 +71,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
   const persistLocale = useMutation({
     mutationFn: (uiLocale: UiLocale) =>
       api.patch("updateUiLocale", { body: { uiLocale } }),
-    onSuccess: (account) => {
-      queryClient.setQueryData(
-        ["auth", "session"],
-        (current: Session | undefined) => {
-          if (current === undefined) return { user: account };
-          return { ...current, user: { ...current.user, ...account } };
-        },
-      );
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["auth", "session"] });
     },
   });
@@ -114,7 +106,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
     authenticated,
     guestLocale,
     navigatorLanguage,
-    persistLocale,
+    persistLocale.mutate,
     profileLocale,
     sessionQuery.data?.user?.id,
     sessionQuery.isFetched,
