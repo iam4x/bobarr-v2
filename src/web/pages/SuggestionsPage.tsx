@@ -16,11 +16,7 @@ import { imageUrl, initials } from "../lib/format";
 
 export type SuggestionKind = "all" | "movie" | "series";
 
-const suggestionKinds: Array<{ value: SuggestionKind; label: string }> = [
-  { value: "all", label: "All" },
-  { value: "movie", label: "Movies" },
-  { value: "series", label: "TV Shows" },
-];
+const suggestionKinds: SuggestionKind[] = ["all", "movie", "series"];
 
 export function suggestionGroupsForKind(
   groups: CatalogRecommendationGroup[] | undefined,
@@ -137,8 +133,9 @@ export function SuggestionKindTabs({
                   {counts[option.value]}
                 </span>
                 <span className="sr-only">
-                  {counts[option.value]} suggestion
-                  {counts[option.value] === 1 ? "" : "s"}
+                  {messages.suggestions.suggestionCount({
+                    count: counts[option.value],
+                  })}
                 </span>
               </>
             ) : null}
@@ -166,8 +163,12 @@ export function SuggestionShelf({
   const sourcePoster = imageUrl(source.posterUrl, "w342");
   const headingId = `suggestion-source-${source.kind}-${source.tmdbId}`;
   const railId = `${headingId}-rail`;
-  const sourceKind = source.kind === "movie" ? "Movie" : "TV show";
-  const sourceYear = source.year ? String(source.year) : "Year TBA";
+  const { messages } = useUi();
+  const sourceKind =
+    source.kind === "movie" ? messages.kind.movie : messages.kind.tvShow;
+  const sourceYear = source.year
+    ? String(source.year)
+    : messages.catalog.yearTba;
   const libraryMix = source.id.startsWith("legacy-library-mix:");
 
   const updateRailState = useCallback((): void => {
@@ -221,18 +222,36 @@ export function SuggestionShelf({
           <div className="suggestion-shelf__copy">
             <span className="eyebrow">
               {libraryMix
-                ? "Based on your library"
-                : "Inspired by your library"}
+                ? messages.suggestions.basedOnLibrary
+                : messages.suggestions.inspiredByLibrary}
             </span>
             <h2 id={headingId}>
               {libraryMix
-                ? `More ${source.kind === "movie" ? "movies" : "TV shows"} based on your library`
-                : `Because “${source.title}” is in your library`}
+                ? messages.suggestions.moreBasedOnLibrary({
+                    kind:
+                      source.kind === "movie"
+                        ? messages.library.moviesLabel
+                        : messages.kind.tvShows,
+                  })
+                : messages.suggestions.becauseInLibrary({
+                    title: source.title,
+                  })}
             </h2>
             <p>
-              {libraryMix ? null : `${sourceYear} · ${sourceKind} · `}
-              {group.items.length} suggestion
-              {group.items.length === 1 ? "" : "s"}
+              {libraryMix
+                ? null
+                : messages.suggestions.sourceMeta({
+                    year: sourceYear,
+                    kind: sourceKind,
+                    count: messages.suggestions.suggestionCount({
+                      count: group.items.length,
+                    }),
+                  })}
+              {libraryMix
+                ? messages.suggestions.suggestionCount({
+                    count: group.items.length,
+                  })
+                : null}
             </p>
           </div>
         </div>
@@ -240,12 +259,14 @@ export function SuggestionShelf({
           <div
             className="suggestion-shelf__controls"
             role="group"
-            aria-label={`Scroll suggestions inspired by ${source.title}`}
+            aria-label={messages.suggestions.scrollInspired({
+              title: source.title,
+            })}
             hidden={!railState.overflow}
           >
             <IconButton
               type="button"
-              label={`Scroll ${source.title} suggestions left`}
+              label={messages.suggestions.scrollLeft({ title: source.title })}
               aria-controls={railId}
               disabled={!railState.canScrollLeft}
               onClick={() => scrollRail(-1)}
@@ -254,7 +275,7 @@ export function SuggestionShelf({
             </IconButton>
             <IconButton
               type="button"
-              label={`Scroll ${source.title} suggestions right`}
+              label={messages.suggestions.scrollRight({ title: source.title })}
               aria-controls={railId}
               disabled={!railState.canScrollRight}
               onClick={() => scrollRail(1)}
@@ -285,11 +306,12 @@ export function SuggestionShelf({
 }
 
 function SuggestionShelvesSkeleton() {
+  const { messages } = useUi();
   return (
     <div
       className="suggestion-groups"
       role="status"
-      aria-label="Loading suggestion shelves"
+      aria-label={messages.suggestions.loadingShelves}
       aria-busy="true"
     >
       {[0, 1].map((shelf) => (
@@ -356,14 +378,11 @@ export function SuggestionsPage() {
     setCursor(nextCursor);
   }
 
-  let description =
-    "Recommendations organized around the movies and shows you already chose.";
+  let description = messages.suggestions.defaultDescription;
   if (result?.personalized) {
-    description =
-      "Every shelf starts with a movie or show already in your library.";
+    description = messages.suggestions.personalizedDescription;
   } else if (result && result.sourceTotal === 0) {
-    description =
-      "Add a few movies or shows and Bobarr will build recommendation shelves around them.";
+    description = messages.suggestions.emptyLibraryDescription;
   }
 
   return (
@@ -379,7 +398,8 @@ export function SuggestionsPage() {
             busy={suggestionsQuery.isFetching}
             onClick={showNextMix}
           >
-            <RefreshCw size={17} aria-hidden="true" /> New mix
+            <RefreshCw size={17} aria-hidden="true" />{" "}
+            {messages.suggestions.newMix}
           </Button>
         ) : undefined
       }
@@ -393,21 +413,26 @@ export function SuggestionsPage() {
         />
         {counts ? (
           <p className="suggestions-toolbar__summary" aria-live="polite">
-            {counts[kind]} suggestion{counts[kind] === 1 ? "" : "s"} from{" "}
-            {visibleGroups.length} library title
-            {visibleGroups.length === 1 ? "" : "s"}
+            {messages.suggestions.toolbarSummary({
+              suggestions: messages.suggestions.suggestionCount({
+                count: counts[kind],
+              }),
+              titles: messages.suggestions.libraryTitleCount({
+                count: visibleGroups.length,
+              }),
+            })}
           </p>
         ) : null}
       </div>
       {suggestionKinds.map((option) => {
-        const active = option.value === kind;
+        const active = option === kind;
         return (
           <section
-            key={option.value}
-            id={`suggestions-panel-${option.value}`}
+            key={option}
+            id={`suggestions-panel-${option}`}
             className="suggestions-results"
             role="tabpanel"
-            aria-labelledby={`suggestions-tab-${option.value}`}
+            aria-labelledby={`suggestions-tab-${option}`}
             tabIndex={0}
             hidden={!active}
           >
@@ -417,7 +442,7 @@ export function SuggestionsPage() {
             {active && suggestionsQuery.isError ? (
               <ErrorState
                 error={suggestionsQuery.error}
-                title="Suggestions could not be loaded"
+                title={messages.suggestions.loadError}
                 onRetry={() => void suggestionsQuery.refetch()}
               />
             ) : null}
@@ -425,20 +450,20 @@ export function SuggestionsPage() {
               <EmptyState
                 title={
                   result.sourceTotal === 0
-                    ? "Your recommendation shelves are waiting"
-                    : "No fresh suggestions in this mix"
+                    ? messages.suggestions.shelvesWaiting
+                    : messages.suggestions.noFreshMix
                 }
                 description={
                   result.sourceTotal === 0
-                    ? "Add a movie or show to your library and Bobarr will use it as the starting point for new suggestions."
-                    : "Explore the catalog for something new, or try another mix when one is available."
+                    ? messages.suggestions.addStartingPoint
+                    : messages.suggestions.tryAnotherMix
                 }
                 action={
                   <Link
                     className="button button--primary button--md"
                     to="/discover"
                   >
-                    Explore titles
+                    {messages.suggestions.exploreTitles}
                   </Link>
                 }
               />
@@ -448,8 +473,13 @@ export function SuggestionsPage() {
             result.groups.length > 0 &&
             visibleGroups.length === 0 ? (
               <EmptyState
-                title={`No ${kind === "movie" ? "movie" : "TV show"} shelves in this mix`}
-                description="There are suggestions under another tab, or you can explore the catalog for a different starting point."
+                title={messages.suggestions.noKindShelves({
+                  kind:
+                    kind === "movie"
+                      ? messages.kind.movie
+                      : messages.kind.tvShow,
+                })}
+                description={messages.suggestions.emptyOtherTab}
                 action={
                   <div className="suggestions-empty-actions">
                     <Button
@@ -457,13 +487,13 @@ export function SuggestionsPage() {
                       variant="secondary"
                       onClick={() => changeKind("all")}
                     >
-                      View all suggestions
+                      {messages.suggestions.viewAll}
                     </Button>
                     <Link
                       className="button button--primary button--md"
                       to="/discover"
                     >
-                      Explore titles
+                      {messages.suggestions.exploreTitles}
                     </Link>
                   </div>
                 }

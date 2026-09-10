@@ -1,5 +1,4 @@
 import type { ApiPageInfo } from "../../contracts";
-import type { Messages } from "../i18n/en";
 import type { ActivityEvent, Download, Job, JobDetails } from "../types";
 
 import {
@@ -43,6 +42,7 @@ import {
   SegmentedControl,
   SelectControl,
 } from "../components/ui";
+import { en, type Messages } from "../i18n/en";
 import { useUi } from "../i18n/ui";
 import {
   formatBytes,
@@ -79,12 +79,10 @@ const MANUAL_JOB_VALUES = [
   "maintenance.cleanup.v1",
 ] as const;
 
-export function formatJobKind(kind: string, messages?: Messages): string {
-  if (messages) {
-    const labels: Record<string, string> = messages.activity.jobKinds;
-    const labeled = labels[kind];
-    if (labeled) return labeled;
-  }
+export function formatJobKind(kind: string, messages: Messages = en): string {
+  const labels: Record<string, string> = messages.activity.jobKinds;
+  const labeled = labels[kind];
+  if (labeled) return labeled;
   return kind.replaceAll(/[._-]+/g, " ");
 }
 
@@ -160,12 +158,26 @@ function DownloadCard({
   busyFileIndex?: number;
   onFileWanted: (index: number, wanted: boolean) => void;
 }) {
+  const { messages } = useUi();
   const progress = toPercent(download.progress);
   const canPause = ["queued", "downloading", "checking", "seeding"].includes(
     download.state,
   );
   const canResume = download.state === "paused";
   const canRetry = download.state === "failed";
+  const stateLabels: Record<string, string> = {
+    searching: messages.status.searching,
+    queued: messages.status.queued,
+    downloading: messages.status.downloading,
+    organizing: messages.status.organizing,
+    available: messages.status.available,
+    missing: messages.status.missing,
+    failed: messages.status.failed,
+    paused: messages.status.paused,
+    seeding: messages.status.seeding,
+    checking: messages.status.checking,
+    completed: messages.status.completed,
+  };
   return (
     <article className="download-card">
       <div className="download-card__icon" aria-hidden="true">
@@ -175,13 +187,15 @@ function DownloadCard({
         <div className="download-card__heading">
           <div>
             <h3>{download.title}</h3>
-            <Badge tone={downloadTone(download.state)}>{download.state}</Badge>
+            <Badge tone={downloadTone(download.state)}>
+              {stateLabels[download.state] ?? download.state}
+            </Badge>
           </div>
           <strong>{progress}%</strong>
         </div>
         <ProgressBar
           value={progress}
-          label={`${download.title} download progress`}
+          label={messages.common.downloadProgress({ title: download.title })}
         />
         <div className="download-card__stats">
           <span>
@@ -191,10 +205,14 @@ function DownloadCard({
             <ArrowUp size={14} /> {formatRate(download.uploadRate)}
           </span>
           <span>
-            {formatBytes(download.downloadedBytes)} /{" "}
-            {formatBytes(download.totalBytes)}
+            {messages.common.bytesOf({
+              from: formatBytes(download.downloadedBytes),
+              to: formatBytes(download.totalBytes),
+            })}
           </span>
-          <span>ETA {formatEta(download.etaSeconds)}</span>
+          <span>
+            {messages.common.eta({ value: formatEta(download.etaSeconds) })}
+          </span>
         </div>
         {download.error ? (
           <div className="download-card__error">
@@ -205,7 +223,8 @@ function DownloadCard({
         {download.files && download.files.length > 1 ? (
           <details className="download-files">
             <summary>
-              <Files size={15} aria-hidden="true" /> Choose files ·{" "}
+              <Files size={15} aria-hidden="true" />{" "}
+              {messages.activity.chooseFiles} ·{" "}
               {download.files.filter((file) => file.wanted).length}/
               {download.files.length}
             </summary>
@@ -223,8 +242,11 @@ function DownloadCard({
                   <span>
                     <strong>{file.name}</strong>
                     <small>
-                      {formatBytes(file.bytesCompleted)} /{" "}
-                      {formatBytes(file.length)} · {file.priority} priority
+                      {messages.common.bytesOf({
+                        from: formatBytes(file.bytesCompleted),
+                        to: formatBytes(file.length),
+                      })}{" "}
+                      · {messages.activity.priority({ value: file.priority })}
                     </small>
                   </span>
                 </label>
@@ -243,7 +265,7 @@ function DownloadCard({
               busy={busyAction === "pause"}
               onClick={() => onAction("pause")}
             >
-              <CirclePause size={16} /> Pause
+              <CirclePause size={16} /> {messages.activity.pause}
             </Button>
           ) : null}
           {canResume ? (
@@ -254,7 +276,7 @@ function DownloadCard({
               busy={busyAction === "resume"}
               onClick={() => onAction("resume")}
             >
-              <CirclePlay size={16} /> Resume
+              <CirclePlay size={16} /> {messages.activity.resume}
             </Button>
           ) : null}
           {canRetry ? (
@@ -265,11 +287,11 @@ function DownloadCard({
               busy={busyAction === "retry"}
               onClick={() => onAction("retry")}
             >
-              <RotateCcw size={16} /> Retry
+              <RotateCcw size={16} /> {messages.activity.retry}
             </Button>
           ) : null}
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-            <Trash2 size={16} /> Remove
+            <Trash2 size={16} /> {messages.activity.remove}
           </Button>
         </div>
       ) : null}
@@ -292,6 +314,7 @@ function AddDownloadDialog({
   open: boolean;
   onClose: () => void;
 }) {
+  const { messages } = useUi();
   const queryClient = useQueryClient();
   const [source, setSource] = useState<"magnet" | "torrent">("magnet");
   const [magnet, setMagnet] = useState("");
@@ -302,12 +325,12 @@ function AddDownloadDialog({
     mutationFn: async () => {
       if (source === "magnet") {
         if (!magnet.trim().startsWith("magnet:?"))
-          throw new Error("Enter a valid magnet URI.");
+          throw new Error(messages.activity.invalidMagnet);
         return api.post("createDownload", {
           body: { magnet: magnet.trim() },
         });
       }
-      if (!file) throw new Error("Choose a .torrent file first.");
+      if (!file) throw new Error(messages.activity.chooseTorrentFirst);
       const form = new FormData();
       form.set("torrent", file);
       return api.post("createDownload", { body: form });
@@ -332,25 +355,25 @@ function AddDownloadDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      title="Add a download"
-      description="Only magnets and capped torrent metainfo files are accepted."
+      title={messages.activity.addDownload}
+      description={messages.activity.addDownloadDescription}
       size="sm"
     >
       <form className="stack" onSubmit={submit}>
         <SegmentedControl
-          label="Download source"
+          label={messages.activity.downloadSource}
           value={source}
           options={[
-            { value: "magnet", label: "Magnet link" },
-            { value: "torrent", label: ".torrent file" },
+            { value: "magnet", label: messages.activity.magnetLink },
+            { value: "torrent", label: messages.activity.torrentFile },
           ]}
           onChange={setSource}
         />
         {source === "magnet" ? (
           <Field
-            label="Magnet URI"
+            label={messages.activity.magnetUri}
             value={magnet}
-            placeholder="magnet:?xt=urn:btih:…"
+            placeholder={messages.activity.magnetPlaceholder}
             spellCheck={false}
             autoComplete="off"
             onChange={(event) => setMagnet(event.target.value)}
@@ -359,8 +382,8 @@ function AddDownloadDialog({
           <label className="file-drop">
             <FileUp size={22} aria-hidden="true" />
             <span>
-              <strong>{file?.name ?? "Choose a .torrent file"}</strong>
-              <small>Metainfo only · size limit is enforced by Bobarr</small>
+              <strong>{file?.name ?? messages.activity.chooseTorrent}</strong>
+              <small>{messages.activity.torrentHint}</small>
             </span>
             <input
               type="file"
@@ -376,7 +399,7 @@ function AddDownloadDialog({
         ) : null}
         <div className="dialog-actions">
           <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
+            {messages.common.cancel}
           </Button>
           <Button type="submit" busy={addMutation.isPending}>
             {source === "magnet" ? (
@@ -384,7 +407,7 @@ function AddDownloadDialog({
             ) : (
               <FileUp size={16} />
             )}{" "}
-            Add download
+            {messages.activity.addDownloadAction}
           </Button>
         </div>
       </form>
@@ -435,8 +458,13 @@ function JobsList({
               <p>
                 {job.state === "pending" &&
                 new Date(job.runAt).getTime() > Date.now()
-                  ? `Scheduled ${formatRelativeDate(job.runAt, locale)}`
-                  : `Attempt ${job.attempts} of ${job.maxAttempts}`}
+                  ? messages.activity.scheduled({
+                      when: formatRelativeDate(job.runAt, locale),
+                    })
+                  : messages.activity.attemptOf({
+                      attempts: job.attempts,
+                      max: job.maxAttempts,
+                    })}
               </p>
               {job.error ? (
                 <small className="danger-text">{job.error}</small>
@@ -452,7 +480,7 @@ function JobsList({
                   busy={busyJobId === job.id}
                   onClick={() => onRetry(job.id)}
                 >
-                  <RotateCcw size={15} /> Retry
+                  <RotateCcw size={15} /> {messages.activity.retry}
                 </Button>
               ) : null}
               {job.state === "pending" || job.state === "running" ? (
@@ -463,7 +491,7 @@ function JobsList({
                   busy={busyJobId === job.id}
                   onClick={() => onCancel(job.id)}
                 >
-                  Cancel
+                  {messages.common.cancel}
                 </Button>
               ) : null}
             </div>
@@ -485,40 +513,48 @@ function JobDetailsDialog({
   error: unknown;
   onClose: () => void;
 }) {
+  const { messages } = useUi();
   return (
     <Dialog
       open={loading || error !== null || job !== undefined}
-      title={job ? formatJobKind(job.type) : "Job details"}
-      description="Persisted execution state and lifecycle log for this background job."
+      title={
+        job ? formatJobKind(job.type, messages) : messages.activity.jobDetails
+      }
+      description={messages.activity.jobDetailsDescription}
       onClose={onClose}
       size="lg"
     >
-      {loading ? <InlineSpinner label="Loading job log…" /> : null}
+      {loading ? (
+        <InlineSpinner label={messages.activity.loadingJobLog} />
+      ) : null}
       {error ? <ErrorState error={error} /> : null}
       {job ? (
         <div className="job-details">
           <dl className="job-details__facts">
             <div>
-              <dt>Status</dt>
+              <dt>{messages.activity.jobStatus}</dt>
               <dd>{job.state}</dd>
             </div>
             <div>
-              <dt>Attempts</dt>
+              <dt>{messages.activity.attempts}</dt>
               <dd>
-                {job.attempts} of {job.maxAttempts}
+                {messages.activity.of({
+                  from: job.attempts,
+                  to: job.maxAttempts,
+                })}
               </dd>
             </div>
             <div>
-              <dt>Scheduled</dt>
+              <dt>{messages.activity.scheduledAt}</dt>
               <dd>{new Date(job.runAt).toLocaleString()}</dd>
             </div>
             <div>
-              <dt>Job ID</dt>
+              <dt>{messages.activity.jobId}</dt>
               <dd>{job.id}</dd>
             </div>
           </dl>
           <section>
-            <h3>Execution log</h3>
+            <h3>{messages.activity.executionLog}</h3>
             {job.logs.length ? (
               <ol className="job-log">
                 {job.logs.map((entry, index) => (
@@ -540,12 +576,12 @@ function JobDetailsDialog({
               </ol>
             ) : (
               <p className="job-details__empty-log">
-                No lifecycle entries were recorded for this older job.
+                {messages.activity.emptyJobLog}
               </p>
             )}
           </section>
           <details>
-            <summary>Job payload</summary>
+            <summary>{messages.activity.jobPayload}</summary>
             <pre>{JSON.stringify(job.payload ?? {}, null, 2)}</pre>
           </details>
         </div>
@@ -806,7 +842,7 @@ export function ActivityPage() {
   });
   const cancelMutation = useMutation({
     mutationFn: () => {
-      if (!cancelTarget) throw new Error("Select a download first.");
+      if (!cancelTarget) throw new Error(messages.activity.selectDownloadFirst);
       return api.delete("removeDownload", {
         params: { id: cancelTarget.id },
         body: { deleteData },
@@ -864,11 +900,11 @@ export function ActivityPage() {
   });
   const downloads =
     downloadsQuery.data?.pages.flatMap((page) => collectionItems(page)) ?? [];
-  let emptyDownloadsTitle = "Nothing is downloading";
+  let emptyDownloadsTitle = messages.activity.nothingDownloading;
   if (downloadFilter === "completed") {
-    emptyDownloadsTitle = "No completed downloads";
+    emptyDownloadsTitle = messages.activity.noCompletedDownloads;
   } else if (downloadFilter === "all") {
-    emptyDownloadsTitle = "No downloads yet";
+    emptyDownloadsTitle = messages.activity.noDownloadsYet;
   }
 
   useEffect(() => {
@@ -886,7 +922,7 @@ export function ActivityPage() {
       description={messages.activity.description}
       actions={
         <Button type="button" onClick={() => setAddOpen(true)}>
-          <Plus size={17} /> Add download
+          <Plus size={17} /> {messages.activity.addDownloadAction}
         </Button>
       }
       wide
@@ -898,10 +934,12 @@ export function ActivityPage() {
           options={[
             {
               value: "downloads",
-              label: `Downloads${downloads.length ? ` · ${downloads.length}` : ""}`,
+              label: messages.activity.downloadsWithCount({
+                count: downloads.length,
+              }),
             },
-            { value: "jobs", label: "Jobs" },
-            { value: "history", label: "History" },
+            { value: "jobs", label: messages.activity.jobs },
+            { value: "history", label: messages.activity.history },
           ]}
           onChange={setTab}
         />
@@ -918,14 +956,14 @@ export function ActivityPage() {
             variant="ghost"
             onClick={() => void queryClient.invalidateQueries()}
           >
-            <RefreshCw size={16} /> Refresh
+            <RefreshCw size={16} /> {messages.common.refresh}
           </Button>
         </div>
       </div>
       {tab === "downloads" ? (
         <>
           {downloadsQuery.isLoading ? (
-            <InlineSpinner label="Contacting Transmission…" />
+            <InlineSpinner label={messages.activity.contactingTransmission} />
           ) : null}
           {downloadsQuery.isError ? (
             <ErrorState
@@ -943,12 +981,12 @@ export function ActivityPage() {
               title={emptyDownloadsTitle}
               description={
                 downloadFilter === "completed"
-                  ? "Finished downloads will appear here when they complete."
-                  : "Automatic acquisitions and manually added torrents will appear here."
+                  ? messages.activity.finishedDownloads
+                  : messages.activity.automaticDownloads
               }
               action={
                 <Button type="button" onClick={() => setAddOpen(true)}>
-                  <Plus size={16} /> Add download
+                  <Plus size={16} /> {messages.activity.addDownloadAction}
                 </Button>
               }
             />
@@ -992,7 +1030,7 @@ export function ActivityPage() {
                 busy={downloadsQuery.isFetchingNextPage}
                 onClick={() => void downloadsQuery.fetchNextPage()}
               >
-                Load older downloads
+                {messages.activity.loadOlderDownloads}
               </Button>
             </div>
           ) : null}
@@ -1019,7 +1057,9 @@ export function ActivityPage() {
           {createJobMutation.isSuccess ? (
             <div className="notice notice--success" role="status">
               <CheckCircle2 size={17} />{" "}
-              {formatJobKind(manualJobKind, messages)} queued.
+              {messages.activity.jobQueued({
+                kind: formatJobKind(manualJobKind, messages),
+              })}
             </div>
           ) : null}
           {createJobMutation.isError ? (
@@ -1091,8 +1131,8 @@ export function ActivityPage() {
       />
       <Dialog
         open={Boolean(cancelTarget)}
-        title="Remove download?"
-        description="The torrent can be removed while keeping its downloaded data. If it is linked to library media, automatic monitoring stops for that movie, season, or episode so Bobarr will not immediately add it again."
+        title={messages.activity.removeDownload}
+        description={messages.activity.removeDownloadDescription}
         onClose={() => setCancelTarget(null)}
         size="sm"
       >
@@ -1107,11 +1147,8 @@ export function ActivityPage() {
               onChange={(event) => setDeleteData(event.target.checked)}
             />
             <span>
-              <strong>Also delete downloaded data</strong>
-              <small>
-                This is permanent and may affect organized files when using move
-                or symlink.
-              </small>
+              <strong>{messages.activity.alsoDeleteData}</strong>
+              <small>{messages.activity.alsoDeleteDataHint}</small>
             </span>
           </label>
           {cancelMutation.isError ? (
@@ -1125,7 +1162,7 @@ export function ActivityPage() {
               variant="secondary"
               onClick={() => setCancelTarget(null)}
             >
-              Keep download
+              {messages.activity.keepDownload}
             </Button>
             <Button
               type="button"
@@ -1133,7 +1170,7 @@ export function ActivityPage() {
               busy={cancelMutation.isPending}
               onClick={() => cancelMutation.mutate()}
             >
-              <Trash2 size={16} /> Remove
+              <Trash2 size={16} /> {messages.activity.remove}
             </Button>
           </div>
         </div>

@@ -39,7 +39,8 @@ export function ReleaseCard({
           <span>{release.indexer}</span>
           <span>{formatBytes(release.size)}</span>
           <span>
-            <Users size={14} aria-hidden="true" /> {release.seeders} seeders
+            <Users size={14} aria-hidden="true" />{" "}
+            {messages.releases.seeders({ count: release.seeders })}
           </span>
           {release.quality ? <span>{release.quality}</span> : null}
           {release.publishedAt ? (
@@ -64,7 +65,9 @@ export function ReleaseCard({
         className="release-card__score"
         tone={release.eligible ? "success" : "danger"}
       >
-        {release.eligible ? `Score ${release.score}` : "Excluded"}
+        {release.eligible
+          ? messages.releases.score({ value: release.score })
+          : messages.releases.excluded}
       </Badge>
       <Button
         className="release-card__action"
@@ -80,7 +83,7 @@ export function ReleaseCard({
         ) : (
           <Download size={16} aria-hidden="true" />
         )}
-        {replacement ? "Replace" : "Grab"}
+        {replacement ? messages.releases.replace : messages.releases.grab}
       </Button>
     </article>
   );
@@ -128,9 +131,7 @@ export function ReleaseSearchPanel({
       }
       const mediaId = releaseQuery.data?.mediaId ?? candidate.mediaId;
       if (!mediaId) {
-        throw new Error(
-          "This replacement is no longer bound to library media.",
-        );
+        throw new Error(messages.releases.replacementUnbound);
       }
       return api.post("replaceLibraryItem", {
         params: { id: mediaId },
@@ -165,7 +166,7 @@ export function ReleaseSearchPanel({
       <div className="section-heading">
         <div>
           <span className="eyebrow">Jackett</span>
-          <h3>Release candidates</h3>
+          <h3>{messages.releases.releaseCandidates}</h3>
         </div>
       </div>
       <form className="release-query" onSubmit={submitQuery}>
@@ -178,7 +179,7 @@ export function ReleaseSearchPanel({
               id={queryInputId}
               type="search"
               value={visibleQuery}
-              placeholder="Generating a query…"
+              placeholder={messages.releases.generatingQuery}
               maxLength={300}
               autoComplete="off"
               spellCheck={false}
@@ -198,8 +199,7 @@ export function ReleaseSearchPanel({
             </Button>
           </div>
           <span className="field__hint" id={queryHintId}>
-            Edit the generated query and search again. Media matching and
-            candidate binding still use the selected title and episode.
+            {messages.releases.queryHint}
           </span>
         </div>
       </form>
@@ -207,16 +207,15 @@ export function ReleaseSearchPanel({
         <div className="notice-stack">
           {replacementRequired ? (
             <div className="notice notice--warning" role="note">
-              Choosing a candidate starts an explicit replacement. Any active
-              Bobarr download for this item is stopped and its incomplete data
-              is removed; an organized library file remains until its
-              replacement is ready.
+              {messages.releases.replacementWarning}
             </div>
           ) : null}
           {queuedTitle ? (
             <div className="notice notice--success" role="status">
-              {replacementRequired ? "Replacement" : "Release"} queued:{" "}
-              {queuedTitle}. Track it in Activity.
+              {messages.releases.queuedNotice({
+                kind: replacementRequired ? "replacement" : "release",
+                title: queuedTitle,
+              })}
             </div>
           ) : null}
           {grabMutation.isError ? (

@@ -14,7 +14,7 @@ describe("scan review surface", () => {
     ).toBe(381356);
     expect(() =>
       tmdbReference("https://www.themoviedb.org/tv/381356-five", "movie"),
-    ).toThrow("cannot be matched to a series URL");
+    ).toThrow("cannot be matched to a Series URL");
   });
 
   test("renders explicit, touch-friendly TMDB choices and a dismiss action", () => {
