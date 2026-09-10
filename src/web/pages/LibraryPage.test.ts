@@ -104,6 +104,7 @@ describe("library manual release targets", () => {
     const markup = renderToStaticMarkup(
       createElement(MovieManagement, {
         item: movie,
+        canMutate: true,
         actors: [
           {
             tmdbId: 6384,
@@ -131,6 +132,7 @@ describe("library manual release targets", () => {
     const markup = renderToStaticMarkup(
       createElement(MovieManagement, {
         item: movie,
+        canMutate: true,
         trailer: {
           site: "youtube",
           key: "nFk_nVSS5IU",
@@ -195,6 +197,7 @@ describe("library manual release targets", () => {
           selectedSeasons: [],
           includeFutureSeasons: false,
           saveBusy: false,
+          canMutate: true,
           onPolicyChange: () => undefined,
           onSelectedSeasonsChange: () => undefined,
           onIncludeFutureSeasonsChange: () => undefined,
@@ -314,7 +317,7 @@ describe("library manual release targets", () => {
     const markup = renderToStaticMarkup(
       createElement(MovieManagement, {
         item: imported,
-        viewerRank: "admin",
+        canMutate: true,
         downloadFiles: [
           {
             id: "file-1",
