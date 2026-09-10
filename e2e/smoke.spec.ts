@@ -19,6 +19,7 @@ test("opens every management view after setup or login", async ({ page }) => {
     ["/library/shows", "Shows"],
     ["/calendar", "Coming to your screen"],
     ["/activity", "Activity"],
+    ["/account", "Your sign-in"],
     ["/settings", "Settings"],
   ] as const;
 

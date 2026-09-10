@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   UploadCloud,
+  Users,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -422,6 +423,9 @@ export function SettingsPage() {
           </a>
           <a href="#security">
             <ShieldCheck size={16} /> Security
+          </a>
+          <a href="#people">
+            <Users size={16} /> People
           </a>
         </nav>
 

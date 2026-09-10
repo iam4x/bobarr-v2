@@ -22,6 +22,15 @@ test("an invited user can join and cannot open Settings", async ({
   await page.getByRole("button", { name: "Invite someone" }).click();
   const created = (await (await inviteResponse).json()) as { token: string };
   expect(created.token.length).toBeGreaterThan(20);
+  const inviteCard = page.locator("li").filter({ hasText: "Open invite" });
+  await expect(
+    inviteCard.getByRole("button", { name: "Copy invite link" }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".backup-actions")
+      .getByRole("button", { name: "Copy invite link" }),
+  ).toHaveCount(0);
 
   const friendContext = await browser.newContext();
   const friendPage = await friendContext.newPage();
@@ -60,6 +69,9 @@ test("an invited user can join and cannot open Settings", async ({
 
   await page.reload();
   await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Copy invite link" }),
+  ).toHaveCount(0);
   await page
     .locator("li")
     .filter({ hasText: friendName })
@@ -77,4 +89,22 @@ test("an invited user can join and cannot open Settings", async ({
   ).toBeVisible();
 
   await friendContext.close();
+});
+
+test("revoking an invite removes the copy-link control", async ({ page }) => {
+  await authenticate(page);
+  await page.goto("/settings#people");
+  await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Invite someone" }).click();
+  const inviteCard = page
+    .locator("li")
+    .filter({ has: page.getByRole("button", { name: "Copy invite link" }) });
+  await expect(inviteCard).toBeVisible();
+
+  await inviteCard.getByRole("button", { name: "Revoke" }).click();
+  await expect(page.getByText("Invite revoked.")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Copy invite link" }),
+  ).toHaveCount(0);
 });

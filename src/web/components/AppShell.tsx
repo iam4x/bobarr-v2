@@ -112,10 +112,9 @@ export function AppShell() {
   });
   const canManageSettings =
     sessionQuery.data?.capabilities?.canManageSettings === true;
-  const username = sessionQuery.data?.user?.username;
   const systemNavigation: NavigationItem[] = canManageSettings
-    ? [activityNavigation, settingsNavigation]
-    : [activityNavigation];
+    ? [activityNavigation, settingsNavigation, accountNavigation]
+    : [activityNavigation, accountNavigation];
   const logoutMutation = useMutation({
     mutationFn: () => api.post("logout"),
     onSuccess: () => {
@@ -132,7 +131,10 @@ export function AppShell() {
   });
   useServerEvents();
 
-  useEffect(() => setMoreOpen(false), [location.pathname]);
+  useEffect(() => {
+    setMoreOpen(false);
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [location.pathname]);
 
   const mobileItems: NavigationItem[] = [
     { label: "Discover", to: "/discover", icon: Compass },
@@ -174,22 +176,15 @@ export function AppShell() {
             status={statusQuery.data}
             to={canManageSettings ? "/settings#connections" : "/discover"}
           />
-          <div className="nav-rail__account">
-            {username ? (
-              <NavLink className="nav-rail__username" to="/account">
-                {username}
-              </NavLink>
-            ) : null}
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              busy={logoutMutation.isPending}
-              onClick={() => logoutMutation.mutate()}
-            >
-              <LogOut size={15} /> Sign out
-            </Button>
-          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            busy={logoutMutation.isPending}
+            onClick={() => logoutMutation.mutate()}
+          >
+            <LogOut size={15} /> Sign out
+          </Button>
           <span className="version-label">Bobarr v2</span>
         </div>
       </aside>
@@ -278,7 +273,6 @@ export function AppShell() {
             ...primaryNavigation.slice(2),
             ...libraryNavigation,
             ...systemNavigation.slice(1),
-            accountNavigation,
           ].map((item) => {
             const Icon = item.icon;
             return (
