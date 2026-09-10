@@ -31,6 +31,9 @@
   --radius-sm: 9px;
   --radius: 14px;
   --radius-lg: 22px;
+  --control-height: 44px;
+  --control-height-lg: 50px;
+  --control-gap: 8px;
   --shadow-lg: 0 24px 80px rgba(0, 0, 0, 0.48);
   --rail-width: 228px;
   --content-max: 1520px;
@@ -219,11 +222,11 @@ textarea:focus-visible {
 }
 
 .button {
-  min-height: 44px;
+  min-height: var(--control-height);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--control-gap);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   font-weight: 650;
@@ -243,7 +246,7 @@ textarea:focus-visible {
   opacity: 0.48;
 }
 .button--sm {
-  min-height: 44px;
+  min-height: var(--control-height);
   padding: 8px 12px;
   font-size: 13px;
 }
@@ -252,7 +255,7 @@ textarea:focus-visible {
   font-size: 14px;
 }
 .button--lg {
-  min-height: 50px;
+  min-height: var(--control-height-lg);
   padding: 14px 19px;
   font-size: 15px;
 }
@@ -286,8 +289,8 @@ textarea:focus-visible {
   color: #170508;
 }
 .icon-button {
-  width: 44px;
-  height: 44px;
+  width: var(--control-height);
+  height: var(--control-height);
   flex: 0 0 auto;
   display: inline-grid;
   place-items: center;
@@ -366,11 +369,13 @@ textarea:focus-visible {
 }
 .segmented {
   display: inline-flex;
+  align-items: stretch;
   gap: 2px;
   width: fit-content;
   max-width: 100%;
+  height: var(--control-height);
   overflow-x: auto;
-  padding: 4px;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg-raised);
@@ -380,10 +385,11 @@ textarea:focus-visible {
   display: none;
 }
 .segmented button {
-  min-height: 44px;
-  min-width: 44px;
+  min-height: 0;
+  min-width: var(--control-height);
+  height: 100%;
   flex: 0 0 auto;
-  padding: 7px 13px;
+  padding: 0 13px;
   border: 0;
   border-radius: 8px;
   color: var(--text-muted);
@@ -417,7 +423,7 @@ textarea:focus-visible {
 .field textarea,
 .compact-select select {
   width: 100%;
-  min-height: 44px;
+  min-height: var(--control-height);
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -553,7 +559,7 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 .rail-link {
-  min-height: 44px;
+  min-height: var(--control-height);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -593,7 +599,7 @@ textarea:focus-visible {
   padding-inline: 8px;
 }
 .service-pill {
-  min-height: 44px;
+  min-height: var(--control-height);
   display: flex;
   align-items: center;
   gap: 9px;
@@ -695,7 +701,8 @@ textarea:focus-visible {
 .page-header__actions {
   display: flex;
   flex: 0 0 auto;
-  gap: 9px;
+  flex-wrap: wrap;
+  gap: var(--control-gap);
 }
 .section-heading {
   display: flex;
@@ -977,7 +984,7 @@ textarea:focus-visible {
   transition: translate 180ms ease;
 }
 .sheet-drag-handle {
-  min-height: 44px;
+  min-height: var(--control-height);
   display: grid;
   place-items: center;
   flex: 0 0 auto;
@@ -1036,9 +1043,10 @@ textarea:focus-visible {
 }
 .dialog-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 9px;
-  margin-top: 3px;
+  gap: var(--control-gap);
+  margin-top: 12px;
 }
 @keyframes fade-in {
   from {
@@ -1277,7 +1285,7 @@ textarea:focus-visible {
 .media-detail__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 9px;
+  gap: var(--control-gap);
 }
 .media-detail__manual-search {
   display: grid;
@@ -1290,7 +1298,7 @@ textarea:focus-visible {
   gap: 10px;
 }
 .media-detail__manual-search-controls > .button {
-  min-height: 44px;
+  min-height: var(--control-height);
 }
 .season-monitor {
   display: flex;
@@ -1318,7 +1326,8 @@ textarea:focus-visible {
 }
 .season-monitor__shortcuts {
   display: flex;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: var(--control-gap);
 }
 .season-monitor__grid {
   display: grid;
@@ -1326,7 +1335,7 @@ textarea:focus-visible {
   gap: 7px;
 }
 .season-choice {
-  min-height: 44px;
+  min-height: var(--control-height);
   display: flex;
   align-items: center;
   gap: 9px;
@@ -1420,9 +1429,6 @@ textarea:focus-visible {
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.55;
-}
-.movie-overview__trailer {
-  margin-top: 12px;
 }
 .movie-overview__progress {
   max-width: 520px;
@@ -1599,7 +1605,7 @@ textarea:focus-visible {
   line-height: 1.5;
 }
 .movie-file-panel__action > .button {
-  min-height: 40px;
+  min-height: var(--control-height);
   font-size: 11px;
 }
 .movie-file-panel__action > .notice {
@@ -1635,7 +1641,7 @@ textarea:focus-visible {
 }
 .movie-removal > .button {
   align-self: center;
-  min-height: 36px;
+  min-height: var(--control-height);
   padding: 7px 10px;
   font-size: 11px;
 }
@@ -1939,10 +1945,10 @@ textarea:focus-visible {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 6px;
+  gap: var(--control-gap);
 }
 .episode-row__actions .button {
-  min-height: 36px;
+  min-height: var(--control-height);
   padding: 7px 10px;
   font-size: 11px;
 }
@@ -2011,7 +2017,7 @@ textarea:focus-visible {
 .tv-guidance__card > .button,
 .tv-guidance__manual {
   width: 100%;
-  min-height: 40px;
+  min-height: var(--control-height);
   padding-inline: 11px;
   font-size: 11px;
 }
@@ -2071,7 +2077,7 @@ textarea:focus-visible {
   font-size: 10px;
 }
 .tv-settings__content .field select {
-  min-height: 40px;
+  min-height: var(--control-height);
   font-size: 11px;
 }
 .tv-settings__content .check-row {
@@ -2087,17 +2093,17 @@ textarea:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .tv-settings__seasons .season-choice {
-  min-height: 38px;
+  min-height: var(--control-height);
   padding: 6px 8px;
   font-size: 10px;
 }
 .tv-settings__content > .button {
-  min-height: 40px;
+  min-height: var(--control-height);
   font-size: 11px;
 }
 .tv-guidance__remove {
   align-self: center;
-  min-height: 36px;
+  min-height: var(--control-height);
   padding: 7px 10px;
   font-size: 11px;
 }
@@ -2121,7 +2127,7 @@ textarea:focus-visible {
 }
 .release-query__controls input,
 .release-query__submit {
-  min-height: 44px;
+  min-height: var(--control-height);
 }
 .release-query__submit {
   min-width: 170px;
@@ -2211,7 +2217,7 @@ textarea:focus-visible {
 }
 .search-box input {
   min-width: 0;
-  min-height: 44px;
+  min-height: var(--control-height);
   flex: 1;
   border: 0;
   outline: 0;
@@ -2226,7 +2232,7 @@ textarea:focus-visible {
   display: none;
 }
 .search-box__submit {
-  min-height: 44px;
+  min-height: var(--control-height);
   padding: 0 19px;
   border: 0;
   border-radius: 10px;
@@ -2385,7 +2391,7 @@ textarea:focus-visible {
 .suggestion-shelf__controls {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--control-gap);
 }
 .suggestion-shelf__controls[hidden] {
   display: none;
@@ -2570,7 +2576,7 @@ textarea:focus-visible {
 }
 .discover-genre-option {
   min-width: 0;
-  min-height: 44px;
+  min-height: var(--control-height);
   display: flex;
   align-items: center;
   gap: 9px;
@@ -2631,7 +2637,7 @@ textarea:focus-visible {
   gap: 8px;
 }
 .discover-applied {
-  min-height: 44px;
+  min-height: var(--control-height);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2653,7 +2659,7 @@ textarea:focus-visible {
   gap: 7px;
 }
 .discover-filter-chip {
-  min-height: 44px;
+  min-height: var(--control-height);
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -2666,8 +2672,8 @@ textarea:focus-visible {
   font-weight: 650;
 }
 .discover-filter-chip button {
-  width: 44px;
-  height: 44px;
+  width: var(--control-height);
+  height: var(--control-height);
   display: grid;
   place-items: center;
   padding: 0;
@@ -2683,7 +2689,7 @@ textarea:focus-visible {
   background: rgba(255, 255, 255, 0.1);
 }
 .discover-applied__clear {
-  min-height: 44px;
+  min-height: var(--control-height);
   flex: 0 0 auto;
   padding: 0 8px;
   border: 0;
@@ -2706,7 +2712,7 @@ textarea:focus-visible {
 .compact-select select {
   width: auto;
   min-width: 120px;
-  min-height: 44px;
+  min-height: var(--control-height);
   padding: 6px 38px 6px 10px;
 }
 .compact-select .select-control {
@@ -2730,19 +2736,22 @@ textarea:focus-visible {
 
 .library-switcher {
   display: inline-flex;
-  gap: 5px;
+  align-items: stretch;
+  gap: 2px;
+  height: var(--control-height);
   margin-bottom: 22px;
-  padding: 4px;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: 11px;
   background: var(--bg-raised);
 }
 .library-switcher a {
-  min-height: 44px;
+  min-height: 0;
+  height: 100%;
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 7px 13px;
+  padding: 0 13px;
   border-radius: 8px;
   color: var(--text-muted);
   font-size: 13px;
@@ -2937,8 +2946,13 @@ textarea:focus-visible {
 .movie-overview__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--control-gap);
   margin-top: 10px;
+}
+.movie-overview__actions .button,
+.media-detail__actions .button,
+.media-detail__added-actions .button {
+  white-space: nowrap;
 }
 .media-detail__added {
   display: grid;
@@ -2964,9 +2978,9 @@ textarea:focus-visible {
 }
 .discover-search-jump {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  align-items: stretch;
+  gap: var(--control-gap);
+  padding: 4px 4px 4px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
@@ -2974,11 +2988,15 @@ textarea:focus-visible {
 .discover-search-jump input {
   flex: 1;
   min-width: 0;
+  min-height: var(--control-height);
   border: 0;
   outline: 0;
   color: var(--text);
   background: transparent;
   font-size: 15px;
+}
+.discover-search-jump .button {
+  align-self: center;
 }
 .discover-foryou {
   min-width: 0;
@@ -3176,11 +3194,11 @@ textarea:focus-visible {
 .scan-review-manual__form {
   display: flex;
   align-items: stretch;
-  gap: 8px;
+  gap: var(--control-gap);
 }
 .scan-review-manual__input {
   min-width: 0;
-  min-height: 38px;
+  min-height: var(--control-height);
   display: flex;
   flex: 1;
   align-items: center;
@@ -3219,11 +3237,12 @@ textarea:focus-visible {
 }
 .mini-search {
   min-width: 230px;
-  min-height: 44px;
+  height: var(--control-height);
+  min-height: var(--control-height);
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 8px 12px;
+  padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg-raised);
@@ -3233,7 +3252,8 @@ textarea:focus-visible {
 }
 .mini-search input {
   min-width: 0;
-  min-height: 44px;
+  min-height: 0;
+  height: 100%;
   border: 0;
   outline: 0;
   color: var(--text);
@@ -3644,7 +3664,7 @@ textarea:focus-visible {
   border-top: 1px solid var(--border);
 }
 .download-files summary {
-  min-height: 44px;
+  min-height: var(--control-height);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -3661,7 +3681,7 @@ textarea:focus-visible {
   padding: 0 2px 7px;
 }
 .download-file {
-  min-height: 44px;
+  min-height: var(--control-height);
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr);
   align-items: center;
@@ -3695,8 +3715,9 @@ textarea:focus-visible {
 }
 .download-card__actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 5px;
+  gap: var(--control-gap);
 }
 .download-remove-title {
   min-width: 0;
@@ -3773,7 +3794,7 @@ textarea:focus-visible {
   font-size: 12px;
 }
 .job-browser__toolbar {
-  min-height: 44px;
+  min-height: var(--control-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3793,7 +3814,7 @@ textarea:focus-visible {
   font-size: 12px;
 }
 .job-pagination .button {
-  min-height: 44px;
+  min-height: var(--control-height);
 }
 .job-pagination .button:first-child {
   justify-self: end;
@@ -3838,9 +3859,10 @@ textarea:focus-visible {
 }
 .job-card__actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: var(--control-gap);
 }
 .job-card__summary {
   min-width: 0;
@@ -4040,7 +4062,7 @@ textarea:focus-visible {
   gap: 3px;
 }
 .settings-nav a {
-  min-height: 44px;
+  min-height: var(--control-height);
   display: flex;
   align-items: center;
   gap: 9px;
@@ -4245,7 +4267,13 @@ textarea:focus-visible {
   flex-shrink: 0;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 4px;
+  gap: var(--control-gap);
+}
+.backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--control-gap);
+  margin-top: 12px;
 }
 .backup-list small,
 .settings-muted {
@@ -4578,7 +4606,7 @@ textarea:focus-visible {
     height: 66px;
   }
   .scan-review-candidate > .button {
-    min-height: 44px;
+    min-height: var(--control-height);
     grid-column: 1 / -1;
   }
   .scan-review-manual__form {
@@ -4586,7 +4614,7 @@ textarea:focus-visible {
     flex-direction: column;
   }
   .scan-review-manual__form > .button {
-    min-height: 44px;
+    min-height: var(--control-height);
   }
 }
 
@@ -4624,7 +4652,7 @@ textarea:focus-visible {
     transform: scale(0.87);
   }
   .mobile-header > a {
-    min-height: 44px;
+    min-height: var(--control-height);
     display: inline-flex;
     align-items: center;
   }
@@ -4742,6 +4770,10 @@ textarea:focus-visible {
   .mobile-sheet > .service-pill {
     margin-top: 14px;
   }
+  .mobile-sheet > .button {
+    width: 100%;
+    margin-top: var(--control-gap);
+  }
   @keyframes sheet-in {
     from {
       transform: translateY(35px);
@@ -4768,7 +4800,7 @@ textarea:focus-visible {
     font-size: 13px;
   }
   .page-header__actions .button {
-    min-width: 42px;
+    min-width: var(--control-height);
   }
   .page-header__actions .button svg + :not(svg) {
     display: none;
@@ -5101,7 +5133,7 @@ textarea:focus-visible {
     flex-wrap: wrap;
   }
   .discover-applied__label {
-    min-height: 44px;
+    min-height: var(--control-height);
     display: inline-flex;
     align-items: center;
   }
@@ -5246,7 +5278,7 @@ textarea:focus-visible {
     justify-content: flex-start;
   }
   .job-card__actions .button {
-    min-height: 44px;
+    min-height: var(--control-height);
   }
   .job-pagination {
     grid-template-columns: 1fr 1fr;
