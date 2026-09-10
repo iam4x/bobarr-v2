@@ -146,6 +146,26 @@ describe("authentication throttling", () => {
     expect(authenticated.actor.account.id).toBe(friend.id);
     expect(authenticated.current.user.id).toBe(friend.id);
   });
+
+  test("updates the signed-in user's UI locale", async () => {
+    const fixture = await createFixture();
+    const grant = await fixture.service.setup({
+      username: "admin",
+      password: "correct-horse-battery-staple",
+    });
+    expect(grant.response.user.uiLocale).toBeNull();
+
+    const actor = fixture.service.authenticate(grant.sessionToken);
+    expect(fixture.service.updateUiLocale(actor.actor, "fr")).toMatchObject({
+      id: 1,
+      username: "admin",
+      uiLocale: "fr",
+    });
+    expect(fixture.repositories.auth.getById(1)?.uiLocale).toBe("fr");
+
+    const refreshed = fixture.service.authenticate(grant.sessionToken);
+    expect(refreshed.current.user.uiLocale).toBe("fr");
+  });
 });
 
 async function createFixture(options: { loginLockEnabled?: boolean } = {}) {

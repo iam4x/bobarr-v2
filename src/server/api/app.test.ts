@@ -48,7 +48,7 @@ describe("Bobarr backend API", () => {
     expect(SetupStatusSchema.parse(await statusResponse.json())).toEqual({
       setupRequired: true,
     });
-    expect(runtime.database.migrationVersion).toBe(6);
+    expect(runtime.database.migrationVersion).toBe(7);
     expect(runtime.repositories.settings.ensureDefaults().version).toBe(1);
     expect(
       runtime.repositories.settings.ensureDefaults().settings.acquisition

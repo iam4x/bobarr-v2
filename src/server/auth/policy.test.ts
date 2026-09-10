@@ -17,6 +17,7 @@ const admin: Actor = {
     rank: "admin",
     createdAt: "2026-07-21T12:00:00.000Z",
     lastLoginAt: null,
+    uiLocale: null,
   } satisfies Account,
 };
 
@@ -28,6 +29,7 @@ const user: Actor = {
     rank: "user",
     createdAt: "2026-07-21T12:00:00.000Z",
     lastLoginAt: null,
+    uiLocale: null,
   } satisfies Account,
 };
 

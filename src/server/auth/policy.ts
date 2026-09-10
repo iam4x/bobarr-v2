@@ -8,6 +8,7 @@ export type Account = {
   rank: Rank;
   createdAt: string;
   lastLoginAt: string | null;
+  uiLocale: "en" | "fr" | null;
 };
 
 export type Actor = {
