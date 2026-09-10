@@ -1435,13 +1435,11 @@ export function registerProductRoutes(
           ? dependencies.repositories.media.get(mediaId)
           : undefined;
         candidateTarget = media;
-        if (media) {
+        if (media && hasRecordedFiles(media, dependencies)) {
           requireAllowed(actor, {
             type: "mutate_media",
             ownerId: effectiveMediaOwner(media),
           });
-        }
-        if (media && hasRecordedFiles(media, dependencies)) {
           replacementTarget = media;
         }
       }
