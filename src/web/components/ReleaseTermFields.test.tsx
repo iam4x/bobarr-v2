@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { renderToStaticMarkup } from "react-dom/server";
-
 import { ReleaseTermFields } from "./ReleaseTermFields";
+import { renderWithUi } from "../i18n/test-utils";
 
 describe("release term settings", () => {
   test("explains required, preferred, and rejected release behavior", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <ReleaseTermFields
         required={{ input: { name: "requiredTerms" } }}
         preferred={{ input: { name: "preferredTerms" } }}

@@ -6,6 +6,7 @@ import { type FormEvent, useRef, useState } from "react";
 
 import { Badge, Button } from "./ui";
 import { api } from "../api/client";
+import { useUi } from "../i18n/ui";
 import { imageUrl } from "../lib/format";
 
 function ScanReviewCandidateRow({
@@ -19,6 +20,7 @@ function ScanReviewCandidateRow({
   disabled: boolean;
   onResolve: (tmdbId: number) => void;
 }) {
+  const { messages } = useUi();
   const poster = imageUrl(candidate.posterPath, "w342");
   return (
     <div className="scan-review-candidate">
@@ -37,7 +39,7 @@ function ScanReviewCandidateRow({
         disabled={disabled}
         onClick={() => onResolve(candidate.tmdbId)}
       >
-        <Check size={15} /> Import this title
+        <Check size={15} /> {messages.scanReview.importTitle}
       </Button>
     </div>
   );
@@ -105,10 +107,11 @@ function ManualTmdbSearch({
     }
   }
 
+  const { messages } = useUi();
   return (
     <section className="scan-review-manual" aria-label="Manual TMDB search">
       <div className="scan-review-manual__heading">
-        <strong>Search TMDB manually</strong>
+        <strong>{messages.scanReview.searchTmdb}</strong>
         <span>
           Try another title, or paste a TMDB URL or numeric ID for an exact
           match.
@@ -216,6 +219,7 @@ export function ScanReviewCard({
   onResolve: (tmdbId: number) => void;
   onDismiss: () => void;
 }) {
+  const { messages } = useUi();
   return (
     <article className="scan-review-card">
       <header className="scan-review-card__header">
@@ -231,7 +235,7 @@ export function ScanReviewCard({
             </p>
           </div>
         </div>
-        <Badge tone="warning">Needs a match</Badge>
+        <Badge tone="warning">{messages.scanReview.needsMatch}</Badge>
       </header>
       <p className="scan-review-card__root" title={review.rootPath}>
         Found under {review.rootPath}

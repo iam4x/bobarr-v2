@@ -34,6 +34,8 @@ import {
   SelectField,
   SkeletonGrid,
 } from "../components/ui";
+import { en, type Messages } from "../i18n/en";
+import { useUi } from "../i18n/ui";
 
 type DiscoverKind = "movie" | "series";
 
@@ -67,31 +69,6 @@ export interface AppliedDiscoverFilter {
 
 const HIGHEST_RATED_SORT: CatalogDiscoverSort = "vote_average.desc";
 const HIGHEST_RATED_VOTE_FLOOR = 200;
-
-const SORT_LABELS: Record<CatalogDiscoverSort, string> = {
-  "popularity.asc": "Least popular",
-  "popularity.desc": "Most popular",
-  "vote_average.asc": "Lowest rated",
-  "vote_average.desc": "Highest rated",
-  "vote_count.asc": "Fewest votes",
-  "vote_count.desc": "Most voted",
-  "release_date.asc": "Oldest first",
-  "release_date.desc": "Newest first",
-  "primary_release_date.asc": "Oldest first",
-  "primary_release_date.desc": "Newest first",
-  "first_air_date.asc": "Oldest first",
-  "first_air_date.desc": "Newest first",
-  "title.asc": "Title A–Z",
-  "title.desc": "Title Z–A",
-  "name.asc": "Title A–Z",
-  "name.desc": "Title Z–A",
-  "original_title.asc": "Original title A–Z",
-  "original_title.desc": "Original title Z–A",
-  "original_name.asc": "Original title A–Z",
-  "original_name.desc": "Original title Z–A",
-  "revenue.asc": "Lowest box office",
-  "revenue.desc": "Highest box office",
-};
 
 const MOVIE_SORTS: Array<{
   value: CatalogDiscoverSort;
@@ -253,10 +230,11 @@ export function sortForKind(
 export function appliedDiscoverFilters(
   filters: DiscoverFilters,
   labels: FilterLabels,
+  messages: Messages = en,
 ): AppliedDiscoverFilter[] {
   const applied: AppliedDiscoverFilter[] = [];
   if (filters.sort !== "popularity.desc") {
-    applied.push({ key: "sort", label: SORT_LABELS[filters.sort] });
+    applied.push({ key: "sort", label: messages.discover.sort[filters.sort] });
   }
   if (filters.actorId !== null) {
     applied.push({
@@ -470,6 +448,7 @@ export function writeDiscoverSearchParams(
 }
 
 export function DiscoverPage() {
+  const { messages } = useUi();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const routeState = discoverFiltersFromSearchParams(searchParams);
@@ -536,7 +515,7 @@ export function DiscoverPage() {
     [countries, genres, languages],
   );
   const activeFilters = useMemo(
-    () => appliedDiscoverFilters(filters, filterLabels),
+    () => appliedDiscoverFilters(filters, filterLabels, messages),
     [filterLabels, filters],
   );
   const query = useMemo(
@@ -544,7 +523,11 @@ export function DiscoverPage() {
     [filters, kind, page],
   );
   const validationError = discoverFilterError(draft);
-  const draftFilterCount = appliedDiscoverFilters(draft, filterLabels).length;
+  const draftFilterCount = appliedDiscoverFilters(
+    draft,
+    filterLabels,
+    messages,
+  ).length;
 
   const discoverQuery = useQuery({
     queryKey: ["catalog", "discover", query],
@@ -698,9 +681,9 @@ export function DiscoverPage() {
 
   return (
     <Page
-      eyebrow="Explore"
-      title="Discover something remarkable"
-      description="Search, get suggestions, or browse popular and acclaimed titles in one place."
+      eyebrow={messages.discover.eyebrow}
+      title={messages.discover.title}
+      description={messages.discover.description}
       wide
     >
       <div className="discover-entry">

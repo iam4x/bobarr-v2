@@ -1,4 +1,5 @@
 import type { ApiPageInfo } from "../../contracts";
+import type { Messages } from "../i18n/en";
 import type { ActivityEvent, Download, Job, JobDetails } from "../types";
 
 import {
@@ -42,6 +43,7 @@ import {
   SegmentedControl,
   SelectControl,
 } from "../components/ui";
+import { useUi } from "../i18n/ui";
 import {
   formatBytes,
   formatEta,
@@ -56,35 +58,51 @@ type DownloadFilter = "active" | "completed" | "all";
 const DOWNLOAD_PAGE_SIZE = 50;
 export const JOB_PAGE_SIZE = 20;
 
-export const JOB_KIND_OPTIONS = [
-  { value: "", label: "All job types" },
-  { value: "media.acquire.v1", label: "Media acquisition" },
-  { value: "acquisition.add-torrent", label: "Add torrent" },
-  { value: "acquisition.organize-download", label: "Organize download" },
-  { value: "library.scan.v1", label: "Library scan" },
-  { value: "maintenance.reconcile.v1", label: "Reconcile services" },
-  { value: "maintenance.search-missing.v1", label: "Search missing media" },
-  { value: "maintenance.refresh-metadata.v1", label: "Refresh metadata" },
-  { value: "maintenance.backup.v1", label: "Backup" },
-  { value: "maintenance.cleanup.v1", label: "Cleanup" },
+const JOB_KIND_VALUES = [
+  "media.acquire.v1",
+  "acquisition.add-torrent",
+  "acquisition.organize-download",
+  "library.scan.v1",
+  "maintenance.reconcile.v1",
+  "maintenance.search-missing.v1",
+  "maintenance.refresh-metadata.v1",
+  "maintenance.backup.v1",
+  "maintenance.cleanup.v1",
 ] as const;
 
-export const MANUAL_JOB_OPTIONS = JOB_KIND_OPTIONS.filter((option) =>
-  [
-    "library.scan.v1",
-    "maintenance.reconcile.v1",
-    "maintenance.search-missing.v1",
-    "maintenance.refresh-metadata.v1",
-    "maintenance.backup.v1",
-    "maintenance.cleanup.v1",
-  ].includes(option.value),
-);
+const MANUAL_JOB_VALUES = [
+  "library.scan.v1",
+  "maintenance.reconcile.v1",
+  "maintenance.search-missing.v1",
+  "maintenance.refresh-metadata.v1",
+  "maintenance.backup.v1",
+  "maintenance.cleanup.v1",
+] as const;
 
-export function formatJobKind(kind: string): string {
-  return (
-    JOB_KIND_OPTIONS.find((option) => option.value === kind)?.label ??
-    kind.replaceAll(/[._-]+/g, " ")
-  );
+export function formatJobKind(kind: string, messages?: Messages): string {
+  if (messages) {
+    const labels: Record<string, string> = messages.activity.jobKinds;
+    const labeled = labels[kind];
+    if (labeled) return labeled;
+  }
+  return kind.replaceAll(/[._-]+/g, " ");
+}
+
+function jobKindOptions(messages: Messages) {
+  return [
+    { value: "", label: messages.activity.allJobTypes },
+    ...JOB_KIND_VALUES.map((value) => ({
+      value,
+      label: formatJobKind(value, messages),
+    })),
+  ];
+}
+
+function manualJobOptions(messages: Messages) {
+  return MANUAL_JOB_VALUES.map((value) => ({
+    value,
+    label: formatJobKind(value, messages),
+  }));
 }
 
 export function DownloadFilterBar({
@@ -94,16 +112,22 @@ export function DownloadFilterBar({
   value: DownloadFilter;
   onChange: (value: DownloadFilter) => void;
 }) {
+  const { messages } = useUi();
   return (
     <label className="compact-select download-filter">
-      <span>Download status</span>
+      <span>{messages.activity.downloadStatus}</span>
       <SelectControl
         value={value}
-        onChange={(event) => onChange(event.target.value as DownloadFilter)}
+        onChange={(event) => {
+          const next = event.currentTarget.value;
+          if (next === "active" || next === "completed" || next === "all") {
+            onChange(next);
+          }
+        }}
       >
-        <option value="active">Active</option>
-        <option value="completed">Completed</option>
-        <option value="all">All</option>
+        <option value="active">{messages.activity.active}</option>
+        <option value="completed">{messages.activity.completed}</option>
+        <option value="all">{messages.activity.all}</option>
       </SelectControl>
     </label>
   );
@@ -381,11 +405,12 @@ function JobsList({
   onCancel: (id: string) => void;
   onRetry: (id: string) => void;
 }) {
+  const { messages, locale } = useUi();
   if (!jobs.length)
     return (
       <EmptyState
-        title="No background work"
-        description="Scheduled searches, scans, and organization jobs will appear here."
+        title={messages.activity.noJobsTitle}
+        description={messages.activity.noJobsDescription}
       />
     );
   return (
@@ -406,11 +431,11 @@ function JobsList({
               type="button"
               onClick={() => onOpen(job.id)}
             >
-              <h3>{formatJobKind(job.type)}</h3>
+              <h3>{formatJobKind(job.type, messages)}</h3>
               <p>
                 {job.state === "pending" &&
                 new Date(job.runAt).getTime() > Date.now()
-                  ? `Scheduled ${formatRelativeDate(job.runAt)}`
+                  ? `Scheduled ${formatRelativeDate(job.runAt, locale)}`
                   : `Attempt ${job.attempts} of ${job.maxAttempts}`}
               </p>
               {job.error ? (
@@ -538,15 +563,16 @@ export function JobFilterBar({
   busy: boolean;
   onChange: (kind: string) => void;
 }) {
+  const { messages } = useUi();
   return (
     <div className="job-browser__toolbar">
       <label className="compact-select">
-        <span>Job type</span>
+        <span>{messages.activity.jobType}</span>
         <SelectControl
           value={kind}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => onChange(event.currentTarget.value)}
         >
-          {JOB_KIND_OPTIONS.map((option) => (
+          {jobKindOptions(messages).map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
@@ -555,7 +581,7 @@ export function JobFilterBar({
       </label>
       {busy ? (
         <span className="job-browser__loading" role="status">
-          Updating jobs…
+          {messages.activity.updatingJobs}
         </span>
       ) : null}
     </div>
@@ -573,21 +599,20 @@ export function ManualJobControls({
   onChange: (kind: string) => void;
   onRun: () => void;
 }) {
+  const { messages } = useUi();
   return (
     <div className="manual-job-controls">
       <div>
-        <strong>Run maintenance now</strong>
-        <small>
-          Queue a scan or maintenance task and follow its progress below.
-        </small>
+        <strong>{messages.activity.runMaintenance}</strong>
+        <small>{messages.activity.runMaintenanceHint}</small>
       </div>
       <label className="compact-select">
-        <span>Task</span>
+        <span>{messages.activity.task}</span>
         <SelectControl
           value={kind}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => onChange(event.currentTarget.value)}
         >
-          {MANUAL_JOB_OPTIONS.map((option) => (
+          {manualJobOptions(messages).map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
@@ -595,7 +620,7 @@ export function ManualJobControls({
         </SelectControl>
       </label>
       <Button type="button" busy={busy} onClick={onRun}>
-        <CirclePlay size={16} /> Run job
+        <CirclePlay size={16} /> {messages.activity.runJob}
       </Button>
     </div>
   );
@@ -616,9 +641,13 @@ export function JobPagination({
   const last = Math.min(page.offset + page.limit, page.total);
   const hasPrevious = page.offset > 0;
   const hasNext = page.offset + page.limit < page.total;
+  const { messages } = useUi();
 
   return (
-    <nav className="job-pagination" aria-label="Jobs pagination">
+    <nav
+      className="job-pagination"
+      aria-label={messages.activity.jobsPagination}
+    >
       <Button
         type="button"
         size="sm"
@@ -626,10 +655,14 @@ export function JobPagination({
         disabled={busy || !hasPrevious}
         onClick={onPrevious}
       >
-        <ChevronLeft size={16} /> Previous
+        <ChevronLeft size={16} /> {messages.activity.previous}
       </Button>
       <span aria-live="polite">
-        {first}–{last} of {page.total}
+        {messages.activity.pageRange({
+          from: first,
+          to: last,
+          total: page.total,
+        })}
       </span>
       <Button
         type="button"
@@ -638,7 +671,7 @@ export function JobPagination({
         disabled={busy || !hasNext}
         onClick={onNext}
       >
-        Next <ChevronRight size={16} />
+        {messages.activity.next} <ChevronRight size={16} />
       </Button>
     </nav>
   );
@@ -661,11 +694,12 @@ function QueryTabContent({
 }
 
 function HistoryList({ events }: { events: ActivityEvent[] }) {
+  const { messages, locale } = useUi();
   if (!events.length)
     return (
       <EmptyState
-        title="Nothing to report yet"
-        description="Acquisition, library, and service events will build a readable history here."
+        title={messages.activity.noHistoryTitle}
+        description={messages.activity.noHistoryDescription}
       />
     );
   return (
@@ -682,7 +716,7 @@ function HistoryList({ events }: { events: ActivityEvent[] }) {
             <strong>{event.message}</strong>
             <span>
               {event.type.replaceAll("_", " ")} ·{" "}
-              {formatRelativeDate(event.createdAt)}
+              {formatRelativeDate(event.createdAt, locale)}
             </span>
           </div>
         </li>
@@ -692,6 +726,7 @@ function HistoryList({ events }: { events: ActivityEvent[] }) {
 }
 
 export function ActivityPage() {
+  const { messages } = useUi();
   const queryClient = useQueryClient();
   const sessionQuery = useQuery({
     queryKey: ["auth", "session"],
@@ -846,9 +881,9 @@ export function ActivityPage() {
 
   return (
     <Page
-      eyebrow="Operations"
-      title="Activity"
-      description="Downloads, acquisition work, and system events—without leaving Bobarr."
+      eyebrow={messages.activity.eyebrow}
+      title={messages.activity.title}
+      description={messages.activity.description}
       actions={
         <Button type="button" onClick={() => setAddOpen(true)}>
           <Plus size={17} /> Add download
@@ -858,7 +893,7 @@ export function ActivityPage() {
     >
       <div className="activity-toolbar">
         <SegmentedControl
-          label="Activity view"
+          label={messages.activity.view}
           value={tab}
           options={[
             {
@@ -983,7 +1018,8 @@ export function ActivityPage() {
           ) : null}
           {createJobMutation.isSuccess ? (
             <div className="notice notice--success" role="status">
-              <CheckCircle2 size={17} /> {formatJobKind(manualJobKind)} queued.
+              <CheckCircle2 size={17} />{" "}
+              {formatJobKind(manualJobKind, messages)} queued.
             </div>
           ) : null}
           {createJobMutation.isError ? (

@@ -1,17 +1,17 @@
 import { describe, expect, test } from "bun:test";
 
-import { renderToStaticMarkup } from "react-dom/server";
-
 import {
   actorDiscoverPath,
   ExternalRatings,
   MovieCast,
   seasonYearLabel,
 } from "./Catalog";
+import { en } from "../i18n/en";
+import { renderWithUi } from "../i18n/test-utils";
 
 describe("catalog external ratings", () => {
   test("renders compact ratings with full accessible labels", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <ExternalRatings
         ratings={{
           imdb: { value: 8.7, scale: 10, votes: 2_107_348 },
@@ -29,7 +29,7 @@ describe("catalog external ratings", () => {
 
   test("omits the region when both sources are unavailable", () => {
     expect(
-      renderToStaticMarkup(
+      renderWithUi(
         <ExternalRatings ratings={{ imdb: null, rottenTomatoes: null }} />,
       ),
     ).toBe("");
@@ -44,7 +44,7 @@ describe("movie cast", () => {
       character: index === 0 ? "The Lead" : null,
       profilePath: index === 1 ? "/actor-2.jpg" : null,
     }));
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <MovieCast actors={actors} onSelect={() => undefined} />,
     );
 
@@ -63,7 +63,7 @@ describe("movie cast", () => {
   });
 
   test("reserves six skeleton actor cards while cast is loading", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <MovieCast loading actors={undefined} onSelect={() => undefined} />,
     );
 
@@ -77,38 +77,41 @@ describe("movie cast", () => {
 describe("season year labels", () => {
   test("shows the full airing range from dated episodes", () => {
     expect(
-      seasonYearLabel({
-        tmdbId: 8,
-        name: "Season 8",
-        overview: "",
-        airDate: "2014-09-22",
-        seasonNumber: 8,
-        posterPath: null,
-        episodes: [
-          {
-            tmdbId: 1,
-            name: "Premiere",
-            overview: "",
-            airDate: "2014-09-22",
-            episodeNumber: 1,
-            seasonNumber: 8,
-            runtimeMinutes: 22,
-            stillPath: null,
-            voteAverage: 8,
-          },
-          {
-            tmdbId: 24,
-            name: "Finale",
-            overview: "",
-            airDate: "2015-05-07",
-            episodeNumber: 24,
-            seasonNumber: 8,
-            runtimeMinutes: 22,
-            stillPath: null,
-            voteAverage: 8,
-          },
-        ],
-      }),
+      seasonYearLabel(
+        {
+          tmdbId: 8,
+          name: "Season 8",
+          overview: "",
+          airDate: "2014-09-22",
+          seasonNumber: 8,
+          posterPath: null,
+          episodes: [
+            {
+              tmdbId: 1,
+              name: "Premiere",
+              overview: "",
+              airDate: "2014-09-22",
+              episodeNumber: 1,
+              seasonNumber: 8,
+              runtimeMinutes: 22,
+              stillPath: null,
+              voteAverage: 8,
+            },
+            {
+              tmdbId: 24,
+              name: "Finale",
+              overview: "",
+              airDate: "2015-05-07",
+              episodeNumber: 24,
+              seasonNumber: 8,
+              runtimeMinutes: 22,
+              stillPath: null,
+              voteAverage: 8,
+            },
+          ],
+        },
+        en,
+      ),
     ).toBe("2014–2015");
   });
 
@@ -122,7 +125,7 @@ describe("season year labels", () => {
       posterPath: null,
       episodes: [],
     };
-    expect(seasonYearLabel(season)).toBe("2015");
-    expect(seasonYearLabel({ ...season, airDate: null })).toBe("Year TBA");
+    expect(seasonYearLabel(season, en)).toBe("2015");
+    expect(seasonYearLabel({ ...season, airDate: null }, en)).toBe("Year TBA");
   });
 });

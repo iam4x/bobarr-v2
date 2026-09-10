@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderToStaticMarkup } from "react-dom/server";
 
 import { ReleaseCard, ReleaseSearchPanel } from "./ReleaseSearchPanel";
+import { renderWithUi } from "../i18n/test-utils";
 
 describe("responsive release result", () => {
   test("shows safe candidate metadata and exclusion reasons", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <ReleaseCard
         release={{
           id: `rel_${"a".repeat(43)}`,
@@ -36,7 +36,7 @@ describe("responsive release result", () => {
   });
 
   test("renders an editable Jackett query without weakening target binding", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <QueryClientProvider client={new QueryClient()}>
         <ReleaseSearchPanel
           target={{ tmdbId: 1399, kind: "series", season: 4, episode: 2 }}
@@ -51,7 +51,7 @@ describe("responsive release result", () => {
   });
 
   test("labels an active-media candidate as an explicit replacement", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       <ReleaseCard
         release={{
           id: `rel_${"b".repeat(43)}`,
@@ -79,7 +79,7 @@ describe("responsive release result", () => {
   });
 
   test("hides eligible score calculations while keeping exclusion reasons", () => {
-    const eligibleMarkup = renderToStaticMarkup(
+    const eligibleMarkup = renderWithUi(
       <ReleaseCard
         release={{
           id: `rel_${"c".repeat(43)}`,

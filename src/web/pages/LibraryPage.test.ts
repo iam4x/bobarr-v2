@@ -4,7 +4,6 @@ import { describe, expect, test } from "bun:test";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   canManuallySearchLibraryItem,
@@ -22,6 +21,7 @@ import {
   summarizeEpisodeStates,
   TvSeriesManagement,
 } from "./LibraryPage";
+import { renderWithUi } from "../i18n/test-utils";
 
 const movie: LibraryItem = {
   id: "movie-1",
@@ -42,8 +42,8 @@ describe("library manual release targets", () => {
   });
 
   test("opens library details from the full card without an overflow menu", () => {
-    const markup = renderToStaticMarkup(
-      LibraryCard({ item: movie, onManage: () => undefined }),
+    const markup = renderWithUi(
+      createElement(LibraryCard, { item: movie, onManage: () => undefined }),
     );
 
     expect(markup).toContain('class="library-card__hit-area"');
@@ -53,8 +53,8 @@ describe("library manual release targets", () => {
   });
 
   test("shows rating, storage, and live download information", () => {
-    const markup = renderToStaticMarkup(
-      LibraryCard({
+    const markup = renderWithUi(
+      createElement(LibraryCard, {
         item: {
           ...movie,
           acquisitionState: "downloading",
@@ -101,7 +101,7 @@ describe("library manual release targets", () => {
   });
 
   test("shows actor discovery cards in movie management", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       createElement(MovieManagement, {
         item: movie,
         canMutate: true,
@@ -129,7 +129,7 @@ describe("library manual release targets", () => {
   });
 
   test("shows a watch trailer action in movie management", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       createElement(MovieManagement, {
         item: movie,
         canMutate: true,
@@ -154,8 +154,8 @@ describe("library manual release targets", () => {
   });
 
   test("shows television availability and the next air date", () => {
-    const markup = renderToStaticMarkup(
-      LibraryCard({
+    const markup = renderWithUi(
+      createElement(LibraryCard, {
         item: {
           ...movie,
           id: "series-1",
@@ -175,7 +175,7 @@ describe("library manual release targets", () => {
   });
 
   test("hides completed library health progress in show details", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       createElement(
         QueryClientProvider,
         { client: new QueryClient() },
@@ -217,11 +217,11 @@ describe("library manual release targets", () => {
   });
 
   test("uses concise recovery guidance for missing and failed media", () => {
-    const missingMarkup = renderToStaticMarkup(
-      LibraryCard({ item: movie, onManage: () => undefined }),
+    const missingMarkup = renderWithUi(
+      createElement(LibraryCard, { item: movie, onManage: () => undefined }),
     );
-    const failedMarkup = renderToStaticMarkup(
-      LibraryCard({
+    const failedMarkup = renderWithUi(
+      createElement(LibraryCard, {
         item: { ...movie, acquisitionState: "failed" },
         onManage: () => undefined,
       }),
@@ -234,7 +234,7 @@ describe("library manual release targets", () => {
   });
 
   test("shows downloaded and total library counts", () => {
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       LibrarySummary({
         summary: {
           total: 367,
@@ -309,12 +309,12 @@ describe("library manual release targets", () => {
     expect(libraryItemHasFile(imported)).toBe(true);
     expect(libraryManualReleaseAction(imported)).toBe("replace");
 
-    const cardMarkup = renderToStaticMarkup(
-      LibraryCard({ item: imported, onManage: () => undefined }),
+    const cardMarkup = renderWithUi(
+      createElement(LibraryCard, { item: imported, onManage: () => undefined }),
     );
     expect(cardMarkup).toContain("Open to replace or manage files");
 
-    const markup = renderToStaticMarkup(
+    const markup = renderWithUi(
       createElement(MovieManagement, {
         item: imported,
         canMutate: true,

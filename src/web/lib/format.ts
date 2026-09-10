@@ -1,3 +1,4 @@
+import type { UiLocale } from "../i18n/locale";
 import type { CatalogItem } from "../types";
 
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
@@ -13,11 +14,11 @@ export function imageUrl(
 
 export function mediaYear(
   item: Pick<CatalogItem, "year" | "releaseDate">,
-): string {
+): string | null {
   if (item.year) return String(item.year);
-  if (!item.releaseDate) return "TBA";
+  if (!item.releaseDate) return null;
   const year = new Date(item.releaseDate).getUTCFullYear();
-  return Number.isNaN(year) ? "TBA" : String(year);
+  return Number.isNaN(year) ? null : String(year);
 }
 
 export function formatBytes(bytes?: number): string {
@@ -61,23 +62,24 @@ export function formatEta(seconds?: number | null): string {
 
 export function formatDate(
   value?: string | null,
+  locale?: UiLocale,
   options?: Intl.DateTimeFormatOptions,
-): string {
-  if (!value) return "Unknown date";
+): string | null {
+  if (!value) return null;
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown date";
+  if (Number.isNaN(date.getTime())) return null;
   return new Intl.DateTimeFormat(
-    undefined,
+    locale,
     options ?? { dateStyle: "medium" },
   ).format(date);
 }
 
-export function formatRelativeDate(value?: string): string {
+export function formatRelativeDate(value?: string, locale?: UiLocale): string {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   const deltaSeconds = Math.round((date.getTime() - Date.now()) / 1_000);
-  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
   if (Math.abs(deltaSeconds) < 60)
     return formatter.format(deltaSeconds, "second");
   const minutes = Math.round(deltaSeconds / 60);

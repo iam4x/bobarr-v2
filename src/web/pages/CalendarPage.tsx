@@ -8,6 +8,7 @@ import { api } from "../api/client";
 import { collectionItems } from "../api/normalize";
 import { Page } from "../components/Page";
 import { Badge, EmptyState, ErrorState, InlineSpinner } from "../components/ui";
+import { useUi } from "../i18n/ui";
 import { formatDate, imageUrl, initials } from "../lib/format";
 
 function isoDate(date: Date): string {
@@ -34,6 +35,7 @@ function calendarTone(
 }
 
 export function CalendarPage() {
+  const { messages, locale } = useUi();
   const range = useMemo(() => {
     const start = new Date();
     start.setDate(start.getDate() - 7);
@@ -52,13 +54,13 @@ export function CalendarPage() {
 
   return (
     <Page
-      eyebrow="Schedule"
-      title="Coming to your screen"
-      description="Release dates and upcoming episodes from every monitored title."
+      eyebrow={messages.calendar.eyebrow}
+      title={messages.calendar.title}
+      description={messages.calendar.description}
       wide
     >
       {calendarQuery.isLoading ? (
-        <InlineSpinner label="Loading your calendar…" />
+        <InlineSpinner label={messages.calendar.loading} />
       ) : null}
       {calendarQuery.isError ? (
         <ErrorState
@@ -68,8 +70,8 @@ export function CalendarPage() {
       ) : null}
       {calendarQuery.data && groups.length === 0 ? (
         <EmptyState
-          title="Your calendar is clear"
-          description="Upcoming movies and episodes will appear here once you monitor a show or film."
+          title={messages.calendar.emptyTitle}
+          description={messages.calendar.emptyDescription}
         />
       ) : null}
       {groups.length ? (
@@ -80,15 +82,19 @@ export function CalendarPage() {
                 <span className="calendar-day__date">
                   <strong>
                     {day === today
-                      ? "Today"
-                      : formatDate(day, { weekday: "long" })}
+                      ? messages.calendar.today
+                      : (formatDate(day, locale, { weekday: "long" }) ??
+                        messages.dates.unknown)}
                   </strong>
                   <small>
-                    {formatDate(day, { month: "short", day: "numeric" })}
+                    {formatDate(day, locale, {
+                      month: "short",
+                      day: "numeric",
+                    }) ?? messages.dates.unknown}
                   </small>
                 </span>
                 <span>
-                  {items.length} {items.length === 1 ? "release" : "releases"}
+                  {messages.calendar.releaseCount({ count: items.length })}
                 </span>
               </header>
               <div className="calendar-day__items">

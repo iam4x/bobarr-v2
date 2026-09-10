@@ -7,6 +7,7 @@ import { useId, useState } from "react";
 import { Badge, Button, EmptyState, ErrorState, InlineSpinner } from "./ui";
 import { api } from "../api/client";
 import { collectionItems } from "../api/normalize";
+import { useUi } from "../i18n/ui";
 import { formatBytes, formatDate } from "../lib/format";
 
 export interface ManualReleaseTarget {
@@ -27,6 +28,7 @@ export function ReleaseCard({
   isGrabbing: boolean;
   replacement?: boolean;
 }) {
+  const { messages, locale } = useUi();
   return (
     <article
       className={`release-card ${release.eligible ? "" : "release-card--rejected"}`}
@@ -41,11 +43,17 @@ export function ReleaseCard({
           </span>
           {release.quality ? <span>{release.quality}</span> : null}
           {release.publishedAt ? (
-            <span>{formatDate(release.publishedAt)}</span>
+            <span>
+              {formatDate(release.publishedAt, locale) ??
+                messages.dates.unknown}
+            </span>
           ) : null}
         </div>
         {!release.eligible && release.reasons.length ? (
-          <ul className="release-reasons" aria-label="Exclusion reasons">
+          <ul
+            className="release-reasons"
+            aria-label={messages.releases.exclusionReasons}
+          >
             {release.reasons.map((reason) => (
               <li key={reason}>{reason}</li>
             ))}
@@ -85,6 +93,7 @@ export function ReleaseSearchPanel({
   target: ManualReleaseTarget;
   onQueued?: (candidateId: string) => void;
 }) {
+  const { messages } = useUi();
   const queryClient = useQueryClient();
   const queryInputId = useId();
   const queryHintId = `${queryInputId}-hint`;
@@ -162,7 +171,7 @@ export function ReleaseSearchPanel({
       <form className="release-query" onSubmit={submitQuery}>
         <div className="field release-query__field">
           <label className="field__label" htmlFor={queryInputId}>
-            Jackett search query
+            {messages.releases.jackettQuery}
           </label>
           <div className="release-query__controls">
             <input
@@ -184,7 +193,8 @@ export function ReleaseSearchPanel({
               busy={releaseQuery.isFetching}
               disabled={!visibleQuery.trim()}
             >
-              <Search size={16} aria-hidden="true" /> Search Jackett
+              <Search size={16} aria-hidden="true" />{" "}
+              {messages.releases.searchJackett}
             </Button>
           </div>
           <span className="field__hint" id={queryHintId}>
@@ -217,7 +227,7 @@ export function ReleaseSearchPanel({
         </div>
       ) : null}
       {releaseQuery.isLoading ? (
-        <InlineSpinner label="Searching indexers…" />
+        <InlineSpinner label={messages.releases.searching} />
       ) : null}
       {releaseQuery.isError ? (
         <ErrorState
@@ -227,8 +237,8 @@ export function ReleaseSearchPanel({
       ) : null}
       {releaseQuery.data && releases.length === 0 ? (
         <EmptyState
-          title="No releases found"
-          description="Try again later or adjust your release profile in Settings."
+          title={messages.releases.noReleasesTitle}
+          description={messages.releases.noReleasesDescription}
         />
       ) : null}
       {releaseQuery.data ? (

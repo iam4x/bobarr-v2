@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { api } from "../api/client";
 import { Badge, Button } from "../components/ui";
+import { useUi } from "../i18n/ui";
 import { formatDate } from "../lib/format";
 
 export function PeopleSection({
@@ -11,6 +12,7 @@ export function PeopleSection({
 }: {
   setNotice: (notice: string) => void;
 }) {
+  const { messages, locale } = useUi();
   const queryClient = useQueryClient();
   const sessionQuery = useQuery({
     queryKey: ["auth", "session"],
@@ -88,11 +90,8 @@ export function PeopleSection({
           <Users size={20} />
         </span>
         <div>
-          <h2>People</h2>
-          <p>
-            Invite friends as users. Promote someone when they should change
-            settings too.
-          </p>
+          <h2>{messages.people.title}</h2>
+          <p>{messages.people.description}</p>
         </div>
       </header>
       {peopleQuery.isError ? (
@@ -119,7 +118,7 @@ export function PeopleSection({
                       updateRank.mutate({ id: user.id, rank: "admin" })
                     }
                   >
-                    Make admin
+                    {messages.people.makeAdmin}
                   </Button>
                 ) : (
                   <Button
@@ -157,7 +156,7 @@ export function PeopleSection({
           busy={createInvite.isPending}
           onClick={() => createInvite.mutate()}
         >
-          <UserPlus size={16} /> Invite someone
+          <UserPlus size={16} /> {messages.people.inviteSomeone}
         </Button>
       </div>
       {openInvites.length > 0 ? (
@@ -165,8 +164,14 @@ export function PeopleSection({
           {openInvites.map((invite) => (
             <li key={invite.id}>
               <span>
-                <strong>Open invite</strong>
-                <small>Expires {formatDate(invite.expiresAt)}</small>
+                <strong>{messages.people.openInvite}</strong>
+                <small>
+                  {messages.people.expires({
+                    date:
+                      formatDate(invite.expiresAt, locale) ??
+                      messages.dates.unknown,
+                  })}
+                </small>
               </span>
               <div className="backup-list__actions">
                 {createdInvite?.id === invite.id ? (
@@ -178,7 +183,7 @@ export function PeopleSection({
                       void navigator.clipboard.writeText(createdInvite.url)
                     }
                   >
-                    <Copy size={16} /> Copy invite link
+                    <Copy size={16} /> {messages.people.copyInvite}
                   </Button>
                 ) : null}
                 <Button

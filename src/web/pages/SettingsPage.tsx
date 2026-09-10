@@ -40,6 +40,7 @@ import {
   SelectField,
   TextareaField,
 } from "../components/ui";
+import { useUi } from "../i18n/ui";
 import { formatBytes, formatDate } from "../lib/format";
 
 const settingsSchema = z.object({
@@ -233,6 +234,7 @@ const connectionDefinitions: Array<[IntegrationKey, string]> = [
 ];
 
 export function SettingsPage() {
+  const { messages, locale } = useUi();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState<string>();
@@ -369,7 +371,9 @@ export function SettingsPage() {
         {backupsQuery.data.backups.map((backup) => (
           <li key={backup.sha256}>
             <span>
-              <strong>{formatDate(backup.createdAt)}</strong>
+              <strong>
+                {formatDate(backup.createdAt, locale) ?? messages.dates.unknown}
+              </strong>
               <small>
                 Schema {backup.migrationVersion} · {backup.name}
               </small>
@@ -383,13 +387,13 @@ export function SettingsPage() {
 
   if (settingsQuery.isLoading)
     return (
-      <Page title="Settings">
-        <InlineSpinner label="Loading settings…" />
+      <Page title={messages.settings.title}>
+        <InlineSpinner label={messages.settings.loading} />
       </Page>
     );
   if (settingsQuery.isError)
     return (
-      <Page title="Settings">
+      <Page title={messages.settings.title}>
         <ErrorState
           error={settingsQuery.error}
           onRetry={() => void settingsQuery.refetch()}
@@ -399,13 +403,13 @@ export function SettingsPage() {
 
   return (
     <Page
-      eyebrow="Configuration"
-      title="Settings"
-      description="Connections, acquisition preferences, storage, and maintenance."
+      eyebrow={messages.settings.eyebrow}
+      title={messages.settings.title}
+      description={messages.settings.description}
       wide
     >
       <div className="settings-layout">
-        <nav className="settings-nav" aria-label="Settings sections">
+        <nav className="settings-nav" aria-label={messages.settings.sections}>
           <a href="#connections">
             <Network size={16} /> Connections
           </a>
@@ -567,8 +571,8 @@ export function SettingsPage() {
                 {...register("maximumSizeMb")}
               />
               <Field
-                label="Metadata language"
-                hint="ISO 639-1 code"
+                label={messages.settings.metadataLanguage}
+                hint={messages.settings.metadataLanguageHint}
                 error={fieldError("language")}
                 {...register("language")}
               />

@@ -1,6 +1,7 @@
 import type { TextareaHTMLAttributes } from "react";
 
 import { TextareaField } from "./ui";
+import { useUi } from "../i18n/ui";
 
 interface TermFieldProps {
   input: TextareaHTMLAttributes<HTMLTextAreaElement>;
@@ -16,26 +17,27 @@ export function ReleaseTermFields({
   preferred: TermFieldProps;
   rejected: TermFieldProps;
 }) {
+  const { messages } = useUi();
   return (
     <div className="form-grid form-grid--three">
       <TextareaField
-        label="Required terms"
+        label={messages.terms.required}
         rows={3}
-        hint="Every comma-separated term must be present or the release is excluded."
+        hint={messages.terms.requiredHint}
         error={required.error}
         {...required.input}
       />
       <TextareaField
-        label="Preferred terms"
+        label={messages.terms.preferred}
         rows={3}
-        hint="Comma-separated terms that raise a release score."
+        hint={messages.terms.preferredHint}
         error={preferred.error}
         {...preferred.input}
       />
       <TextareaField
-        label="Rejected terms"
+        label={messages.terms.rejected}
         rows={3}
-        hint="Comma-separated terms that make a release ineligible."
+        hint={messages.terms.rejectedHint}
         error={rejected.error}
         {...rejected.input}
       />

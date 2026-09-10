@@ -10,6 +10,7 @@ import { useId } from "react";
 
 import { ModalLayer } from "./ModalLayer";
 import { ApiError } from "../api/client";
+import { useUi } from "../i18n/ui";
 
 function classNames(
   ...values: Array<string | false | null | undefined>
@@ -92,12 +93,13 @@ export function ProgressBar({
   value: number;
   label?: string;
 }) {
+  const { messages } = useUi();
   const normalized = Math.min(100, Math.max(0, Math.round(value)));
   return (
     <div
       className="progress"
       role="progressbar"
-      aria-label={label ?? "Progress"}
+      aria-label={label ?? messages.common.progress}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={normalized}
@@ -274,8 +276,13 @@ export function TextareaField({
 }
 
 export function SkeletonGrid({ count = 10 }: { count?: number }) {
+  const { messages } = useUi();
   return (
-    <div className="poster-grid" aria-label="Loading titles" aria-busy="true">
+    <div
+      className="poster-grid"
+      aria-label={messages.common.loadingTitles}
+      aria-busy="true"
+    >
       {Array.from({ length: count }, (_, index) => (
         <div className="media-card media-card--skeleton" key={index}>
           <div className="skeleton media-card__image" />
@@ -287,11 +294,12 @@ export function SkeletonGrid({ count = 10 }: { count?: number }) {
   );
 }
 
-export function InlineSpinner({ label = "Loading" }: { label?: string }) {
+export function InlineSpinner({ label }: { label?: string }) {
+  const { messages } = useUi();
   return (
     <span className="inline-spinner" role="status">
       <LoaderCircle aria-hidden="true" className="spin" size={18} />
-      {label}
+      {label ?? messages.common.loading}
     </span>
   );
 }
@@ -319,29 +327,30 @@ export function EmptyState({
 
 export function ErrorState({
   error,
-  title = "Something went wrong",
+  title,
   onRetry,
 }: {
   error: unknown;
   title?: string;
   onRetry?: () => void;
 }) {
+  const { messages } = useUi();
   const message =
-    error instanceof Error
-      ? error.message
-      : "The request could not be completed.";
+    error instanceof Error ? error.message : messages.common.requestFailed;
   const requestId = error instanceof ApiError ? error.requestId : undefined;
   return (
     <div className="state-card state-card--error" role="alert">
       <span className="state-card__icon" aria-hidden="true">
         <AlertCircle size={24} />
       </span>
-      <h2>{title}</h2>
+      <h2>{title ?? messages.common.somethingWentWrong}</h2>
       <p>{message}</p>
-      {requestId ? <small>Request {requestId}</small> : null}
+      {requestId ? (
+        <small>{messages.common.requestId({ id: requestId })}</small>
+      ) : null}
       {onRetry ? (
         <Button type="button" variant="secondary" onClick={onRetry}>
-          Try again
+          {messages.common.tryAgain}
         </Button>
       ) : null}
     </div>
@@ -363,6 +372,7 @@ export function Dialog({
   children: ReactNode;
   size?: "sm" | "md" | "lg" | "xl";
 }) {
+  const { messages } = useUi();
   const titleId = useId();
   const descriptionId = useId();
   return (
@@ -380,7 +390,7 @@ export function Dialog({
           <h2 id={titleId}>{title}</h2>
           {description ? <p id={descriptionId}>{description}</p> : null}
         </div>
-        <IconButton label="Close dialog" onClick={onClose}>
+        <IconButton label={messages.common.closeDialog} onClick={onClose}>
           <X size={20} />
         </IconButton>
       </header>
