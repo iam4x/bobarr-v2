@@ -18,7 +18,7 @@ import type {
 import type { MiddlewareHandler } from "hono";
 
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
-import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { deleteCookie, getCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 
 import { registerBackupRestoreRoutes } from "./backup-restore";
@@ -28,8 +28,13 @@ import { registerProductRoutes } from "./product";
 import { requestBodyLimitMiddleware } from "./request-body-limit";
 import { registerScanReviewRoutes } from "./scan-reviews";
 import {
-  AcceptInviteRequestSchema,
-  AccountSchema,
+  csrfCookieName,
+  requestMetadata,
+  setCsrfCookie,
+  setSessionCookie,
+} from "./session-http";
+import { registerUserRoutes } from "./users";
+import {
   ApiErrorEnvelopeSchema,
   AppSettingsSchema,
   type AppSettings,
@@ -37,17 +42,11 @@ import {
   CalendarListResponseSchema,
   CalendarQuerySchema,
   CreateCalendarEventRequestSchema,
-  CreateInviteRequestSchema,
   CreateJobRequestSchema,
   CreateLibraryItemRequestSchema,
-  CreatedInviteSchema,
   CurrentSessionSchema,
   DeleteLibraryItemResponseSchema,
   DeleteSecretResponseSchema,
-  DeleteUserResponseSchema,
-  InviteParamsSchema,
-  InvitePreviewQuerySchema,
-  InvitePreviewSchema,
   JobParamsSchema,
   JobSchema,
   JobsListResponseSchema,
@@ -62,7 +61,6 @@ import {
   LoginRequestSchema,
   LogoutResponseSchema,
   ResetLoginLockResponseSchema,
-  RevokeInviteResponseSchema,
   SecretListResponseSchema,
   SecretMetadataSchema,
   SecretParamsSchema,
@@ -74,14 +72,9 @@ import {
   UpdateSettingsRequestSchema,
   UpdateCredentialsRequestSchema,
   UpdateCredentialsResponseSchema,
-  UpdateUserRankRequestSchema,
-  UserParamsSchema,
-  UsersResponseSchema,
 } from "../../contracts";
-import { deriveInviteState } from "../auth";
 import { requireAdmin } from "../auth/policy";
-import { AppError, notFound, systemClock, toIsoDate } from "../core";
-import { toAccount } from "../db";
+import { AppError, notFound, systemClock } from "../core";
 import { durableJobToContract, validateCronExpression } from "../jobs";
 
 interface ApiVariables {
@@ -262,83 +255,6 @@ const routes = {
         UpdateCredentialsResponseSchema,
         "Updated sign-in credentials",
       ),
-      default: errorResponse,
-    },
-  }),
-  invitePreview: createRoute({
-    method: "get",
-    path: "/api/v1/invites/preview",
-    tags: ["auth"],
-    request: { query: InvitePreviewQuerySchema },
-    responses: {
-      200: jsonResponse(InvitePreviewSchema, "Open invite preview"),
-      default: errorResponse,
-    },
-  }),
-  acceptInvite: createRoute({
-    method: "post",
-    path: "/api/v1/invites/accept",
-    tags: ["auth"],
-    request: { body: jsonBody(AcceptInviteRequestSchema) },
-    responses: {
-      201: jsonResponse(AuthSessionSchema, "Accepted invite and signed in"),
-      default: errorResponse,
-    },
-  }),
-  listUsers: createRoute({
-    method: "get",
-    path: "/api/v1/users",
-    tags: ["users"],
-    security: [{ sessionCookie: [] }],
-    responses: {
-      200: jsonResponse(UsersResponseSchema, "People and invites"),
-      default: errorResponse,
-    },
-  }),
-  createInvite: createRoute({
-    method: "post",
-    path: "/api/v1/users/invites",
-    tags: ["users"],
-    security: [{ sessionCookie: [] }],
-    request: { body: jsonBody(CreateInviteRequestSchema) },
-    responses: {
-      201: jsonResponse(CreatedInviteSchema, "Created invite"),
-      default: errorResponse,
-    },
-  }),
-  revokeInvite: createRoute({
-    method: "delete",
-    path: "/api/v1/users/invites/{id}",
-    tags: ["users"],
-    security: [{ sessionCookie: [] }],
-    request: { params: InviteParamsSchema },
-    responses: {
-      200: jsonResponse(RevokeInviteResponseSchema, "Revoked invite"),
-      default: errorResponse,
-    },
-  }),
-  updateUserRank: createRoute({
-    method: "patch",
-    path: "/api/v1/users/{id}",
-    tags: ["users"],
-    security: [{ sessionCookie: [] }],
-    request: {
-      params: UserParamsSchema,
-      body: jsonBody(UpdateUserRankRequestSchema),
-    },
-    responses: {
-      200: jsonResponse(AccountSchema, "Updated account rank"),
-      default: errorResponse,
-    },
-  }),
-  deleteUser: createRoute({
-    method: "delete",
-    path: "/api/v1/users/{id}",
-    tags: ["users"],
-    security: [{ sessionCookie: [] }],
-    request: { params: UserParamsSchema },
-    responses: {
-      200: jsonResponse(DeleteUserResponseSchema, "Deleted account"),
       default: errorResponse,
     },
   }),
@@ -663,78 +579,7 @@ export function createApiApp(
     );
     return context.json(result, 200);
   });
-  app.openapi(routes.invitePreview, (context) =>
-    context.json(
-      dependencies.invites.preview(context.req.valid("query").token),
-      200,
-    ),
-  );
-  app.openapi(routes.acceptInvite, async (context) => {
-    const grant = await dependencies.invites.accept(
-      context.req.valid("json"),
-      requestMetadata(context.req.raw),
-    );
-    setSessionCookie(context, dependencies.config, grant.sessionToken);
-    setCsrfCookie(context, dependencies.config, grant.response.csrfToken);
-    return context.json(grant.response, 201);
-  });
-  app.openapi(routes.listUsers, (context) => {
-    const actor = context.get("auth").actor;
-    const users = dependencies.auth.listAccounts(actor);
-    const invites = dependencies.invites.listInvites(actor);
-    const now = clock.now().getTime();
-    return context.json(
-      {
-        users: users.map(toAccount),
-        invites: invites.map((row) => {
-          const state = deriveInviteState(row, now);
-          return {
-            id: row.id,
-            status: state.status,
-            createdAt: toIsoDate(row.createdAt),
-            expiresAt: toIsoDate(row.expiresAt),
-            acceptedAt:
-              row.acceptedAt === null ? null : toIsoDate(row.acceptedAt),
-            revokedAt: row.revokedAt === null ? null : toIsoDate(row.revokedAt),
-            acceptedBy: row.acceptedBy,
-          };
-        }),
-      },
-      200,
-    );
-  });
-  app.openapi(routes.createInvite, async (context) => {
-    const body = context.req.valid("json");
-    const invite = await dependencies.invites.create(
-      context.get("auth").actor,
-      body.expiresInSeconds === undefined
-        ? {}
-        : { expiresInSeconds: body.expiresInSeconds },
-    );
-    return context.json(invite, 201);
-  });
-  app.openapi(routes.revokeInvite, (context) => {
-    dependencies.invites.revoke(
-      context.get("auth").actor,
-      context.req.valid("param").id,
-    );
-    return context.json({ revoked: true as const }, 200);
-  });
-  app.openapi(routes.updateUserRank, (context) => {
-    const user = dependencies.auth.setRank(
-      context.get("auth").actor,
-      context.req.valid("param").id,
-      context.req.valid("json").rank,
-    );
-    return context.json(toAccount(user), 200);
-  });
-  app.openapi(routes.deleteUser, (context) => {
-    dependencies.auth.deleteAccount(
-      context.get("auth").actor,
-      context.req.valid("param").id,
-    );
-    return context.json({ deleted: true as const }, 200);
-  });
+  registerUserRoutes(app, dependencies);
   app.openapi(routes.listSecrets, (context) => {
     requireAdmin(
       context.get("auth").actor,
@@ -1193,38 +1038,6 @@ function authenticationMiddleware(
   };
 }
 
-function setSessionCookie(
-  context: Parameters<typeof setCookie>[0],
-  config: BackendConfig,
-  token: string,
-): void {
-  setCookie(context, config.sessionCookieName, token, {
-    httpOnly: true,
-    secure: config.sessionCookieSecure,
-    sameSite: "Strict",
-    path: "/",
-    maxAge: config.sessionTtlSeconds,
-  });
-}
-
-function setCsrfCookie(
-  context: Parameters<typeof setCookie>[0],
-  config: BackendConfig,
-  token: string,
-): void {
-  setCookie(context, csrfCookieName(config), token, {
-    httpOnly: false,
-    secure: config.sessionCookieSecure,
-    sameSite: "Strict",
-    path: "/",
-    maxAge: config.sessionTtlSeconds,
-  });
-}
-
-function csrfCookieName(config: BackendConfig): string {
-  return `${config.sessionCookieName}_csrf`;
-}
-
 async function persistSecretInputs(
   vault: SecretVault,
   patch: Partial<AppSettings>,
@@ -1380,21 +1193,6 @@ function issuesToFieldErrors(
     (fieldErrors[path] ??= []).push(issue.message);
   }
   return fieldErrors;
-}
-
-function requestMetadata(request: Request): {
-  userAgent?: string;
-  ipAddress?: string;
-} {
-  const forwardedFor = request.headers
-    .get("x-forwarded-for")
-    ?.split(",")[0]
-    ?.trim();
-  const userAgent = request.headers.get("user-agent") ?? undefined;
-  return {
-    ...(userAgent === undefined ? {} : { userAgent }),
-    ...(forwardedFor === undefined ? {} : { ipAddress: forwardedFor }),
-  };
 }
 
 export type BobarrApi = ReturnType<typeof createApiApp>;
