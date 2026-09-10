@@ -14,9 +14,20 @@ export default defineConfig({
   reporter: process.env["CI"] ? "github" : "list",
   use: {
     locale: "en-US",
+    timezoneId: "UTC",
     baseURL: `http://127.0.0.1:${port}`,
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
+    extraHTTPHeaders: { "accept-language": "en-US" },
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: `http://127.0.0.1:${port}`,
+          localStorage: [{ name: "bobarr.uiLocale", value: "en" }],
+        },
+      ],
+    },
     launchOptions: {
       args: ["--disable-gpu", "--disable-software-rasterizer"],
     },
