@@ -13,6 +13,7 @@ export default defineConfig({
   retries: process.env["CI"] ? 2 : 0,
   reporter: process.env["CI"] ? "github" : "list",
   use: {
+    locale: "en-US",
     baseURL: `http://127.0.0.1:${port}`,
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
