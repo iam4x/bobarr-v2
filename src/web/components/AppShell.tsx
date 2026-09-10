@@ -1,3 +1,4 @@
+import type { Messages } from "../i18n/en";
 import type { SystemStatus } from "../types";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -27,6 +28,7 @@ import { Badge, Button, classNames, IconButton } from "./ui";
 import { api } from "../api/client";
 import { normalizeSystemStatus } from "../api/normalize";
 import { useServerEvents } from "../hooks/useServerEvents";
+import { LocaleSwitcher, useUi } from "../i18n/ui";
 
 interface NavigationItem {
   label: string;
@@ -35,33 +37,40 @@ interface NavigationItem {
   end?: boolean;
 }
 
-const primaryNavigation: NavigationItem[] = [
-  { label: "Discover", to: "/discover", icon: Compass },
-  { label: "Search", to: "/search", icon: Search },
-  { label: "Suggestions", to: "/suggestions", icon: Sparkles },
-];
-
-const libraryNavigation: NavigationItem[] = [
-  { label: "Movies", to: "/library/movies", icon: Film },
-  { label: "Shows", to: "/library/shows", icon: Tv },
-  { label: "Calendar", to: "/calendar", icon: CalendarDays },
-];
-
-const activityNavigation: NavigationItem = {
-  label: "Activity",
-  to: "/activity",
-  icon: Activity,
-};
-const settingsNavigation: NavigationItem = {
-  label: "Settings",
-  to: "/settings",
-  icon: Settings,
-};
-const accountNavigation: NavigationItem = {
-  label: "Account",
-  to: "/account",
-  icon: UserRound,
-};
+function navigationItems(messages: Messages) {
+  const primaryNavigation: NavigationItem[] = [
+    { label: messages.nav.discover, to: "/discover", icon: Compass },
+    { label: messages.nav.search, to: "/search", icon: Search },
+    { label: messages.nav.suggestions, to: "/suggestions", icon: Sparkles },
+  ];
+  const libraryNavigation: NavigationItem[] = [
+    { label: messages.nav.movies, to: "/library/movies", icon: Film },
+    { label: messages.nav.shows, to: "/library/shows", icon: Tv },
+    { label: messages.nav.calendar, to: "/calendar", icon: CalendarDays },
+  ];
+  const activityNavigation: NavigationItem = {
+    label: messages.nav.activity,
+    to: "/activity",
+    icon: Activity,
+  };
+  const settingsNavigation: NavigationItem = {
+    label: messages.nav.settings,
+    to: "/settings",
+    icon: Settings,
+  };
+  const accountNavigation: NavigationItem = {
+    label: messages.nav.account,
+    to: "/account",
+    icon: UserRound,
+  };
+  return {
+    primaryNavigation,
+    libraryNavigation,
+    activityNavigation,
+    settingsNavigation,
+    accountNavigation,
+  };
+}
 
 function DesktopNavLink({ item }: { item: NavigationItem }) {
   const Icon = item.icon;
@@ -79,15 +88,27 @@ function DesktopNavLink({ item }: { item: NavigationItem }) {
   );
 }
 
-function StatusPill({ status, to }: { status?: SystemStatus; to: string }) {
+function StatusPill({
+  status,
+  to,
+  labels,
+}: {
+  status?: SystemStatus;
+  to: string;
+  labels: {
+    ready: string;
+    degraded: string;
+    unavailable: string;
+  };
+}) {
   let tone = "danger";
-  let label = "Service unavailable";
+  let label = labels.unavailable;
   if (status?.status === "ready") {
     tone = "success";
-    label = "All systems ready";
+    label = labels.ready;
   } else if (status?.status === "degraded") {
     tone = "warning";
-    label = "Service degraded";
+    label = labels.degraded;
   }
   return (
     <NavLink className="service-pill" to={to} title={label}>
@@ -101,6 +122,14 @@ function StatusPill({ status, to }: { status?: SystemStatus; to: string }) {
 }
 
 export function AppShell() {
+  const { messages } = useUi();
+  const {
+    primaryNavigation,
+    libraryNavigation,
+    activityNavigation,
+    settingsNavigation,
+    accountNavigation,
+  } = navigationItems(messages);
   const [moreOpen, setMoreOpen] = useState(false);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const location = useLocation();
@@ -137,11 +166,16 @@ export function AppShell() {
   }, [location.pathname]);
 
   const mobileItems: NavigationItem[] = [
-    { label: "Discover", to: "/discover", icon: Compass },
-    { label: "Search", to: "/search", icon: Search },
-    { label: "Library", to: "/library/movies", icon: Library },
-    { label: "Activity", to: "/activity", icon: Activity },
+    { label: messages.nav.discover, to: "/discover", icon: Compass },
+    { label: messages.nav.search, to: "/search", icon: Search },
+    { label: messages.nav.library, to: "/library/movies", icon: Library },
+    { label: messages.nav.activity, to: "/activity", icon: Activity },
   ];
+  const statusLabels = {
+    ready: messages.nav.statusReady,
+    degraded: messages.nav.statusDegraded,
+    unavailable: messages.nav.statusUnavailable,
+  };
 
   return (
     <div className="app-shell">
@@ -150,21 +184,21 @@ export function AppShell() {
           <Brand />
         </NavLink>
 
-        <nav aria-label="Main navigation">
+        <nav aria-label={messages.nav.main}>
           <div className="nav-group">
-            <span className="nav-group__label">Browse</span>
+            <span className="nav-group__label">{messages.nav.browse}</span>
             {primaryNavigation.map((item) => (
               <DesktopNavLink item={item} key={item.to} />
             ))}
           </div>
           <div className="nav-group">
-            <span className="nav-group__label">Library</span>
+            <span className="nav-group__label">{messages.nav.library}</span>
             {libraryNavigation.map((item) => (
               <DesktopNavLink item={item} key={item.to} />
             ))}
           </div>
           <div className="nav-group">
-            <span className="nav-group__label">System</span>
+            <span className="nav-group__label">{messages.nav.system}</span>
             {systemNavigation.map((item) => (
               <DesktopNavLink item={item} key={item.to} />
             ))}
@@ -175,7 +209,9 @@ export function AppShell() {
           <StatusPill
             status={statusQuery.data}
             to={canManageSettings ? "/settings#connections" : "/discover"}
+            labels={statusLabels}
           />
+          <LocaleSwitcher />
           <Button
             type="button"
             variant="ghost"
@@ -183,9 +219,9 @@ export function AppShell() {
             busy={logoutMutation.isPending}
             onClick={() => logoutMutation.mutate()}
           >
-            <LogOut size={15} /> Sign out
+            <LogOut size={15} /> {messages.nav.signOut}
           </Button>
-          <span className="version-label">Bobarr v2</span>
+          <span className="version-label">{messages.nav.version}</span>
         </div>
       </aside>
 
@@ -194,7 +230,7 @@ export function AppShell() {
           <Brand />
         </NavLink>
         {statusQuery.data?.status === "degraded" ? (
-          <Badge tone="warning">Degraded</Badge>
+          <Badge tone="warning">{messages.nav.degraded}</Badge>
         ) : null}
       </header>
 
@@ -205,7 +241,7 @@ export function AppShell() {
               className="status-dot status-dot--danger"
               aria-hidden="true"
             />
-            Bobarr is offline. We’ll keep trying to reconnect.
+            {messages.nav.offline}
           </div>
         ) : null}
         <Outlet />
@@ -213,7 +249,7 @@ export function AppShell() {
 
       <nav
         className="mobile-nav"
-        aria-label="Mobile navigation"
+        aria-label={messages.nav.mobile}
         data-mobile-navigation
       >
         {mobileItems.map((item) => {
@@ -241,7 +277,7 @@ export function AppShell() {
           onClick={() => setMoreOpen((value) => !value)}
         >
           <Menu size={21} aria-hidden="true" />
-          <span>More</span>
+          <span>{messages.nav.more}</span>
         </button>
       </nav>
 
@@ -257,11 +293,11 @@ export function AppShell() {
       >
         <header>
           <div>
-            <span className="eyebrow">Navigation</span>
-            <h2 id="mobile-more-title">More from Bobarr</h2>
+            <span className="eyebrow">{messages.nav.moreEyebrow}</span>
+            <h2 id="mobile-more-title">{messages.nav.moreTitle}</h2>
           </div>
           <IconButton
-            label="Close menu"
+            label={messages.nav.closeMenu}
             autoFocus
             onClick={() => setMoreOpen(false)}
           >
@@ -289,14 +325,16 @@ export function AppShell() {
         <StatusPill
           status={statusQuery.data}
           to={canManageSettings ? "/settings#connections" : "/discover"}
+          labels={statusLabels}
         />
+        <LocaleSwitcher labeled />
         <Button
           type="button"
           variant="ghost"
           busy={logoutMutation.isPending}
           onClick={() => logoutMutation.mutate()}
         >
-          <LogOut size={16} /> Sign out
+          <LogOut size={16} /> {messages.nav.signOut}
         </Button>
       </ModalLayer>
     </div>
@@ -304,11 +342,12 @@ export function AppShell() {
 }
 
 export function RootLoading() {
+  const { messages } = useUi();
   return (
     <main className="full-page-state" aria-busy="true">
       <Brand />
       <Clapperboard className="spin-slow" size={28} aria-hidden="true" />
-      <p>Warming up your library…</p>
+      <p>{messages.nav.warmingUp}</p>
     </main>
   );
 }
