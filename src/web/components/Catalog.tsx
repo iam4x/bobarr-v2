@@ -149,7 +149,7 @@ export function ExternalRatings({
     >
       {ratings.imdb ? (
         <div className="external-rating external-rating--imdb">
-          <dt>IMDb</dt>
+          <dt>{messages.catalog.imdb}</dt>
           <dd
             aria-label={messages.catalog.imdbRating({
               value: String(ratings.imdb.value),
@@ -163,7 +163,7 @@ export function ExternalRatings({
       ) : null}
       {ratings.rottenTomatoes ? (
         <div className="external-rating external-rating--tomatoes">
-          <dt>Rotten Tomatoes</dt>
+          <dt>{messages.catalog.rottenTomatoes}</dt>
           <dd
             aria-label={messages.catalog.tomatoesRating({
               value: ratings.rottenTomatoes.value,
@@ -272,6 +272,7 @@ export function WatchTrailerButton({
   title: string;
   className?: string;
 }) {
+  const { messages } = useUi();
   const [open, setOpen] = useState(false);
   if (!trailer) return null;
 
@@ -284,13 +285,13 @@ export function WatchTrailerButton({
           variant="secondary"
           onClick={() => setOpen(true)}
         >
-          <Play size={15} fill="currentColor" /> Watch trailer
+          <Play size={15} fill="currentColor" /> {messages.catalog.watchTrailer}
         </Button>
       </div>
       <Dialog
         open={open}
         title={trailer.name}
-        description={`${title} trailer`}
+        description={messages.catalog.trailerFor({ title })}
         onClose={() => setOpen(false)}
         size="lg"
       >
@@ -329,7 +330,7 @@ export function MediaDetailDialog({
   const detailQuery = useQuery({
     queryKey: ["catalog", "detail", selected?.kind, selected?.tmdbId],
     queryFn: ({ signal }) => {
-      if (!selected) throw new Error("Select a catalog title first.");
+      if (!selected) throw new Error(messages.catalog.selectTitleFirst);
       return api.get("catalogDetails", {
         params: { kind: selected.kind, tmdbId: selected.tmdbId },
         signal,
@@ -371,13 +372,9 @@ export function MediaDetailDialog({
       setAddedLibraryId(libraryItem.id);
       if (acquisitionMode === "manual") {
         setShowReleases(true);
-        setMessage(
-          "Added to your library without starting a download. Choose a release below when you are ready.",
-        );
+        setMessage(messages.catalog.addedManual);
       } else {
-        setMessage(
-          "Added to your library. Bobarr will look for an eligible release.",
-        );
+        setMessage(messages.catalog.addedAutomatic);
       }
       void queryClient.invalidateQueries({ queryKey: ["library"] });
       void queryClient.invalidateQueries({ queryKey: ["catalog"] });
@@ -488,11 +485,11 @@ export function MediaDetailDialog({
   }
   const hasManualSeasonPicker =
     item?.kind === "series" && (item.numberOfSeasons ?? 0) > 0;
-  let manualSearchLabel = "Manual search";
+  let manualSearchLabel = messages.catalog.manualSearch;
   if (showReleases) {
-    manualSearchLabel = "Hide releases";
+    manualSearchLabel = messages.catalog.hideReleases;
   } else if (canAddWithManualSearch) {
-    manualSearchLabel = "Add & search manually";
+    manualSearchLabel = messages.catalog.addAndSearchManually;
   }
   const manualSearchButton = (
     <Button
@@ -509,7 +506,7 @@ export function MediaDetailDialog({
       title={
         canManualSearch || canAddWithManualSearch
           ? undefined
-          : "Add this title to your library before searching releases"
+          : messages.catalog.addBeforeSearch
       }
       onClick={() => {
         if (canAddWithManualSearch && item) {
@@ -526,7 +523,7 @@ export function MediaDetailDialog({
   return (
     <Dialog
       open={Boolean(selected)}
-      title={item?.title ?? "Title details"}
+      title={item?.title ?? messages.catalog.titleDetails}
       description={
         item
           ? `${mediaYear(item) ?? messages.dates.tba} · ${item.kind === "movie" ? messages.kind.movie : messages.kind.series}`
@@ -551,7 +548,9 @@ export function MediaDetailDialog({
             <div className="media-detail__summary">
               <div className="media-detail__badges">
                 <Badge tone="accent">
-                  {item.kind === "movie" ? "Movie" : "Series"}
+                  {item.kind === "movie"
+                    ? messages.kind.movie
+                    : messages.kind.series}
                 </Badge>
                 {item.voteAverage ? (
                   <Badge>
@@ -566,7 +565,7 @@ export function MediaDetailDialog({
                 ) : null}
               </div>
               <ExternalRatings ratings={item.ratings} />
-              <p>{item.overview || "No synopsis is available yet."}</p>
+              <p>{item.overview || messages.catalog.noSynopsis}</p>
               <WatchTrailerButton
                 trailer={item.trailer}
                 title={item.title}
@@ -609,14 +608,14 @@ export function MediaDetailDialog({
                         setMessage(undefined);
                       }}
                     >
-                      Keep browsing
+                      {messages.catalog.keepBrowsing}
                     </Button>
                     <Link
                       className="button button--primary button--sm"
                       to={libraryPath}
                       onClick={onClose}
                     >
-                      <Library size={15} /> Open in library
+                      <Library size={15} /> {messages.catalog.openInLibrary}
                     </Link>
                   </div>
                 ) : null}
@@ -638,8 +637,10 @@ export function MediaDetailDialog({
             >
               <div className="season-monitor__heading">
                 <div>
-                  <h3 id="season-monitor-title">Choose seasons</h3>
-                  <p>Only selected seasons are searched automatically.</p>
+                  <h3 id="season-monitor-title">
+                    {messages.catalog.chooseSeasons}
+                  </h3>
+                  <p>{messages.catalog.chooseSeasonsHint}</p>
                 </div>
                 <div className="season-monitor__shortcuts">
                   <Button
@@ -655,7 +656,7 @@ export function MediaDetailDialog({
                       )
                     }
                   >
-                    Select all
+                    {messages.catalog.selectAll}
                   </Button>
                   <Button
                     type="button"
@@ -665,7 +666,7 @@ export function MediaDetailDialog({
                       setSeasonSelection([item.numberOfSeasons ?? 1])
                     }
                   >
-                    Latest
+                    {messages.catalog.latest}
                   </Button>
                 </div>
               </div>
@@ -691,10 +692,10 @@ export function MediaDetailDialog({
                         }
                       />
                       <span className="season-choice__label">
-                        <span>Season {season}</span>
+                        <span>{messages.library.season({ n: season })}</span>
                         <small>
                           {seasonQuery?.isPending
-                            ? "Loading year…"
+                            ? messages.catalog.loadingYear
                             : seasonYearLabel(seasonQuery?.data, messages)}
                         </small>
                       </span>
@@ -711,10 +712,8 @@ export function MediaDetailDialog({
                   }
                 />
                 <span>
-                  <strong>Monitor future seasons</strong>
-                  <small>
-                    Opt in to newly announced seasons during metadata refresh.
-                  </small>
+                  <strong>{messages.catalog.monitorFutureSeasons}</strong>
+                  <small>{messages.catalog.monitorFutureSeasonsHint}</small>
                 </span>
               </label>
             </section>
@@ -727,7 +726,7 @@ export function MediaDetailDialog({
                 to={libraryPath}
                 onClick={onClose}
               >
-                <Library size={17} /> Open in library
+                <Library size={17} /> {messages.catalog.openInLibrary}
               </Link>
             ) : (
               <Button
@@ -749,7 +748,7 @@ export function MediaDetailDialog({
                   })
                 }
               >
-                <BookmarkPlus size={17} /> Add to library
+                <BookmarkPlus size={17} /> {messages.catalog.addToLibrary}
               </Button>
             )}
             {!hasManualSeasonPicker ? manualSearchButton : null}
@@ -758,8 +757,8 @@ export function MediaDetailDialog({
           {!canManualSearch ? (
             <p className="field__hint" role="note">
               {canAddWithManualSearch
-                ? "Choose Add & search manually to select a release before any download starts."
-                : "Add this title to your library before searching or grabbing a release."}
+                ? messages.catalog.chooseManualFirst
+                : messages.catalog.addBeforeGrab}
             </p>
           ) : null}
 
@@ -767,7 +766,7 @@ export function MediaDetailDialog({
             <div className="media-detail__manual-search">
               <div className="media-detail__manual-search-controls">
                 <SelectField
-                  label="Season for manual search"
+                  label={messages.catalog.seasonForManualSearch}
                   value={selectedSeason ?? ""}
                   onChange={(event) =>
                     setSelectedSeason(Number(event.currentTarget.value))
@@ -775,15 +774,13 @@ export function MediaDetailDialog({
                 >
                   {selectableSeasons.map((season) => (
                     <option value={season} key={season}>
-                      Season {season}
+                      {messages.library.season({ n: season })}
                     </option>
                   ))}
                 </SelectField>
                 {manualSearchButton}
               </div>
-              <p className="field__hint">
-                Bobarr attaches the selected release to this monitored season.
-              </p>
+              <p className="field__hint">{messages.catalog.attachesToSeason}</p>
             </div>
           ) : null}
 

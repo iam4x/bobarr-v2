@@ -1,3 +1,4 @@
+import type { Messages } from "../i18n/en";
 import type { CatalogItem, ScanReview, ScanReviewCandidate } from "../types";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -6,6 +7,7 @@ import { type FormEvent, useRef, useState } from "react";
 
 import { Badge, Button } from "./ui";
 import { api } from "../api/client";
+import { en } from "../i18n/en";
 import { useUi } from "../i18n/ui";
 import { imageUrl } from "../lib/format";
 
@@ -29,8 +31,8 @@ function ScanReviewCandidateRow({
       </div>
       <div className="scan-review-candidate__copy">
         <strong>{candidate.title}</strong>
-        <span>{candidate.year ?? "Year unknown"}</span>
-        <p>{candidate.overview || "No description available."}</p>
+        <span>{candidate.year ?? messages.common.yearUnknown}</span>
+        <p>{candidate.overview || messages.scanReview.noDescription}</p>
       </div>
       <Button
         type="button"
@@ -56,6 +58,7 @@ function ManualTmdbSearch({
   dismissing: boolean;
   onResolve: (tmdbId: number) => void;
 }) {
+  const { messages } = useUi();
   const [draft, setDraft] = useState(review.title);
   const [results, setResults] = useState<ScanReviewCandidate[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -67,13 +70,17 @@ function ManualTmdbSearch({
     const query = draft.trim();
     let reference: number | null;
     try {
-      reference = tmdbReference(query, review.kind);
+      reference = tmdbReference(query, review.kind, messages);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Invalid TMDB URL.");
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : messages.scanReview.invalidTmdbUrl,
+      );
       return;
     }
     if (!reference && query.length < 2) {
-      setError("Enter at least 2 characters to search TMDB.");
+      setError(messages.scanReview.minSearch);
       return;
     }
     const currentRequest = ++requestId.current;
@@ -100,22 +107,23 @@ function ManualTmdbSearch({
     } catch (caught) {
       if (currentRequest !== requestId.current) return;
       setError(
-        caught instanceof Error ? caught.message : "TMDB search failed.",
+        caught instanceof Error
+          ? caught.message
+          : messages.scanReview.searchFailed,
       );
     } finally {
       if (currentRequest === requestId.current) setSearching(false);
     }
   }
 
-  const { messages } = useUi();
   return (
-    <section className="scan-review-manual" aria-label="Manual TMDB search">
+    <section
+      className="scan-review-manual"
+      aria-label={messages.scanReview.manualSearch}
+    >
       <div className="scan-review-manual__heading">
         <strong>{messages.scanReview.searchTmdb}</strong>
-        <span>
-          Try another title, or paste a TMDB URL or numeric ID for an exact
-          match.
-        </span>
+        <span>{messages.scanReview.searchHint}</span>
       </div>
       <form
         className="scan-review-manual__form"
@@ -124,16 +132,16 @@ function ManualTmdbSearch({
       >
         <label className="scan-review-manual__input">
           <Search size={17} aria-hidden="true" />
-          <span className="sr-only">TMDB title</span>
+          <span className="sr-only">{messages.scanReview.tmdbTitle}</span>
           <input
             type="search"
             value={draft}
-            placeholder="Title, TMDB URL, or ID…"
+            placeholder={messages.scanReview.placeholder}
             onChange={(event) => setDraft(event.target.value)}
           />
         </label>
         <Button type="submit" size="sm" busy={searching} disabled={searching}>
-          Search
+          {messages.search.submit}
         </Button>
       </form>
       {error ? (
@@ -143,13 +151,13 @@ function ManualTmdbSearch({
       ) : null}
       {results?.length === 0 ? (
         <div className="notice" role="status">
-          No TMDB titles found. Try a different search.
+          {messages.scanReview.noTitlesFound}
         </div>
       ) : null}
       {results?.length ? (
         <div
           className="scan-review-candidates"
-          aria-label="TMDB search results"
+          aria-label={messages.scanReview.searchResults}
         >
           {results.map((candidate) => (
             <ScanReviewCandidateRow
@@ -180,6 +188,7 @@ function toScanReviewCandidate(item: CatalogItem): ScanReviewCandidate {
 export function tmdbReference(
   value: string,
   expectedKind: "movie" | "series",
+  messages: Messages = en,
 ): number | null {
   if (/^[1-9]\d{0,9}$/.test(value)) return Number(value);
   if (!/^https?:\/\//i.test(value)) return null;
@@ -191,13 +200,24 @@ export function tmdbReference(
     if (!match) return null;
     const referenceKind = match[1]?.toLowerCase() === "tv" ? "series" : "movie";
     if (referenceKind !== expectedKind) {
-      throw new Error(
-        `This ${expectedKind} review cannot be matched to a ${referenceKind} URL.`,
+      const error = new Error(
+        messages.scanReview.kindMismatch({
+          expected:
+            expectedKind === "movie"
+              ? messages.kind.movie
+              : messages.kind.series,
+          found:
+            referenceKind === "movie"
+              ? messages.kind.movie
+              : messages.kind.series,
+        }),
       );
+      error.name = "TmdbKindMismatchError";
+      throw error;
     }
     return Number(match[2]);
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("This ")) {
+    if (error instanceof Error && error.name === "TmdbKindMismatchError") {
       throw error;
     }
     return null;
@@ -230,18 +250,25 @@ export function ScanReviewCard({
           <div>
             <h3>{review.title}</h3>
             <p>
-              {review.year ?? "Year unknown"} · {review.files.length}{" "}
-              {review.files.length === 1 ? "file" : "files"}
+              {messages.scanReview.filesLine({
+                year: review.year
+                  ? String(review.year)
+                  : messages.common.yearUnknown,
+                files: messages.common.files({ count: review.files.length }),
+              })}
             </p>
           </div>
         </div>
         <Badge tone="warning">{messages.scanReview.needsMatch}</Badge>
       </header>
       <p className="scan-review-card__root" title={review.rootPath}>
-        Found under {review.rootPath}
+        {messages.scanReview.foundUnder({ path: review.rootPath })}
       </p>
       {review.candidates.length > 0 ? (
-        <div className="scan-review-candidates" aria-label="TMDB candidates">
+        <div
+          className="scan-review-candidates"
+          aria-label={messages.scanReview.candidates}
+        >
           {review.candidates.map((candidate) => (
             <ScanReviewCandidateRow
               key={candidate.tmdbId}
@@ -273,7 +300,7 @@ export function ScanReviewCard({
           disabled={busyTmdbId !== undefined}
           onClick={onDismiss}
         >
-          <X size={15} /> Dismiss
+          <X size={15} /> {messages.common.dismiss}
         </Button>
       </footer>
     </article>
@@ -281,6 +308,7 @@ export function ScanReviewCard({
 }
 
 export function ScanReviewPanel({ kind }: { kind: "movie" | "series" }) {
+  const { messages } = useUi();
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["library", "scan-reviews", kind],
@@ -316,7 +344,7 @@ export function ScanReviewPanel({ kind }: { kind: "movie" | "series" }) {
   if (query.isError) {
     return (
       <div className="notice notice--error" role="alert">
-        Could not load scan reviews. {query.error.message}
+        {messages.scanReview.loadFailed({ message: query.error.message })}
       </div>
     );
   }
@@ -325,15 +353,15 @@ export function ScanReviewPanel({ kind }: { kind: "movie" | "series" }) {
     <section className="scan-review-panel" aria-labelledby="scan-review-title">
       <header className="scan-review-panel__header">
         <div>
-          <span className="eyebrow">Match review</span>
-          <h2 id="scan-review-title">Choose the right TMDB title</h2>
-          <p>
-            Bobarr found ambiguous folders and will not guess. Confirm a match
-            to import the recorded files.
-          </p>
+          <span className="eyebrow">{messages.scanReview.matchReview}</span>
+          <h2 id="scan-review-title">{messages.scanReview.chooseTitle}</h2>
+          <p>{messages.scanReview.chooseTitleBody}</p>
         </div>
         <span className="scan-review-panel__count">
-          <AlertTriangle size={16} /> {query.data?.page.total ?? 0} pending
+          <AlertTriangle size={16} />{" "}
+          {messages.scanReview.pending({
+            count: query.data?.page.total ?? 0,
+          })}
         </span>
       </header>
       <div className="scan-review-list">
