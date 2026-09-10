@@ -1,4 +1,5 @@
 import type { LibraryAvailability, LibrarySort } from "../../contracts/library";
+import type { Messages } from "../i18n/en";
 
 export type LibraryFilter = "all" | LibraryAvailability;
 
@@ -40,6 +41,47 @@ export const LIBRARY_RATING_OPTIONS = [
   { value: "7.5", label: "7.5+" },
   { value: "8", label: "8.0+" },
 ];
+
+export function librarySortLabel(
+  sort: LibrarySort,
+  messages: Messages,
+): string {
+  switch (sort) {
+    case "added_at.desc":
+      return messages.library.sortRecentlyAdded;
+    case "added_at.asc":
+      return messages.library.sortOldestAdded;
+    case "updated_at.desc":
+      return messages.library.sortRecentlyUpdated;
+    case "title.asc":
+      return messages.library.sortTitleAsc;
+    case "title.desc":
+      return messages.library.sortTitleDesc;
+    case "year.desc":
+      return messages.library.sortNewestYear;
+    case "year.asc":
+      return messages.library.sortOldestYear;
+    case "rating.desc":
+      return messages.library.sortHighestRated;
+    case "rating.asc":
+      return messages.library.sortLowestRated;
+    default: {
+      const _exhaustive: never = sort;
+      return _exhaustive;
+    }
+  }
+}
+
+export function libraryRatingLabel(value: string, messages: Messages): string {
+  if (value === "") return messages.library.anyRating;
+  const formatted = value.includes(".") ? value : `${value}.0`;
+  return messages.library.ratingMin({ value: formatted });
+}
+
+export function libraryQualityLabel(value: string, messages: Messages): string {
+  if (value === "") return messages.library.anyQuality;
+  return value;
+}
 
 export function createDefaultLibraryBrowseFilters(): LibraryBrowseFilters {
   return {

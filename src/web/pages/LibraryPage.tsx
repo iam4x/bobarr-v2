@@ -45,6 +45,9 @@ import {
   LIBRARY_QUALITY_OPTIONS,
   LIBRARY_RATING_OPTIONS,
   LIBRARY_SORT_OPTIONS,
+  libraryQualityLabel,
+  libraryRatingLabel,
+  librarySortLabel,
   libraryAvailabilityParam,
   libraryBrowseFromSearchParams,
   libraryBrowseIsDefault,
@@ -2570,18 +2573,18 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
             busy={scanMutation.isPending}
             onClick={() => scanMutation.mutate()}
           >
-            <ScanSearch size={17} /> Scan library
+            <ScanSearch size={17} /> {messages.library.scan}
           </Button>
         ) : undefined
       }
       wide
     >
-      <div className="library-switcher" aria-label="Library type">
+      <div className="library-switcher" aria-label={messages.library.type}>
         <Link className={isMovies ? "is-active" : ""} to="/library/movies">
-          <Film size={17} /> Movies
+          <Film size={17} /> {messages.nav.movies}
         </Link>
         <Link className={!isMovies ? "is-active" : ""} to="/library/shows">
-          <Tv size={17} /> Shows
+          <Tv size={17} /> {messages.nav.shows}
         </Link>
       </div>
       {summary ? (
@@ -2607,28 +2610,35 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
         <div className="mini-search">
           <Search size={17} />
           <input
-            aria-label={`Filter ${isMovies ? "movies" : "shows"}`}
-            placeholder="Filter your library…"
+            aria-label={
+              isMovies
+                ? messages.library.filterMovies
+                : messages.library.filterShows
+            }
+            placeholder={messages.library.filterPlaceholder}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
         <SegmentedControl
-          label="Availability"
+          label={messages.library.availability}
           value={browse.filter}
           options={[
-            { value: "all", label: "All" },
-            { value: "available", label: "Available" },
-            { value: "missing", label: "Missing" },
-            { value: "active", label: "Active" },
-            { value: "failed", label: "Failed" },
+            { value: "all", label: messages.library.all },
+            { value: "available", label: messages.library.available },
+            { value: "missing", label: messages.library.missing },
+            { value: "active", label: messages.library.active },
+            { value: "failed", label: messages.library.failed },
           ]}
           onChange={(filter) => updateBrowse({ filter })}
         />
       </div>
-      <div className="library-browse-filters" aria-label="Browse filters">
+      <div
+        className="library-browse-filters"
+        aria-label={messages.library.browseFilters}
+      >
         <SelectField
-          label="Sort"
+          label={messages.library.sort}
           value={browse.sort}
           onChange={(event) =>
             updateBrowse({
@@ -2638,12 +2648,12 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
         >
           {LIBRARY_SORT_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
-              {option.label}
+              {librarySortLabel(option.value, messages)}
             </option>
           ))}
         </SelectField>
         <SelectField
-          label="Genre"
+          label={messages.library.genre}
           value={browse.genreId ?? ""}
           onChange={(event) =>
             updateBrowse({
@@ -2651,7 +2661,7 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
             })
           }
         >
-          <option value="">Any genre</option>
+          <option value="">{messages.library.anyGenre}</option>
           {(genresQuery.data?.items ?? []).map((genre) => (
             <option key={genre.id} value={genre.id}>
               {genre.name}
@@ -2659,11 +2669,11 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
           ))}
         </SelectField>
         <SelectField
-          label="Year"
+          label={messages.library.year}
           value={browse.year}
           onChange={(event) => updateBrowse({ year: event.target.value })}
         >
-          <option value="">Any year</option>
+          <option value="">{messages.library.anyYear}</option>
           {Array.from({ length: 30 }, (_, index) => 2026 - index).map(
             (value) => (
               <option key={value} value={String(value)}>
@@ -2673,24 +2683,24 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
           )}
         </SelectField>
         <SelectField
-          label="Rating"
+          label={messages.library.rating}
           value={browse.ratingMin}
           onChange={(event) => updateBrowse({ ratingMin: event.target.value })}
         >
           {LIBRARY_RATING_OPTIONS.map((option) => (
             <option key={option.value || "any"} value={option.value}>
-              {option.label}
+              {libraryRatingLabel(option.value, messages)}
             </option>
           ))}
         </SelectField>
         <SelectField
-          label="Quality"
+          label={messages.library.quality}
           value={browse.quality}
           onChange={(event) => updateBrowse({ quality: event.target.value })}
         >
           {LIBRARY_QUALITY_OPTIONS.map((option) => (
             <option key={option.value || "any"} value={option.value}>
-              {option.label}
+              {libraryQualityLabel(option.value, messages)}
             </option>
           ))}
         </SelectField>
@@ -2704,14 +2714,14 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
               setSearch("");
             }}
           >
-            Clear filters
+            {messages.library.clearFilters}
           </Button>
         ) : null}
       </div>
       {scanMutation.isSuccess ? (
         <div className="notice notice--success" role="status">
           <ScanSearch size={17} />
-          Library scan queued. Follow its progress in Activity.
+          {messages.library.scanQueued}
         </div>
       ) : null}
       {scanMutation.isError ? (

@@ -1,11 +1,10 @@
 import { en, type Messages } from "./en";
 import { fr } from "./fr";
+import { type UiLocale, UiLocaleSchema } from "../../contracts/auth";
 
-export type { Messages };
+export type { Messages, UiLocale };
 
-export const UI_LOCALES = ["en", "fr"] as const;
-
-export type UiLocale = (typeof UI_LOCALES)[number];
+export const UI_LOCALES = UiLocaleSchema.options;
 
 export const catalogs: Record<UiLocale, Messages> = { en, fr };
 

@@ -70,61 +70,51 @@ export interface AppliedDiscoverFilter {
 const HIGHEST_RATED_SORT: CatalogDiscoverSort = "vote_average.desc";
 const HIGHEST_RATED_VOTE_FLOOR = 200;
 
-const MOVIE_SORTS: Array<{
-  value: CatalogDiscoverSort;
-  label: string;
-}> = [
-  { value: "popularity.desc", label: "Most popular" },
-  { value: HIGHEST_RATED_SORT, label: "Highest rated" },
-  { value: "vote_count.desc", label: "Most voted" },
-  { value: "primary_release_date.desc", label: "Newest first" },
-  { value: "primary_release_date.asc", label: "Oldest first" },
-  { value: "title.asc", label: "Title A–Z" },
-  { value: "revenue.desc", label: "Highest box office" },
+const MOVIE_SORTS: CatalogDiscoverSort[] = [
+  "popularity.desc",
+  HIGHEST_RATED_SORT,
+  "vote_count.desc",
+  "primary_release_date.desc",
+  "primary_release_date.asc",
+  "title.asc",
+  "revenue.desc",
 ];
 
-const SERIES_SORTS: Array<{
-  value: CatalogDiscoverSort;
-  label: string;
-}> = [
-  { value: "popularity.desc", label: "Most popular" },
-  { value: HIGHEST_RATED_SORT, label: "Highest rated" },
-  { value: "vote_count.desc", label: "Most voted" },
-  { value: "first_air_date.desc", label: "Newest first" },
-  { value: "first_air_date.asc", label: "Oldest first" },
-  { value: "name.asc", label: "Title A–Z" },
+const SERIES_SORTS: CatalogDiscoverSort[] = [
+  "popularity.desc",
+  HIGHEST_RATED_SORT,
+  "vote_count.desc",
+  "first_air_date.desc",
+  "first_air_date.asc",
+  "name.asc",
 ];
 
-const RUNTIME_OPTIONS = [
-  { value: "", label: "Any length" },
-  { value: "30", label: "30 minutes" },
-  { value: "60", label: "1 hour" },
-  { value: "90", label: "1½ hours" },
-  { value: "120", label: "2 hours" },
-  { value: "150", label: "2½ hours" },
-  { value: "180", label: "3 hours" },
-];
+const RUNTIME_VALUES = ["", "30", "60", "90", "120", "150", "180"];
+const VOTE_VALUES = ["", "0", "50", "100", "200", "500", "1000", "5000"];
+const RATING_VALUES = ["", "5", "6", "7", "7.5", "8", "9"];
 
-const VOTE_OPTIONS = [
-  { value: "", label: "Any number" },
-  { value: "0", label: "No minimum" },
-  { value: "50", label: "50+ votes" },
-  { value: "100", label: "100+ votes" },
-  { value: "200", label: "200+ votes" },
-  { value: "500", label: "500+ votes" },
-  { value: "1000", label: "1,000+ votes" },
-  { value: "5000", label: "5,000+ votes" },
-];
+function runtimeLabel(value: string, messages: Messages): string {
+  if (value === "") return messages.discover.anyLength;
+  if (value === "30") return messages.discover.minutes({ count: 30 });
+  if (value === "60") return messages.discover.hours({ count: 1 });
+  if (value === "90") return messages.discover.hoursAndHalf({ count: 1 });
+  if (value === "120") return messages.discover.hours({ count: 2 });
+  if (value === "150") return messages.discover.hoursAndHalf({ count: 2 });
+  if (value === "180") return messages.discover.hours({ count: 3 });
+  return messages.discover.minutes({ count: Number(value) });
+}
 
-const RATING_OPTIONS = [
-  { value: "", label: "Any rating" },
-  { value: "5", label: "5.0 and above" },
-  { value: "6", label: "6.0 and above" },
-  { value: "7", label: "7.0 and above" },
-  { value: "7.5", label: "7.5 and above" },
-  { value: "8", label: "8.0 and above" },
-  { value: "9", label: "9.0 and above" },
-];
+function voteLabel(value: string, messages: Messages): string {
+  if (value === "") return messages.discover.anyNumber;
+  if (value === "0") return messages.discover.noMinimum;
+  return messages.discover.votes({ count: Number(value) });
+}
+
+function ratingLabel(value: string, messages: Messages): string {
+  if (value === "") return messages.discover.anyRating;
+  const formatted = value.includes(".") ? value : `${value}.0`;
+  return messages.discover.ratingAndAbove({ value: formatted });
+}
 
 export function createDefaultDiscoverFilters(): DiscoverFilters {
   return {
@@ -173,18 +163,21 @@ export function discoverQueryFor(
   };
 }
 
-export function discoverFilterError(filters: DiscoverFilters): string | null {
+export function discoverFilterError(
+  filters: DiscoverFilters,
+  messages: Messages = en,
+): string | null {
   if (filters.year) {
     const year = Number(filters.year);
     if (!Number.isSafeInteger(year) || year < 1874 || year > 2200) {
-      return "Year must be a whole number from 1874 to 2200.";
+      return messages.discover.yearRange;
     }
   }
   if (filters.dateFrom && !validDiscoverDate(filters.dateFrom)) {
-    return "Start date must be from 1874-01-01 to 2200-12-31.";
+    return messages.discover.startDateRange;
   }
   if (filters.dateTo && !validDiscoverDate(filters.dateTo)) {
-    return "End date must be from 1874-01-01 to 2200-12-31.";
+    return messages.discover.endDateRange;
   }
   const minimumRuntime = optionalNumber(filters.runtimeMin);
   const maximumRuntime = optionalNumber(filters.runtimeMax);
@@ -193,10 +186,10 @@ export function discoverFilterError(filters: DiscoverFilters): string | null {
     maximumRuntime !== undefined &&
     minimumRuntime > maximumRuntime
   ) {
-    return "Maximum length must be at least the minimum length.";
+    return messages.discover.runtimeOrder;
   }
   if (filters.dateFrom && filters.dateTo && filters.dateFrom > filters.dateTo) {
-    return "The end date must be on or after the start date.";
+    return messages.discover.dateOrder;
   }
   return null;
 }
@@ -239,13 +232,17 @@ export function appliedDiscoverFilters(
   if (filters.actorId !== null) {
     applied.push({
       key: "actor",
-      label: `Actor: ${filters.actorName || `TMDB person ${filters.actorId}`}`,
+      label: filters.actorName
+        ? messages.discover.actor({ name: filters.actorName })
+        : messages.discover.tmdbPerson({ id: filters.actorId }),
     });
   }
   for (const genreId of filters.genreIds) {
     applied.push({
       key: `genre:${genreId}`,
-      label: labels.genres.get(genreId) ?? `Genre ${genreId}`,
+      label:
+        labels.genres.get(genreId) ??
+        messages.discover.genreFallback({ id: genreId }),
     });
   }
   if (filters.originCountry) {
@@ -258,21 +255,28 @@ export function appliedDiscoverFilters(
   if (filters.originalLanguage) {
     applied.push({
       key: "originalLanguage",
-      label: `Language: ${
-        labels.languages.get(filters.originalLanguage) ??
-        filters.originalLanguage.toUpperCase()
-      }`,
+      label: messages.discover.languagePrefix({
+        name:
+          labels.languages.get(filters.originalLanguage) ??
+          filters.originalLanguage.toUpperCase(),
+      }),
     });
   }
   if (filters.year) {
-    applied.push({ key: "year", label: `Year: ${filters.year}` });
+    applied.push({
+      key: "year",
+      label: messages.discover.yearPrefix({ year: filters.year }),
+    });
   }
   if (filters.dateFrom || filters.dateTo) {
-    let label = `Until ${filters.dateTo}`;
+    let label = messages.discover.until({ date: filters.dateTo });
     if (filters.dateFrom && filters.dateTo) {
-      label = `Dates: ${filters.dateFrom} – ${filters.dateTo}`;
+      label = messages.discover.dateRange({
+        from: filters.dateFrom,
+        to: filters.dateTo,
+      });
     } else if (filters.dateFrom) {
-      label = `From ${filters.dateFrom}`;
+      label = messages.discover.fromDate({ date: filters.dateFrom });
     }
     applied.push({
       key: "dateRange",
@@ -280,14 +284,21 @@ export function appliedDiscoverFilters(
     });
   }
   if (filters.runtimeMin || filters.runtimeMax) {
-    const lower = filters.runtimeMin ? `${filters.runtimeMin} min` : "Any";
-    const upper = filters.runtimeMax ? `${filters.runtimeMax} min` : "Any";
-    applied.push({ key: "runtime", label: `Length: ${lower} – ${upper}` });
+    const lower = filters.runtimeMin
+      ? messages.discover.minutesShort({ count: filters.runtimeMin })
+      : messages.discover.any;
+    const upper = filters.runtimeMax
+      ? messages.discover.minutesShort({ count: filters.runtimeMax })
+      : messages.discover.any;
+    applied.push({
+      key: "runtime",
+      label: messages.discover.lengthRange({ lower, upper }),
+    });
   }
   if (filters.ratingMin) {
     applied.push({
       key: "ratingMin",
-      label: `Rated ${filters.ratingMin}+`,
+      label: messages.discover.rated({ value: filters.ratingMin }),
     });
   }
   const effectiveVotes =
@@ -298,11 +309,11 @@ export function appliedDiscoverFilters(
   if (effectiveVotes !== undefined && effectiveVotes > 0) {
     applied.push({
       key: "voteCountMin",
-      label: `${effectiveVotes.toLocaleString("en-US")}+ votes`,
+      label: messages.discover.votes({ count: effectiveVotes }),
     });
   }
   if (!filters.hideOwned) {
-    applied.push({ key: "hideOwned", label: "Showing owned titles" });
+    applied.push({ key: "hideOwned", label: messages.discover.showingOwned });
   }
   return applied;
 }
@@ -516,13 +527,13 @@ export function DiscoverPage() {
   );
   const activeFilters = useMemo(
     () => appliedDiscoverFilters(filters, filterLabels, messages),
-    [filterLabels, filters],
+    [filterLabels, filters, messages],
   );
   const query = useMemo(
     () => discoverQueryFor(kind, filters, page),
     [filters, kind, page],
   );
-  const validationError = discoverFilterError(draft);
+  const validationError = discoverFilterError(draft, messages);
   const draftFilterCount = appliedDiscoverFilters(
     draft,
     filterLabels,
@@ -702,13 +713,13 @@ export function DiscoverPage() {
         />
         <div className="discover-entry__links">
           <Link className="button button--secondary button--sm" to="/search">
-            <Search size={15} /> Advanced search
+            <Search size={15} /> {messages.discover.advancedSearch}
           </Link>
           <Link
             className="button button--secondary button--sm"
             to="/suggestions"
           >
-            <Sparkles size={15} /> Suggestions
+            <Sparkles size={15} /> {messages.discover.suggestionsLink}
           </Link>
         </div>
       </div>
@@ -717,11 +728,11 @@ export function DiscoverPage() {
 
       <div className="discover-toolbar">
         <SegmentedControl
-          label="Media type"
+          label={messages.discover.mediaType}
           value={kind}
           options={[
-            { value: "movie", label: "Movies" },
-            { value: "series", label: "Shows" },
+            { value: "movie", label: messages.nav.movies },
+            { value: "series", label: messages.nav.shows },
           ]}
           onChange={changeKind}
         />
@@ -738,7 +749,9 @@ export function DiscoverPage() {
           }}
         >
           <EyeOff size={16} aria-hidden="true" />
-          {filters.hideOwned ? "Hide owned" : "Show owned"}
+          {filters.hideOwned
+            ? messages.discover.hideOwned
+            : messages.discover.showOwned}
         </Button>
         <div className="discover-filter-anchor" ref={filterAnchorRef}>
           <Button
@@ -754,7 +767,7 @@ export function DiscoverPage() {
             aria-controls="discover-filter-menu"
           >
             <SlidersHorizontal size={17} aria-hidden="true" />
-            Filters
+            {messages.discover.filters}
             {activeFilters.length ? (
               <span className="discover-filter-trigger__count">
                 {activeFilters.length}
@@ -792,12 +805,16 @@ export function DiscoverPage() {
               >
                 <div className="discover-filter-menu__header">
                   <div>
-                    <span className="eyebrow">Refine discovery</span>
-                    <h2 id="discover-filter-title">Find your next watch</h2>
-                    <p>Stack filters, then apply them together.</p>
+                    <span className="eyebrow">
+                      {messages.discover.refineEyebrow}
+                    </span>
+                    <h2 id="discover-filter-title">
+                      {messages.discover.refineTitle}
+                    </h2>
+                    <p>{messages.discover.refineDescription}</p>
                   </div>
                   <IconButton
-                    label="Close filters"
+                    label={messages.discover.closeFilters}
                     type="button"
                     onClick={() => {
                       setFiltersOpen(false);
@@ -815,7 +832,7 @@ export function DiscoverPage() {
                 <div className="discover-filter-menu__body">
                   <div className="discover-filter-grid discover-filter-grid--top">
                     <SelectField
-                      label="Sort by"
+                      label={messages.discover.sortBy}
                       value={draft.sort}
                       onChange={(event) => {
                         const sort = event.target.value as CatalogDiscoverSort;
@@ -832,19 +849,19 @@ export function DiscoverPage() {
                       }}
                     >
                       {(kind === "movie" ? MOVIE_SORTS : SERIES_SORTS).map(
-                        (option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
+                        (value) => (
+                          <option key={value} value={value}>
+                            {messages.discover.sort[value]}
                           </option>
                         ),
                       )}
                     </SelectField>
                     <SelectField
-                      label="Minimum votes"
+                      label={messages.discover.minimumVotes}
                       value={draft.voteCountMin}
                       hint={
                         draft.sort === HIGHEST_RATED_SORT
-                          ? "Highest rated defaults to 200+ votes."
+                          ? messages.discover.highestRatedVoteHint
                           : undefined
                       }
                       onChange={(event) =>
@@ -854,28 +871,29 @@ export function DiscoverPage() {
                         }))
                       }
                     >
-                      {VOTE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.value === "" &&
-                          draft.sort === HIGHEST_RATED_SORT
-                            ? `Default · ${HIGHEST_RATED_VOTE_FLOOR}+ votes`
-                            : option.label}
+                      {VOTE_VALUES.map((value) => (
+                        <option key={value} value={value}>
+                          {value === "" && draft.sort === HIGHEST_RATED_SORT
+                            ? messages.discover.defaultVotes({
+                                count: HIGHEST_RATED_VOTE_FLOOR,
+                              })
+                            : voteLabel(value, messages)}
                         </option>
                       ))}
                     </SelectField>
                   </div>
 
                   <fieldset className="discover-genre-fieldset">
-                    <legend>Genres</legend>
-                    <p>Match any selected genre.</p>
+                    <legend>{messages.discover.genres}</legend>
+                    <p>{messages.discover.matchAnyGenre}</p>
                     {genresQuery.isLoading ? (
                       <span className="discover-filter-loading">
-                        Loading genres…
+                        {messages.discover.loadingGenres}
                       </span>
                     ) : null}
                     {genresQuery.isError ? (
                       <span className="discover-filter-warning">
-                        Genres are temporarily unavailable.
+                        {messages.discover.genresUnavailable}
                       </span>
                     ) : null}
                     {genres.length ? (
@@ -908,14 +926,12 @@ export function DiscoverPage() {
 
                   <div className="discover-filter-section">
                     <div className="discover-filter-section__heading">
-                      <h3>Origin &amp; language</h3>
-                      <p>
-                        Filter where a title came from and its original audio.
-                      </p>
+                      <h3>{messages.discover.originAndLanguage}</h3>
+                      <p>{messages.discover.originHint}</p>
                     </div>
                     <div className="discover-filter-grid">
                       <SelectField
-                        label="Country of origin"
+                        label={messages.discover.originCountry}
                         value={draft.originCountry}
                         disabled={countriesQuery.isLoading}
                         onChange={(event) =>
@@ -925,7 +941,7 @@ export function DiscoverPage() {
                           }))
                         }
                       >
-                        <option value="">Any country</option>
+                        <option value="">{messages.discover.anyCountry}</option>
                         {countries.map((country) => (
                           <option key={country.code} value={country.code}>
                             {country.englishName}
@@ -933,7 +949,7 @@ export function DiscoverPage() {
                         ))}
                       </SelectField>
                       <SelectField
-                        label="Original language"
+                        label={messages.discover.originalLanguage}
                         value={draft.originalLanguage}
                         disabled={languagesQuery.isLoading}
                         onChange={(event) =>
@@ -943,7 +959,9 @@ export function DiscoverPage() {
                           }))
                         }
                       >
-                        <option value="">Any language</option>
+                        <option value="">
+                          {messages.discover.anyLanguage}
+                        </option>
                         {languages.map((language) => (
                           <option key={language.code} value={language.code}>
                             {language.englishName}
@@ -956,26 +974,25 @@ export function DiscoverPage() {
                     </div>
                     {countriesQuery.isError || languagesQuery.isError ? (
                       <p className="discover-filter-warning">
-                        Some TMDB configuration choices are temporarily
-                        unavailable.
+                        {messages.discover.configUnavailable}
                       </p>
                     ) : null}
                   </div>
 
                   <div className="discover-filter-section">
                     <div className="discover-filter-section__heading">
-                      <h3>Release window</h3>
-                      <p>Use one exact year or a custom date range.</p>
+                      <h3>{messages.discover.releaseWindow}</h3>
+                      <p>{messages.discover.releaseWindowHint}</p>
                     </div>
                     <div className="discover-filter-grid discover-filter-grid--three">
                       <Field
-                        label="Exact year"
+                        label={messages.discover.exactYear}
                         type="number"
                         inputMode="numeric"
                         min={1874}
                         max={2200}
                         step={1}
-                        placeholder="e.g. 2024"
+                        placeholder={messages.discover.yearPlaceholder}
                         value={draft.year}
                         onChange={(event) =>
                           setDraft((current) => ({
@@ -987,7 +1004,7 @@ export function DiscoverPage() {
                         }
                       />
                       <Field
-                        label="From"
+                        label={messages.discover.dateFrom}
                         type="date"
                         min="1874-01-01"
                         max="2200-12-31"
@@ -1001,7 +1018,7 @@ export function DiscoverPage() {
                         }
                       />
                       <Field
-                        label="To"
+                        label={messages.discover.dateTo}
                         type="date"
                         min="1874-01-01"
                         max="2200-12-31"
@@ -1019,12 +1036,12 @@ export function DiscoverPage() {
 
                   <div className="discover-filter-section">
                     <div className="discover-filter-section__heading">
-                      <h3>Length &amp; quality</h3>
-                      <p>Narrow the time commitment and audience rating.</p>
+                      <h3>{messages.discover.lengthAndQuality}</h3>
+                      <p>{messages.discover.lengthHint}</p>
                     </div>
                     <div className="discover-filter-grid discover-filter-grid--three">
                       <SelectField
-                        label="Minimum length"
+                        label={messages.discover.minimumLength}
                         value={draft.runtimeMin}
                         onChange={(event) =>
                           setDraft((current) => ({
@@ -1033,14 +1050,14 @@ export function DiscoverPage() {
                           }))
                         }
                       >
-                        {RUNTIME_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
+                        {RUNTIME_VALUES.map((value) => (
+                          <option key={value} value={value}>
+                            {runtimeLabel(value, messages)}
                           </option>
                         ))}
                       </SelectField>
                       <SelectField
-                        label="Maximum length"
+                        label={messages.discover.maximumLength}
                         value={draft.runtimeMax}
                         onChange={(event) =>
                           setDraft((current) => ({
@@ -1049,14 +1066,14 @@ export function DiscoverPage() {
                           }))
                         }
                       >
-                        {RUNTIME_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
+                        {RUNTIME_VALUES.map((value) => (
+                          <option key={value} value={value}>
+                            {runtimeLabel(value, messages)}
                           </option>
                         ))}
                       </SelectField>
                       <SelectField
-                        label="Minimum rating"
+                        label={messages.discover.minimumRating}
                         value={draft.ratingMin}
                         onChange={(event) =>
                           setDraft((current) => ({
@@ -1065,9 +1082,9 @@ export function DiscoverPage() {
                           }))
                         }
                       >
-                        {RATING_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
+                        {RATING_VALUES.map((value) => (
+                          <option key={value} value={value}>
+                            {ratingLabel(value, messages)}
                           </option>
                         ))}
                       </SelectField>
@@ -1082,10 +1099,10 @@ export function DiscoverPage() {
                     ) : (
                       <p>
                         {draftFilterCount === 0
-                          ? "No active filters"
-                          : `${draftFilterCount} active filter${
-                              draftFilterCount === 1 ? "" : "s"
-                            }`}
+                          ? messages.discover.noActiveFilters
+                          : messages.discover.activeFilters({
+                              count: draftFilterCount,
+                            })}
                       </p>
                     )}
                   </div>
@@ -1095,14 +1112,15 @@ export function DiscoverPage() {
                       variant="ghost"
                       onClick={() => setDraft(createDefaultDiscoverFilters())}
                     >
-                      <RotateCcw size={16} aria-hidden="true" /> Reset
+                      <RotateCcw size={16} aria-hidden="true" />{" "}
+                      {messages.discover.reset}
                     </Button>
                     <Button
                       type="button"
                       disabled={Boolean(validationError)}
                       onClick={applyFilters}
                     >
-                      Apply filters
+                      {messages.discover.applyFilters}
                     </Button>
                   </div>
                 </div>
@@ -1113,15 +1131,22 @@ export function DiscoverPage() {
       </div>
 
       {activeFilters.length ? (
-        <div className="discover-applied" aria-label="Applied filters">
-          <span className="discover-applied__label">Applied</span>
+        <div
+          className="discover-applied"
+          aria-label={messages.discover.appliedFilters}
+        >
+          <span className="discover-applied__label">
+            {messages.discover.applied}
+          </span>
           <div className="discover-applied__chips">
             {activeFilters.map((filter) => (
               <span className="discover-filter-chip" key={filter.key}>
                 {filter.label}
                 <button
                   type="button"
-                  aria-label={`Remove ${filter.label} filter`}
+                  aria-label={messages.discover.removeFilter({
+                    label: filter.label,
+                  })}
                   onClick={() => removeFilter(filter.key)}
                 >
                   <X size={14} aria-hidden="true" />
@@ -1134,7 +1159,7 @@ export function DiscoverPage() {
             className="discover-applied__clear"
             onClick={clearFilters}
           >
-            Clear all
+            {messages.discover.clearAll}
           </button>
         </div>
       ) : null}
@@ -1148,8 +1173,8 @@ export function DiscoverPage() {
       ) : null}
       {result && result.items.length === 0 ? (
         <EmptyState
-          title="Nothing matches those filters"
-          description="Remove a filter or try a broader combination."
+          title={messages.discover.emptyTitle}
+          description={messages.discover.emptyDescription}
         />
       ) : null}
       {result?.items.length ? (
@@ -1157,19 +1182,22 @@ export function DiscoverPage() {
       ) : null}
 
       {result && result.totalPages > 1 ? (
-        <nav className="pagination" aria-label="Discover pages">
+        <nav className="pagination" aria-label={messages.discover.pages}>
           <IconButton
-            label="Previous page"
+            label={messages.discover.previousPage}
             disabled={page <= 1}
             onClick={() => setPage((value) => Math.max(1, value - 1))}
           >
             <ChevronLeft size={20} />
           </IconButton>
           <span>
-            Page <strong>{result.page}</strong> of {result.totalPages}
+            {messages.discover.pageOf({
+              page: result.page,
+              total: result.totalPages,
+            })}
           </span>
           <IconButton
-            label="Next page"
+            label={messages.discover.nextPage}
             disabled={page >= Math.min(result.totalPages, 500)}
             onClick={() => setPage((value) => value + 1)}
           >
