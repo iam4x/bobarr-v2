@@ -1,3 +1,5 @@
+import type { Messages } from "../i18n/en";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
@@ -15,25 +17,30 @@ import { ApiError, api } from "../api/client";
 import { isAuthenticated, isSetupRequired } from "../api/normalize";
 import { Brand } from "../components/Brand";
 import { Button, Field, InlineSpinner } from "../components/ui";
+import { LocaleSwitcher, useUi } from "../i18n/ui";
 
-const loginSchema = z.object({
-  username: z.string().min(1, "Enter your username."),
-  password: z.string().min(1, "Enter your password."),
-});
-
-const setupSchema = z
-  .object({
-    username: z.string().trim().min(3, "Use at least 3 characters.").max(64),
-    password: z.string().min(1, "Enter a password."),
-    confirmation: z.string(),
-  })
-  .refine((value) => value.password === value.confirmation, {
-    path: ["confirmation"],
-    message: "Passwords do not match.",
+function loginSchema(messages: Messages) {
+  return z.object({
+    username: z.string().min(1, messages.auth.enterUsername),
+    password: z.string().min(1, messages.auth.enterPassword),
   });
+}
 
-type LoginForm = z.infer<typeof loginSchema>;
-type SetupForm = z.infer<typeof setupSchema>;
+function setupSchema(messages: Messages) {
+  return z
+    .object({
+      username: z.string().trim().min(3, messages.auth.minUsername).max(64),
+      password: z.string().min(1, messages.auth.enterAPassword),
+      confirmation: z.string(),
+    })
+    .refine((value) => value.password === value.confirmation, {
+      path: ["confirmation"],
+      message: messages.auth.passwordsMismatch,
+    });
+}
+
+type LoginForm = z.infer<ReturnType<typeof loginSchema>>;
+type SetupForm = z.infer<ReturnType<typeof setupSchema>>;
 
 function AuthLayout({
   eyebrow,
@@ -46,33 +53,31 @@ function AuthLayout({
   description: string;
   children: ReactNode;
 }) {
+  const { messages } = useUi();
   return (
     <main className="auth-layout">
-      <section className="auth-story" aria-label="About Bobarr">
+      <section className="auth-story" aria-label={messages.auth.about}>
         <Link to="/discover" className="auth-story__brand">
           <Brand />
         </Link>
         <div className="auth-story__copy">
-          <span className="eyebrow">Private by design</span>
+          <span className="eyebrow">{messages.auth.privateByDesign}</span>
           <h2>
-            Your watchlist,
+            {messages.auth.storyTitleLine1}
             <br />
-            quietly automated.
+            {messages.auth.storyTitleLine2}
           </h2>
-          <p>
-            Find a title. Bobarr handles the search, the download, and the
-            filing—on infrastructure you own.
-          </p>
+          <p>{messages.auth.storyBody}</p>
         </div>
         <ul className="auth-story__features">
           <li>
-            <Check size={16} /> Jackett-powered release search
+            <Check size={16} /> {messages.auth.featureJackett}
           </li>
           <li>
-            <Check size={16} /> Transmission safely behind the API
+            <Check size={16} /> {messages.auth.featureTransmission}
           </li>
           <li>
-            <Check size={16} /> Files organized without giving up seeding
+            <Check size={16} /> {messages.auth.featureOrganize}
           </li>
         </ul>
       </section>
@@ -85,8 +90,9 @@ function AuthLayout({
           <h1>{title}</h1>
           <p>{description}</p>
           {children}
+          <LocaleSwitcher labeled />
         </div>
-        <p className="auth-footer">Bobarr runs entirely on your server.</p>
+        <p className="auth-footer">{messages.auth.footer}</p>
       </section>
     </main>
   );
@@ -103,6 +109,7 @@ function applyApiFieldErrors<T extends Record<string, string>>(
 }
 
 export function LoginPage() {
+  const { messages } = useUi();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const sessionQuery = useQuery({
@@ -131,7 +138,7 @@ export function LoginPage() {
 
   const submit = (value: LoginForm) => {
     clearErrors();
-    const parsed = loginSchema.safeParse(value);
+    const parsed = loginSchema(messages).safeParse(value);
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
         const field = issue.path[0];
@@ -145,20 +152,20 @@ export function LoginPage() {
 
   return (
     <AuthLayout
-      eyebrow="Welcome back"
-      title="Sign in to Bobarr"
-      description="Use your Bobarr username and password."
+      eyebrow={messages.auth.loginEyebrow}
+      title={messages.auth.loginTitle}
+      description={messages.auth.loginDescription}
     >
       <form className="auth-form" onSubmit={handleSubmit(submit)}>
         <Field
-          label="Username"
+          label={messages.auth.username}
           autoComplete="username"
           autoFocus
           error={errors.username?.message}
           {...register("username")}
         />
         <Field
-          label="Password"
+          label={messages.auth.password}
           type="password"
           autoComplete="current-password"
           error={errors.password?.message}
@@ -171,14 +178,14 @@ export function LoginPage() {
           </div>
         ) : null}
         <Button type="submit" size="lg" busy={loginMutation.isPending}>
-          Sign in <ArrowRight size={17} />
+          {messages.auth.signIn} <ArrowRight size={17} />
         </Button>
       </form>
       <div className="auth-help">
         <KeyRound size={17} />
         <span>
-          <strong>Lost access?</strong> Reset the administrator password from
-          the Bobarr host.
+          <strong>{messages.auth.lostAccessLead}</strong>
+          {messages.auth.lostAccessRest}
         </span>
       </div>
     </AuthLayout>
@@ -186,6 +193,7 @@ export function LoginPage() {
 }
 
 export function SetupPage() {
+  const { messages } = useUi();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const statusQuery = useQuery({
@@ -220,7 +228,7 @@ export function SetupPage() {
 
   const submit = (value: SetupForm) => {
     clearErrors();
-    const parsed = setupSchema.safeParse(value);
+    const parsed = setupSchema(messages).safeParse(value);
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
         const field = issue.path[0];
@@ -240,34 +248,34 @@ export function SetupPage() {
     return (
       <main className="full-page-state">
         <Brand />
-        <InlineSpinner label="Checking server…" />
+        <InlineSpinner label={messages.auth.checkingServer} />
       </main>
     );
 
   return (
     <AuthLayout
-      eyebrow="First run"
-      title="Make Bobarr yours"
-      description="Create the single administrator account. You can configure services next."
+      eyebrow={messages.auth.setupEyebrow}
+      title={messages.auth.setupTitle}
+      description={messages.auth.setupDescription}
     >
       <form className="auth-form" onSubmit={handleSubmit(submit)}>
         <Field
-          label="Administrator username"
+          label={messages.auth.adminUsername}
           autoComplete="username"
           autoFocus
           error={errors.username?.message}
           {...register("username")}
         />
         <Field
-          label="Password"
+          label={messages.auth.password}
           type="password"
           autoComplete="new-password"
-          hint="Any non-empty password"
+          hint={messages.auth.passwordHint}
           error={errors.password?.message}
           {...register("password")}
         />
         <Field
-          label="Confirm password"
+          label={messages.auth.confirmPassword}
           type="password"
           autoComplete="new-password"
           error={errors.confirmation?.message}
@@ -279,34 +287,21 @@ export function SetupPage() {
           </div>
         ) : null}
         <Button type="submit" size="lg" busy={setupMutation.isPending}>
-          Create administrator <ArrowRight size={17} />
+          {messages.auth.createAdministrator} <ArrowRight size={17} />
         </Button>
       </form>
       <div className="auth-help">
         <ShieldCheck size={18} />
-        <span>
-          Your password is hashed with Argon2id. Connector secrets are encrypted
-          separately.
-        </span>
+        <span>{messages.auth.setupHelp}</span>
       </div>
     </AuthLayout>
   );
 }
 
-const inviteSchema = z
-  .object({
-    username: z.string().trim().min(3, "Use at least 3 characters.").max(64),
-    password: z.string().min(1, "Enter a password."),
-    confirmation: z.string(),
-  })
-  .refine((value) => value.password === value.confirmation, {
-    path: ["confirmation"],
-    message: "Passwords do not match.",
-  });
-
-type InviteForm = z.infer<typeof inviteSchema>;
+type InviteForm = SetupForm;
 
 export function InvitePage() {
+  const { messages } = useUi();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [params] = useSearchParams();
@@ -344,7 +339,7 @@ export function InvitePage() {
 
   const submit = (value: InviteForm) => {
     clearErrors();
-    const parsed = inviteSchema.safeParse(value);
+    const parsed = setupSchema(messages).safeParse(value);
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
         const field = issue.path[0];
@@ -364,12 +359,12 @@ export function InvitePage() {
   if (token.length === 0 || previewQuery.isError) {
     return (
       <AuthLayout
-        eyebrow="Invite"
-        title="This invite isn’t valid"
-        description="Ask an administrator for a new link. Used and expired invites cannot be reused."
+        eyebrow={messages.auth.inviteEyebrow}
+        title={messages.auth.inviteInvalidTitle}
+        description={messages.auth.inviteInvalidDescription}
       >
         <Button type="button" onClick={() => navigate("/login")}>
-          Go to sign in
+          {messages.auth.goToSignIn}
         </Button>
       </AuthLayout>
     );
@@ -379,34 +374,34 @@ export function InvitePage() {
     return (
       <main className="full-page-state">
         <Brand />
-        <InlineSpinner label="Checking invite…" />
+        <InlineSpinner label={messages.auth.checkingInvite} />
       </main>
     );
   }
 
   return (
     <AuthLayout
-      eyebrow="You're invited"
-      title="Create your Bobarr account"
-      description="Choose a username and password. You’ll share this library with the people already here."
+      eyebrow={messages.auth.invitedEyebrow}
+      title={messages.auth.inviteTitle}
+      description={messages.auth.inviteDescription}
     >
       <form className="auth-form" onSubmit={handleSubmit(submit)}>
         <Field
-          label="Username"
+          label={messages.auth.username}
           autoComplete="username"
           autoFocus
           error={errors.username?.message}
           {...register("username")}
         />
         <Field
-          label="Password"
+          label={messages.auth.password}
           type="password"
           autoComplete="new-password"
           error={errors.password?.message}
           {...register("password")}
         />
         <Field
-          label="Confirm password"
+          label={messages.auth.confirmPassword}
           type="password"
           autoComplete="new-password"
           error={errors.confirmation?.message}
@@ -418,7 +413,7 @@ export function InvitePage() {
           </div>
         ) : null}
         <Button type="submit" size="lg" busy={acceptMutation.isPending}>
-          Join Bobarr <ArrowRight size={17} />
+          {messages.auth.join} <ArrowRight size={17} />
         </Button>
       </form>
     </AuthLayout>
@@ -426,18 +421,19 @@ export function InvitePage() {
 }
 
 export function SetupUnavailable() {
+  const { messages } = useUi();
   return (
     <AuthLayout
-      eyebrow="Server unavailable"
-      title="Bobarr isn’t responding"
-      description="Check that the container is running, then refresh this page."
+      eyebrow={messages.auth.unavailableEyebrow}
+      title={messages.auth.unavailableTitle}
+      description={messages.auth.unavailableDescription}
     >
       <Button
         type="button"
         variant="secondary"
         onClick={() => window.location.reload()}
       >
-        Try again
+        {messages.common.tryAgain}
       </Button>
     </AuthLayout>
   );

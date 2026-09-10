@@ -1,3 +1,5 @@
+import type { Messages } from "../i18n/en";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound } from "lucide-react";
 import { useEffect } from "react";
@@ -7,33 +9,34 @@ import { z } from "zod";
 import { api } from "../api/client";
 import { Page } from "../components/Page";
 import { Button, Field } from "../components/ui";
+import { LocaleSwitcher, useUi } from "../i18n/ui";
 
-const credentialsSchema = z
-  .object({
-    username: z
-      .string()
-      .trim()
-      .min(3, "Use at least 3 characters.")
-      .max(64)
-      .regex(
-        /^[a-zA-Z0-9._-]+$/,
-        "Use letters, numbers, dots, underscores, or dashes.",
-      ),
-    password: z.string(),
-    confirmation: z.string(),
-  })
-  .refine(
-    (value) =>
-      value.password.length === 0 || value.password === value.confirmation,
-    {
-      path: ["confirmation"],
-      message: "Passwords do not match.",
-    },
-  );
+function credentialsSchema(messages: Messages) {
+  return z
+    .object({
+      username: z
+        .string()
+        .trim()
+        .min(3, messages.account.minUsername)
+        .max(64)
+        .regex(/^[a-zA-Z0-9._-]+$/, messages.account.usernameCharset),
+      password: z.string(),
+      confirmation: z.string(),
+    })
+    .refine(
+      (value) =>
+        value.password.length === 0 || value.password === value.confirmation,
+      {
+        path: ["confirmation"],
+        message: messages.account.passwordsMismatch,
+      },
+    );
+}
 
-type CredentialsForm = z.infer<typeof credentialsSchema>;
+type CredentialsForm = z.infer<ReturnType<typeof credentialsSchema>>;
 
 export function AccountPage() {
+  const { messages } = useUi();
   const queryClient = useQueryClient();
   const sessionQuery = useQuery({
     queryKey: ["auth", "session"],
@@ -70,14 +73,23 @@ export function AccountPage() {
 
   return (
     <Page
-      eyebrow="Account"
-      title="Your sign-in"
-      description="Change the username and password for this account."
+      eyebrow={messages.account.eyebrow}
+      title={messages.account.title}
+      description={messages.account.description}
     >
+      <section className="settings-section">
+        <header>
+          <div>
+            <h2>{messages.account.languageTitle}</h2>
+            <p>{messages.account.languageDescription}</p>
+          </div>
+        </header>
+        <LocaleSwitcher labeled />
+      </section>
       <form
         className="settings-section"
         onSubmit={form.handleSubmit((value) => {
-          const parsed = credentialsSchema.safeParse(value);
+          const parsed = credentialsSchema(messages).safeParse(value);
           if (!parsed.success) {
             for (const issue of parsed.error.issues) {
               const field = issue.path[0];
@@ -96,21 +108,21 @@ export function AccountPage() {
       >
         <div className="form-grid">
           <Field
-            label="Username"
+            label={messages.account.username}
             autoComplete="username"
             error={form.formState.errors.username?.message}
             {...form.register("username")}
           />
           <Field
-            label="New password"
+            label={messages.account.newPassword}
             type="password"
             autoComplete="new-password"
-            hint="Leave blank to keep the current password."
+            hint={messages.account.passwordHint}
             error={form.formState.errors.password?.message}
             {...form.register("password")}
           />
           <Field
-            label="Confirm new password"
+            label={messages.account.confirmNewPassword}
             type="password"
             autoComplete="new-password"
             error={form.formState.errors.confirmation?.message}
@@ -121,7 +133,7 @@ export function AccountPage() {
           <p className="field__error">{mutation.error.message}</p>
         ) : null}
         {mutation.isSuccess ? (
-          <p className="notice">Sign-in details updated.</p>
+          <p className="notice">{messages.account.updated}</p>
         ) : null}
         <Button
           type="submit"
@@ -129,7 +141,7 @@ export function AccountPage() {
           busy={mutation.isPending}
           disabled={!form.formState.isDirty}
         >
-          <KeyRound size={16} /> Update login
+          <KeyRound size={16} /> {messages.account.updateLogin}
         </Button>
       </form>
     </Page>
