@@ -1,12 +1,14 @@
 import { expect, test } from "@playwright/test";
 
-import { authenticate, e2eTitle } from "./helpers";
+import { authenticate } from "./helpers";
 
 test("an invited user can join and cannot open Settings", async ({
   page,
   browser,
 }, testInfo) => {
-  const friendName = e2eTitle(testInfo, "e2e-friend");
+  const friendName = `e2e-friend-${testInfo.project.name}${
+    testInfo.retry > 0 ? `-${testInfo.retry}` : ""
+  }`;
   await authenticate(page);
   await page.goto("/settings");
   await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
