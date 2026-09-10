@@ -22,7 +22,7 @@ export function parseUiLocale(value: unknown): UiLocale | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (trimmed === "en" || trimmed === "fr") return trimmed;
-  const primary = trimmed.split(/[-_]/, 1)[0]?.toLowerCase();
+  const primary = trimmed.toLowerCase().split(/[-_]/)[0];
   if (primary === "en" || primary === "fr") return primary;
   return null;
 }

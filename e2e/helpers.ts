@@ -84,6 +84,9 @@ export interface AppSupervisorState {
 }
 
 export async function authenticate(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("bobarr.uiLocale", "en");
+  });
   await page.goto("/");
   const setupUsername = page.getByLabel("Administrator username");
   const loginHeading = page.getByRole("heading", { name: "Sign in to Bobarr" });
@@ -102,6 +105,12 @@ export async function authenticate(page: Page): Promise<void> {
 
   await expect(page).toHaveURL(/\/(?:discover|settings)/);
   await configureStorage(page);
+  await apiJson(page, "/api/v1/auth/ui-locale", {
+    method: "PATCH",
+    body: { uiLocale: "en" },
+  });
+  await page.reload();
+  await expect(page).toHaveURL(/\/(?:discover|settings)/);
 }
 
 export async function signIn(page: Page): Promise<void> {
