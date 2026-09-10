@@ -142,7 +142,7 @@ export function LocaleSwitcher({ labeled = false }: { labeled?: boolean }) {
   const select = (
     <span className="select-control">
       <select
-        aria-label={labeled ? undefined : messages.locale.label}
+        aria-label={labeled ? messages.locale.label : messages.locale.switch}
         value={locale}
         onChange={(event) => {
           const next = parseUiLocale(event.currentTarget.value);

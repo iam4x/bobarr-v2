@@ -3,6 +3,7 @@ import type { Messages } from "./en";
 export const fr = {
   locale: {
     label: "Langue",
+    switch: "Langue de l’interface",
   },
   common: {
     loading: "Chargement",

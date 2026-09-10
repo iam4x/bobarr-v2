@@ -11,7 +11,7 @@ test("keeps French UI after reload and stores it on the profile", async ({
     page.getByRole("heading", { name: "Your sign-in", exact: true }),
   ).toBeVisible();
 
-  await page.getByLabel("Language").selectOption("fr");
+  await page.getByLabel("Language", { exact: true }).selectOption("fr");
   await expect(
     page.getByRole("heading", { name: "Votre connexion", exact: true }),
   ).toBeVisible();

@@ -1,6 +1,7 @@
 export const en = {
   locale: {
     label: "Language",
+    switch: "Interface language",
   },
   common: {
     loading: "Loading",
