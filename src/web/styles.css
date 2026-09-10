@@ -4164,13 +4164,6 @@ textarea:focus-visible {
   border-bottom: 1px solid var(--border);
   cursor: pointer;
 }
-.security-credentials {
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--border);
-}
-.security-credentials .form-grid {
-  margin-bottom: 12px;
-}
 .security-setting input {
   width: 18px;
   height: 18px;

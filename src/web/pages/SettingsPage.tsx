@@ -70,28 +70,8 @@ const settingsSchema = z.object({
   loginLockEnabled: z.boolean(),
 });
 
-const credentialsSchema = z
-  .object({
-    username: z
-      .string()
-      .trim()
-      .min(3, "Use at least 3 characters.")
-      .max(64)
-      .regex(
-        /^[a-zA-Z0-9._-]+$/,
-        "Use letters, numbers, dots, underscores, or dashes.",
-      ),
-    password: z.string().max(256),
-    confirmation: z.string().max(256),
-  })
-  .refine((value) => value.password === value.confirmation, {
-    path: ["confirmation"],
-    message: "Passwords do not match.",
-  });
-
 type SettingsForm = z.input<typeof settingsSchema>;
 type ParsedSettingsForm = z.output<typeof settingsSchema>;
-type CredentialsForm = z.infer<typeof credentialsSchema>;
 
 const emptySettings: AppSettings = {
   locale: { language: "en", region: "US" },
@@ -262,10 +242,6 @@ export function SettingsPage() {
     queryKey: ["settings"],
     queryFn: ({ signal }) => api.get("getSettings", { signal }),
   });
-  const sessionQuery = useQuery({
-    queryKey: ["auth", "session"],
-    queryFn: ({ signal }) => api.get("currentSession", { signal }),
-  });
   const statusQuery = useQuery({
     queryKey: ["system", "status"],
     queryFn: async ({ signal }) =>
@@ -284,19 +260,10 @@ export function SettingsPage() {
     clearErrors,
     formState: { errors, isDirty },
   } = useForm<SettingsForm>({ defaultValues: toForm(emptySettings) });
-  const credentialsForm = useForm<CredentialsForm>({
-    defaultValues: { username: "", password: "", confirmation: "" },
-  });
 
   useEffect(() => {
     if (settingsQuery.data) reset(toForm(settingsQuery.data));
   }, [reset, settingsQuery.data]);
-  useEffect(() => {
-    const username = sessionQuery.data?.user?.username;
-    if (username) {
-      credentialsForm.reset({ username, password: "", confirmation: "" });
-    }
-  }, [credentialsForm, sessionQuery.data]);
 
   const saveMutation = useMutation({
     mutationFn: (value: ParsedSettingsForm) =>
@@ -367,24 +334,6 @@ export function SettingsPage() {
     mutationFn: () => api.post("resetLoginLock"),
     onSuccess: () => setNotice("Temporary sign-in lock and failures reset."),
   });
-  const updateCredentialsMutation = useMutation({
-    mutationFn: (value: CredentialsForm) =>
-      api.patch("updateCredentials", {
-        body: {
-          username: value.username,
-          ...(value.password ? { password: value.password } : {}),
-        },
-      }),
-    onSuccess: (result) => {
-      credentialsForm.reset({
-        username: result.username,
-        password: "",
-        confirmation: "",
-      });
-      setNotice("Administrator login updated.");
-      void queryClient.invalidateQueries({ queryKey: ["auth", "session"] });
-    },
-  });
 
   const integration = (key: IntegrationKey) =>
     statusQuery.data?.integrations.find((item) => item.key === key);
@@ -403,24 +352,6 @@ export function SettingsPage() {
       return;
     }
     saveMutation.mutate(parsed.data);
-  };
-  const submitCredentials = (value: CredentialsForm) => {
-    credentialsForm.clearErrors();
-    const parsed = credentialsSchema.safeParse(value);
-    if (!parsed.success) {
-      for (const issue of parsed.error.issues) {
-        const field = issue.path[0];
-        if (
-          field === "username" ||
-          field === "password" ||
-          field === "confirmation"
-        ) {
-          credentialsForm.setError(field, { message: issue.message });
-        }
-      }
-      return;
-    }
-    updateCredentialsMutation.mutate(parsed.data);
   };
   let backupListContent = (
     <p className="settings-muted">No verified backups yet.</p>
@@ -858,47 +789,6 @@ export function SettingsPage() {
                 <p>Control temporary protection after password failures.</p>
               </div>
             </header>
-            <form
-              className="security-credentials"
-              onSubmit={credentialsForm.handleSubmit(submitCredentials)}
-            >
-              <div className="form-grid">
-                <Field
-                  label="Administrator username"
-                  autoComplete="username"
-                  error={credentialsForm.formState.errors.username?.message}
-                  {...credentialsForm.register("username")}
-                />
-                <Field
-                  label="New password"
-                  type="password"
-                  autoComplete="new-password"
-                  hint="Leave blank to keep the current password."
-                  error={credentialsForm.formState.errors.password?.message}
-                  {...credentialsForm.register("password")}
-                />
-                <Field
-                  label="Confirm new password"
-                  type="password"
-                  autoComplete="new-password"
-                  error={credentialsForm.formState.errors.confirmation?.message}
-                  {...credentialsForm.register("confirmation")}
-                />
-              </div>
-              {updateCredentialsMutation.isError ? (
-                <p className="field__error">
-                  {updateCredentialsMutation.error.message}
-                </p>
-              ) : null}
-              <Button
-                type="submit"
-                variant="secondary"
-                busy={updateCredentialsMutation.isPending}
-                disabled={!credentialsForm.formState.isDirty}
-              >
-                <KeyRound size={16} /> Update login
-              </Button>
-            </form>
             <div className="maintenance-actions">
               <label className="security-setting">
                 <input type="checkbox" {...register("loginLockEnabled")} />
