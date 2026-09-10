@@ -131,12 +131,12 @@ test("does not rehydrate movie or TV details after a backdrop close", async ({
     {
       kind: "movie" as const,
       route: "/library/movies",
-      title: "E2E Backdrop Movie " + testInfo.project.name,
+      title: e2eTitle(testInfo, "E2E Backdrop Movie"),
     },
     {
       kind: "series" as const,
       route: "/library/shows",
-      title: "E2E Backdrop Series " + testInfo.project.name,
+      title: e2eTitle(testInfo, "E2E Backdrop Series"),
     },
   ];
 
@@ -173,8 +173,8 @@ test("searches while typing and reuses session-cached TMDB results", async ({
 }, testInfo) => {
   await authenticate(page);
   await page.goto("/search");
-  const firstTitle = `E2E Cached Search ${testInfo.project.name}`;
-  const secondTitle = `E2E Alternate Search ${testInfo.project.name}`;
+  const firstTitle = e2eTitle(testInfo, "E2E Cached Search");
+  const secondTitle = e2eTitle(testInfo, "E2E Alternate Search");
   let firstTitleRequests = 0;
   page.on("request", (request) => {
     const url = new URL(request.url());
@@ -209,7 +209,7 @@ test("discovers movies from actors in catalog and library details", async ({
   page,
 }, testInfo) => {
   await authenticate(page);
-  const title = `E2E Actor Discovery ${testInfo.project.name}`;
+  const title = e2eTitle(testInfo, "E2E Actor Discovery");
 
   await searchAndOpen(page, title);
   const actorRequest = page.waitForRequest((request) => {
@@ -337,7 +337,7 @@ test("monitors a movie, manually grabs a Jackett release, and shows it in Activi
 }, testInfo) => {
   await authenticate(page);
   await controlFakeServices(request, { jackettMode: "ready" });
-  const title = `E2E Movie ${testInfo.project.name}`;
+  const title = e2eTitle(testInfo, "E2E Movie");
 
   await searchAndOpen(page, title);
   await page.getByRole("button", { name: "Add & search manually" }).click();
@@ -623,7 +623,7 @@ test("acquires and organizes two monitored TV seasons", async ({
 }, testInfo) => {
   await authenticate(page);
   await controlFakeServices(request, { jackettMode: "empty" });
-  const title = `E2E Series ${testInfo.project.name}`;
+  const title = e2eTitle(testInfo, "E2E Series");
   const search = await apiJson<CatalogSearchPayload>(
     page,
     `/api/v1/catalog/search?query=${encodeURIComponent(title)}&kind=series`,
@@ -719,7 +719,7 @@ test("explains a partially aired TV season episode by episode", async ({
     seasonScenario: "partially-aired",
     emptyEpisodes: [3, 4, 6],
   });
-  const title = `E2E Partially Aired Series ${testInfo.project.name}`;
+  const title = e2eTitle(testInfo, "E2E Partially Aired Series");
   const search = await apiJson<CatalogSearchPayload>(
     page,
     `/api/v1/catalog/search?query=${encodeURIComponent(title)}&kind=series`,
@@ -820,11 +820,10 @@ test("adds validated magnet and metainfo downloads through the responsive dialog
 }, testInfo) => {
   await authenticate(page);
   await page.goto("/activity");
-  const suffix = testInfo.project.name;
+  const magnetTitle = e2eTitle(testInfo, "E2E Manual Magnet");
   const hash = createHash("sha1")
-    .update(`manual-magnet-${suffix}`)
+    .update(`manual-magnet-${magnetTitle}`)
     .digest("hex");
-  const magnetTitle = `E2E Manual Magnet ${suffix}`;
 
   await page.getByRole("button", { name: "Add download" }).first().click();
   let dialog = page.getByRole("dialog");
@@ -855,7 +854,7 @@ test("adds validated magnet and metainfo downloads through the responsive dialog
   await removeDialog.getByRole("button", { name: "Remove" }).click();
   await expect(page.getByRole("heading", { name: magnetTitle })).toBeHidden();
 
-  const torrentName = `e2e-metainfo-${suffix}.torrent`;
+  const torrentName = `e2e-metainfo-${magnetTitle}.torrent`;
   await page.getByRole("button", { name: "Add download" }).first().click();
   dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: ".torrent file" }).click();
@@ -873,7 +872,7 @@ test("adopts an ambiguous existing movie only after explicit scan review", async
   request,
 }, testInfo) => {
   await authenticate(page);
-  const title = `E2E Ambiguous Movie ${testInfo.project.name}`;
+  const title = e2eTitle(testInfo, "E2E Ambiguous Movie");
   const folder = `${mediaRoot}/movies/${title} (2024)`;
   await mkdir(folder, { recursive: true });
   await writeFile(
@@ -959,7 +958,7 @@ test("manages and removes a scan-imported untracked TV show", async ({
 }, testInfo) => {
   await authenticate(page);
   await controlFakeServices(request, { jackettMode: "empty" });
-  const title = `E2E Imported Series ${testInfo.project.name}`;
+  const title = e2eTitle(testInfo, "E2E Imported Series");
   const seasonDirectory = `${mediaRoot}/tv/${title} (2024)/Season 01`;
   const episodePath = `${seasonDirectory}/${title}.S01E01.mkv`;
   await mkdir(seasonDirectory, { recursive: true });
