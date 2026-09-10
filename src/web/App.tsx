@@ -20,6 +20,7 @@ import { isAuthenticated, isSetupRequired } from "./api/normalize";
 import { AppShell, RootLoading } from "./components/AppShell";
 import { Brand } from "./components/Brand";
 import { Button } from "./components/ui";
+import { UiProvider, useUi } from "./i18n/ui";
 import { AccountPage } from "./pages/AccountPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { InvitePage, LoginPage, SetupPage } from "./pages/AuthPages";
@@ -76,10 +77,11 @@ function ProtectedApp() {
 }
 
 function RouteError() {
+  const { messages } = useUi();
   const error = useRouteError();
   const notFound = error instanceof Response && error.status === 404;
-  let description = "The page could not be loaded.";
-  if (notFound) description = "The page you requested doesn’t exist.";
+  let description = messages.routeError.loadFailed;
+  if (notFound) description = messages.routeError.notFoundDescription;
   else if (error instanceof Error) description = error.message;
   return (
     <main className="route-error">
@@ -87,10 +89,14 @@ function RouteError() {
       <span className="route-error__icon">
         <AlertTriangle size={28} />
       </span>
-      <h1>{notFound ? "That page wandered off" : "Bobarr hit a snag"}</h1>
+      <h1>
+        {notFound
+          ? messages.routeError.notFoundTitle
+          : messages.routeError.errorTitle}
+      </h1>
       <p>{description}</p>
       <a className="button button--primary button--md" href="/discover">
-        Back to Discover
+        {messages.routeError.backToDiscover}
       </a>
     </main>
   );
@@ -159,7 +165,9 @@ export function App() {
   return (
     <AppErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <UiProvider>
+          <RouterProvider router={router} />
+        </UiProvider>
       </QueryClientProvider>
     </AppErrorBoundary>
   );

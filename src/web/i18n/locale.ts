@@ -1,6 +1,13 @@
+import { en, type Messages } from "./en";
+import { fr } from "./fr";
+
+export type { Messages };
+
 export const UI_LOCALES = ["en", "fr"] as const;
 
 export type UiLocale = (typeof UI_LOCALES)[number];
+
+export const catalogs: Record<UiLocale, Messages> = { en, fr };
 
 export const DEFAULT_UI_LOCALE: UiLocale = "en";
 
