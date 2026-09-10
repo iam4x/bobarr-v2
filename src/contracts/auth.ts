@@ -31,14 +31,26 @@ export const LoginRequestSchema = z
   .strict()
   .openapi("LoginRequest");
 
-export const AdminSchema = z
+export const RankSchema = z.enum(["admin", "user"]).openapi("Rank");
+
+export const AccountSchema = z
   .object({
     id: z.number().int().positive(),
     username: UsernameSchema,
+    rank: RankSchema,
     createdAt: IsoDateTimeSchema,
     lastLoginAt: IsoDateTimeSchema.nullable(),
   })
-  .openapi("Admin");
+  .openapi("Account");
+
+export const ClientCapabilitiesSchema = z
+  .object({
+    rank: RankSchema,
+    canManageSettings: z.boolean(),
+    canManageUsers: z.boolean(),
+    canInvite: z.boolean(),
+  })
+  .openapi("ClientCapabilities");
 
 export const SetupStatusSchema = z
   .object({
@@ -48,7 +60,8 @@ export const SetupStatusSchema = z
 
 export const AuthSessionSchema = z
   .object({
-    admin: AdminSchema,
+    user: AccountSchema,
+    capabilities: ClientCapabilitiesSchema,
     csrfToken: z.string().min(32),
     expiresAt: IsoDateTimeSchema,
   })
@@ -56,7 +69,8 @@ export const AuthSessionSchema = z
 
 export const CurrentSessionSchema = z
   .object({
-    admin: AdminSchema,
+    user: AccountSchema,
+    capabilities: ClientCapabilitiesSchema,
     csrfToken: z.string().min(32).optional(),
     expiresAt: IsoDateTimeSchema,
   })
@@ -74,25 +88,119 @@ export const ResetLoginLockResponseSchema = z
   })
   .openapi("ResetLoginLockResponse");
 
-export const UpdateAdminCredentialsRequestSchema = z
+export const UpdateCredentialsRequestSchema = z
   .object({
     username: UsernameSchema,
     password: PasswordSchema.optional(),
   })
   .strict()
-  .openapi("UpdateAdminCredentialsRequest");
+  .openapi("UpdateCredentialsRequest");
 
-export const UpdateAdminCredentialsResponseSchema = z
+export const UpdateCredentialsResponseSchema = z
   .object({
     username: UsernameSchema,
   })
-  .openapi("UpdateAdminCredentialsResponse");
+  .openapi("UpdateCredentialsResponse");
+
+export const InvitePreviewSchema = z
+  .object({
+    status: z.literal("open"),
+    expiresAt: IsoDateTimeSchema,
+  })
+  .openapi("InvitePreview");
+
+export const AcceptInviteRequestSchema = z
+  .object({
+    token: z.string().min(1).max(256),
+    username: UsernameSchema,
+    password: PasswordSchema,
+  })
+  .strict()
+  .openapi("AcceptInviteRequest");
+
+export const CreateInviteRequestSchema = z
+  .object({
+    expiresInSeconds: z
+      .number()
+      .int()
+      .positive()
+      .max(30 * 24 * 60 * 60)
+      .optional(),
+  })
+  .strict()
+  .openapi("CreateInviteRequest");
+
+export const CreatedInviteSchema = z
+  .object({
+    id: z.string().uuid(),
+    token: z.string().min(32),
+    expiresAt: IsoDateTimeSchema,
+  })
+  .openapi("CreatedInvite");
+
+export const InviteListItemSchema = z
+  .object({
+    id: z.string().uuid(),
+    status: z.enum(["open", "accepted", "revoked", "expired"]),
+    createdAt: IsoDateTimeSchema,
+    expiresAt: IsoDateTimeSchema,
+    acceptedAt: IsoDateTimeSchema.nullable(),
+    revokedAt: IsoDateTimeSchema.nullable(),
+    acceptedBy: z.number().int().positive().nullable(),
+  })
+  .openapi("InviteListItem");
+
+export const UsersResponseSchema = z
+  .object({
+    users: z.array(AccountSchema),
+    invites: z.array(InviteListItemSchema),
+  })
+  .openapi("UsersResponse");
+
+export const UserParamsSchema = z
+  .object({
+    id: z.coerce.number().int().positive(),
+  })
+  .openapi("UserParams");
+
+export const InviteParamsSchema = z
+  .object({
+    id: z.string().uuid(),
+  })
+  .openapi("InviteParams");
+
+export const InvitePreviewQuerySchema = z
+  .object({
+    token: z.string().min(1).max(256),
+  })
+  .openapi("InvitePreviewQuery");
+
+export const DeleteUserResponseSchema = z
+  .object({
+    deleted: z.literal(true),
+  })
+  .openapi("DeleteUserResponse");
+
+export const RevokeInviteResponseSchema = z
+  .object({
+    revoked: z.literal(true),
+  })
+  .openapi("RevokeInviteResponse");
 
 export type SetupRequest = z.infer<typeof SetupRequestSchema>;
 export type LoginRequest = z.infer<typeof LoginRequestSchema>;
-export type UpdateAdminCredentialsRequest = z.infer<
-  typeof UpdateAdminCredentialsRequestSchema
+export type UpdateCredentialsRequest = z.infer<
+  typeof UpdateCredentialsRequestSchema
 >;
-export type Admin = z.infer<typeof AdminSchema>;
+export type UpdateAdminCredentialsRequest = UpdateCredentialsRequest;
+export type Account = z.infer<typeof AccountSchema>;
+export type Admin = Account;
+export type Rank = z.infer<typeof RankSchema>;
+export type ClientCapabilities = z.infer<typeof ClientCapabilitiesSchema>;
 export type AuthSession = z.infer<typeof AuthSessionSchema>;
 export type CurrentSession = z.infer<typeof CurrentSessionSchema>;
+export type AcceptInviteRequest = z.infer<typeof AcceptInviteRequestSchema>;
+export type CreateInviteRequest = z.infer<typeof CreateInviteRequestSchema>;
+export type CreatedInvite = z.infer<typeof CreatedInviteSchema>;
+export type InviteListItem = z.infer<typeof InviteListItemSchema>;
+export type UsersResponse = z.infer<typeof UsersResponseSchema>;

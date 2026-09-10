@@ -582,6 +582,16 @@ textarea:focus-visible {
   margin-top: auto;
   padding: 0 7px;
 }
+.nav-rail__account {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.nav-rail__username {
+  color: var(--text-soft);
+  font-size: 12px;
+  padding-inline: 8px;
+}
 .service-pill {
   min-height: 44px;
   display: flex;

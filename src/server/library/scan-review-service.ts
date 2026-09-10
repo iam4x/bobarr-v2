@@ -21,6 +21,7 @@ export interface ScanReviewService {
     id: string,
     tmdbId: number,
     signal?: AbortSignal,
+    createdByUserId?: number,
   ): Promise<ScanReview>;
   dismiss(id: string): ScanReview;
 }
@@ -29,7 +30,7 @@ export function createScanReviewService(
   options: ScanReviewServiceOptions,
 ): ScanReviewService {
   return {
-    async resolve(id, tmdbId, signal) {
+    async resolve(id, tmdbId, signal, createdByUserId) {
       const review = options.repositories.scanReviews.get(id);
       if (review === undefined) throw notFound("Scan review not found");
       if (review.status === "resolved") {
@@ -112,6 +113,7 @@ export function createScanReviewService(
           kind: review.kind,
           tmdbId,
           parentId: null,
+          ...(createdByUserId === undefined ? {} : { createdByUserId }),
           seasonNumber: null,
           episodeNumber: null,
           title: details.title,

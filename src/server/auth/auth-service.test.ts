@@ -101,8 +101,9 @@ describe("authentication throttling", () => {
       password: "initial",
     });
 
+    const actor = fixture.service.authenticate(grant.sessionToken);
     await expect(
-      fixture.service.updateAdminCredentials(grant.response.admin.id, {
+      fixture.service.updateOwnCredentials(actor.actor, {
         username: "local-admin",
         password: "1",
       }),
@@ -110,8 +111,42 @@ describe("authentication throttling", () => {
     await expect(
       fixture.service.login({ username: "local-admin", password: "1" }),
     ).resolves.toMatchObject({
-      response: { admin: { username: "local-admin" } },
+      response: { user: { username: "local-admin", id: 1, rank: "admin" } },
     });
+  });
+
+  test("a second user logs in as themselves, not the bootstrap admin", async () => {
+    const fixture = await createFixture();
+    await fixture.service.setup({
+      username: "admin",
+      password: "correct-horse-battery-staple",
+    });
+    const passwordHash = await fixture.passwordHasher.hash("friend-pass");
+    const friend = fixture.repositories.auth.createUser(
+      "friend",
+      passwordHash,
+      fixture.now,
+    );
+    expect(friend.id).not.toBe(1);
+
+    const grant = await fixture.service.login({
+      username: "friend",
+      password: "friend-pass",
+    });
+    expect(grant.response.user).toMatchObject({
+      id: friend.id,
+      username: "friend",
+      rank: "user",
+    });
+    expect(grant.response.capabilities).toEqual({
+      rank: "user",
+      canManageSettings: false,
+      canManageUsers: false,
+      canInvite: false,
+    });
+    const authenticated = fixture.service.authenticate(grant.sessionToken);
+    expect(authenticated.actor.account.id).toBe(friend.id);
+    expect(authenticated.current.user.id).toBe(friend.id);
   });
 });
 

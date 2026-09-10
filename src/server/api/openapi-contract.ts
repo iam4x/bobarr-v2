@@ -2,6 +2,7 @@ const MUTATION_METHODS = new Set(["post", "put", "patch", "delete"]);
 const PUBLIC_MUTATIONS = new Set([
   "post /api/v1/setup",
   "post /api/v1/auth/login",
+  "post /api/v1/invites/accept",
 ]);
 
 type OpenApiRecord = Record<string, unknown>;

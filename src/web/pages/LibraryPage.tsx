@@ -85,6 +85,7 @@ import {
   SelectField,
   SkeletonGrid,
 } from "../components/ui";
+import { canMutateOwned } from "../lib/access";
 import {
   formatBytes,
   formatDate,
@@ -1017,6 +1018,7 @@ export function TvSeriesManagement({
   includeFutureSeasons,
   saveBusy,
   saveError,
+  viewerRank,
   onPolicyChange,
   onSelectedSeasonsChange,
   onIncludeFutureSeasonsChange,
@@ -1035,6 +1037,7 @@ export function TvSeriesManagement({
   includeFutureSeasons: boolean;
   saveBusy: boolean;
   saveError?: string;
+  viewerRank?: "admin" | "user";
   onPolicyChange: (policy: MonitorPolicy) => void;
   onSelectedSeasonsChange: (seasons: number[]) => void;
   onIncludeFutureSeasonsChange: (include: boolean) => void;
@@ -1085,6 +1088,7 @@ export function TvSeriesManagement({
     monitoringSettingsSummary = "Future seasons only";
   }
   const canConfigureMonitoring = isPositiveSafeInteger(item.tmdbId);
+  const canMutate = canMutateOwned(viewerRank, item.ownedByMe);
   const episodeQuery = useQuery({
     queryKey: ["library", "episodes", selectedSeason?.id],
     queryFn: ({ signal }) =>
@@ -1396,7 +1400,7 @@ export function TvSeriesManagement({
                               <Download size={14} /> Download
                             </a>
                           ))}
-                          {status.needsAttention ? (
+                          {canMutate && status.needsAttention ? (
                             <Button
                               type="button"
                               size="sm"
@@ -1449,7 +1453,9 @@ export function TvSeriesManagement({
               <h3>{guideTitle}</h3>
               <p>{guideCopy}</p>
             </div>
-            {!futureOnly && (monitoringOff || !selectedSeasonIsMonitored) ? (
+            {canMutate &&
+            !futureOnly &&
+            (monitoringOff || !selectedSeasonIsMonitored) ? (
               <Button
                 type="button"
                 disabled={!canConfigureMonitoring}
@@ -1458,7 +1464,7 @@ export function TvSeriesManagement({
                 <Settings2 size={15} /> Choose monitoring
               </Button>
             ) : null}
-            {selectedSeasonIsMonitored && firstMissing ? (
+            {canMutate && selectedSeasonIsMonitored && firstMissing ? (
               <Button
                 type="button"
                 onClick={() =>
@@ -1471,7 +1477,8 @@ export function TvSeriesManagement({
                 <Search size={15} /> Find first missing episode
               </Button>
             ) : null}
-            {selectedSeasonIsMonitored &&
+            {canMutate &&
+            selectedSeasonIsMonitored &&
             selectedSeason &&
             summary.missing > 0 ? (
               <Button
@@ -1490,7 +1497,7 @@ export function TvSeriesManagement({
             ) : null}
           </section>
 
-          {selectedSeasonIsMonitored ? (
+          {canMutate && selectedSeasonIsMonitored ? (
             <Button
               type="button"
               variant="secondary"
@@ -1507,118 +1514,122 @@ export function TvSeriesManagement({
             </Button>
           ) : null}
 
-          <details
-            className="tv-settings"
-            open={settingsOpen}
-            onToggle={(event) => setSettingsOpen(event.currentTarget.open)}
-          >
-            <summary>
-              <Settings2 size={18} aria-hidden="true" />
-              <span>
-                <strong>Monitoring settings</strong>
-                <small>{monitoringSettingsSummary}</small>
-              </span>
-            </summary>
-            <div className="tv-settings__content">
-              <label className="field">
-                <span className="field__label">Automatic monitoring</span>
-                <SelectControl
-                  value={policy}
-                  disabled={!canConfigureMonitoring}
-                  onChange={(event) =>
-                    onPolicyChange(event.target.value as MonitorPolicy)
-                  }
-                >
-                  <option value="none">Do not monitor</option>
-                  <option value="selected">Selected seasons</option>
-                  <option value="all">All current seasons</option>
-                </SelectControl>
-                <span className="field__hint">
-                  Controls what Bobarr may search for automatically.
+          {canMutate ? (
+            <details
+              className="tv-settings"
+              open={settingsOpen}
+              onToggle={(event) => setSettingsOpen(event.currentTarget.open)}
+            >
+              <summary>
+                <Settings2 size={18} aria-hidden="true" />
+                <span>
+                  <strong>Monitoring settings</strong>
+                  <small>{monitoringSettingsSummary}</small>
                 </span>
-              </label>
-              {policy === "selected" ? (
-                <div
-                  className="season-monitor__grid tv-settings__seasons"
-                  aria-label="Choose monitored seasons"
-                >
-                  {seasonOptions.map((season) => (
-                    <label className="season-choice" key={season}>
-                      <input
-                        type="checkbox"
-                        disabled={!canConfigureMonitoring}
-                        checked={selectedSeasons.includes(season)}
-                        onChange={(event) =>
-                          onSelectedSeasonsChange(
-                            event.target.checked
-                              ? [...selectedSeasons, season].sort(
-                                  (left, right) => left - right,
-                                )
-                              : selectedSeasons.filter(
-                                  (value) => value !== season,
-                                ),
-                          )
-                        }
-                      />
-                      <span>Season {season}</span>
-                    </label>
-                  ))}
-                </div>
-              ) : null}
-              {policy !== "none" ? (
-                <label className="check-row">
-                  <input
-                    type="checkbox"
+              </summary>
+              <div className="tv-settings__content">
+                <label className="field">
+                  <span className="field__label">Automatic monitoring</span>
+                  <SelectControl
+                    value={policy}
                     disabled={!canConfigureMonitoring}
-                    checked={includeFutureSeasons}
                     onChange={(event) =>
-                      onIncludeFutureSeasonsChange(event.target.checked)
+                      onPolicyChange(event.target.value as MonitorPolicy)
                     }
-                  />
-                  <span>
-                    <strong>Monitor future seasons</strong>
-                    <small>
-                      Add newly announced seasons after a metadata refresh.
-                    </small>
+                  >
+                    <option value="none">Do not monitor</option>
+                    <option value="selected">Selected seasons</option>
+                    <option value="all">All current seasons</option>
+                  </SelectControl>
+                  <span className="field__hint">
+                    Controls what Bobarr may search for automatically.
                   </span>
                 </label>
-              ) : null}
-              {saveError ? (
-                <div className="notice notice--error" role="alert">
-                  {saveError}
-                </div>
-              ) : null}
-              {!canConfigureMonitoring ? (
-                <div className="notice notice--warning" role="note">
-                  Confirm this show's TMDB match from the scan review before
-                  changing season monitoring.
-                </div>
-              ) : null}
-              <Button
-                type="button"
-                busy={saveBusy}
-                disabled={
-                  !canConfigureMonitoring ||
-                  (policy === "selected" &&
-                    selectedSeasons.length === 0 &&
-                    !includeFutureSeasons)
-                }
-                onClick={onSave}
-              >
-                <Check size={15} /> Save monitoring
-              </Button>
-            </div>
-          </details>
+                {policy === "selected" ? (
+                  <div
+                    className="season-monitor__grid tv-settings__seasons"
+                    aria-label="Choose monitored seasons"
+                  >
+                    {seasonOptions.map((season) => (
+                      <label className="season-choice" key={season}>
+                        <input
+                          type="checkbox"
+                          disabled={!canConfigureMonitoring}
+                          checked={selectedSeasons.includes(season)}
+                          onChange={(event) =>
+                            onSelectedSeasonsChange(
+                              event.target.checked
+                                ? [...selectedSeasons, season].sort(
+                                    (left, right) => left - right,
+                                  )
+                                : selectedSeasons.filter(
+                                    (value) => value !== season,
+                                  ),
+                            )
+                          }
+                        />
+                        <span>Season {season}</span>
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
+                {policy !== "none" ? (
+                  <label className="check-row">
+                    <input
+                      type="checkbox"
+                      disabled={!canConfigureMonitoring}
+                      checked={includeFutureSeasons}
+                      onChange={(event) =>
+                        onIncludeFutureSeasonsChange(event.target.checked)
+                      }
+                    />
+                    <span>
+                      <strong>Monitor future seasons</strong>
+                      <small>
+                        Add newly announced seasons after a metadata refresh.
+                      </small>
+                    </span>
+                  </label>
+                ) : null}
+                {saveError ? (
+                  <div className="notice notice--error" role="alert">
+                    {saveError}
+                  </div>
+                ) : null}
+                {!canConfigureMonitoring ? (
+                  <div className="notice notice--warning" role="note">
+                    Confirm this show's TMDB match from the scan review before
+                    changing season monitoring.
+                  </div>
+                ) : null}
+                <Button
+                  type="button"
+                  busy={saveBusy}
+                  disabled={
+                    !canConfigureMonitoring ||
+                    (policy === "selected" &&
+                      selectedSeasons.length === 0 &&
+                      !includeFutureSeasons)
+                  }
+                  onClick={onSave}
+                >
+                  <Check size={15} /> Save monitoring
+                </Button>
+              </div>
+            </details>
+          ) : null}
 
-          <Button
-            type="button"
-            variant="ghost"
-            className="danger-text tv-guidance__remove"
-            onClick={onRemove}
-          >
-            <Trash2 size={15} />
-            {monitoringOff ? "Remove from library…" : "Remove show…"}
-          </Button>
+          {canMutate ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="danger-text tv-guidance__remove"
+              onClick={onRemove}
+            >
+              <Trash2 size={15} />
+              {monitoringOff ? "Remove from library…" : "Remove show…"}
+            </Button>
+          ) : null}
         </aside>
       </div>
     </div>
@@ -1636,6 +1647,7 @@ export function MovieManagement({
   saveError,
   retryBusy,
   retryError,
+  viewerRank,
   onPolicyChange,
   onSave,
   onRetry,
@@ -1654,6 +1666,7 @@ export function MovieManagement({
   saveError?: string;
   retryBusy: boolean;
   retryError?: string;
+  viewerRank?: "admin" | "user";
   onPolicyChange: (policy: MonitorPolicy) => void;
   onSave: () => void;
   onRetry: () => void;
@@ -1669,6 +1682,7 @@ export function MovieManagement({
   const monitoringOn = item.monitorPolicy !== "none";
   const showMonitoringSettings = !hasLibraryFile || monitoringOn;
   const manualReleaseAction = libraryManualReleaseAction(item);
+  const canMutate = canMutateOwned(viewerRank, item.ownedByMe);
   const retryable =
     monitoringOn && ["missing", "failed"].includes(item.acquisitionState);
   const activeDownload = item.activeDownload ?? null;
@@ -1864,7 +1878,7 @@ export function MovieManagement({
           ) : null}
 
           <div className="movie-file-panel__action">
-            {manualReleaseAction === "replace" ? (
+            {canMutate && manualReleaseAction === "replace" ? (
               <>
                 <div>
                   <h4>
@@ -1883,7 +1897,7 @@ export function MovieManagement({
                 </Button>
               </>
             ) : null}
-            {manualReleaseAction === "search" ? (
+            {canMutate && manualReleaseAction === "search" ? (
               <>
                 <div>
                   <h4>Choose a release yourself</h4>
@@ -1903,7 +1917,7 @@ export function MovieManagement({
                 Removal is still available.
               </div>
             ) : null}
-            {retryable ? (
+            {canMutate && retryable ? (
               <Button
                 type="button"
                 variant="secondary"
@@ -1922,7 +1936,7 @@ export function MovieManagement({
         </section>
 
         <aside className="movie-controls" aria-label="Movie management">
-          {showMonitoringSettings ? (
+          {canMutate && showMonitoringSettings ? (
             <details
               className="tv-settings movie-settings"
               open={settingsOpen}
@@ -1978,25 +1992,27 @@ export function MovieManagement({
             </details>
           ) : null}
 
-          <section className="movie-removal">
-            <div>
-              <span className="tv-overview__eyebrow">Library cleanup</span>
-              <h3>Remove this movie</h3>
-              <p>
-                {hasLibraryFile
-                  ? "Remove only Bobarr's record, or also delete the organized movie file. You choose on the next screen."
-                  : "Remove this movie from Bobarr and stop any future automatic searches."}
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              className="danger-text"
-              onClick={onRemove}
-            >
-              <Trash2 size={15} /> Remove from library…
-            </Button>
-          </section>
+          {canMutate ? (
+            <section className="movie-removal">
+              <div>
+                <span className="tv-overview__eyebrow">Library cleanup</span>
+                <h3>Remove this movie</h3>
+                <p>
+                  {hasLibraryFile
+                    ? "Remove only Bobarr's record, or also delete the organized movie file. You choose on the next screen."
+                    : "Remove this movie from Bobarr and stop any future automatic searches."}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                className="danger-text"
+                onClick={onRemove}
+              >
+                <Trash2 size={15} /> Remove from library…
+              </Button>
+            </section>
+          ) : null}
         </aside>
       </div>
     </div>
@@ -2012,6 +2028,10 @@ function ManageLibraryDialog({
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const sessionQuery = useQuery({
+    queryKey: ["auth", "session"],
+    queryFn: ({ signal }) => api.get("currentSession", { signal }),
+  });
   const [policy, setPolicy] = useState<MonitorPolicy>(
     item?.monitorPolicy === "future"
       ? "selected"
@@ -2296,6 +2316,7 @@ function ManageLibraryDialog({
       {!confirmRemove && !manualSearchOpen && item?.kind === "series" ? (
         <TvSeriesManagement
           item={item}
+          viewerRank={sessionQuery.data?.user?.rank}
           downloadFiles={downloadFiles}
           seasons={seasons}
           seasonsLoading={seasonQuery.isLoading}
@@ -2320,6 +2341,7 @@ function ManageLibraryDialog({
       {!confirmRemove && !manualSearchOpen && item?.kind === "movie" ? (
         <MovieManagement
           item={item}
+          viewerRank={sessionQuery.data?.user?.rank}
           actors={movieDetailsQuery.data?.actors}
           actorsLoading={
             isPositiveSafeInteger(item.tmdbId) && movieDetailsQuery.isLoading
@@ -2360,6 +2382,12 @@ function ManageLibraryDialog({
 
 export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
   const queryClient = useQueryClient();
+  const sessionQuery = useQuery({
+    queryKey: ["auth", "session"],
+    queryFn: ({ signal }) => api.get("currentSession", { signal }),
+  });
+  const canManageSettings =
+    sessionQuery.data?.capabilities?.canManageSettings === true;
   const [searchParams, setSearchParams] = useSearchParams();
   const routeBrowse = libraryBrowseFromSearchParams(searchParams);
   const [browse, setBrowse] = useState<LibraryBrowseFilters>(() => ({
@@ -2530,14 +2558,16 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
           : "Browse shows, catch new episodes, and keep monitoring on track."
       }
       actions={
-        <Button
-          type="button"
-          variant="secondary"
-          busy={scanMutation.isPending}
-          onClick={() => scanMutation.mutate()}
-        >
-          <ScanSearch size={17} /> Scan library
-        </Button>
+        canManageSettings ? (
+          <Button
+            type="button"
+            variant="secondary"
+            busy={scanMutation.isPending}
+            onClick={() => scanMutation.mutate()}
+          >
+            <ScanSearch size={17} /> Scan library
+          </Button>
+        ) : undefined
       }
       wide
     >
@@ -2564,7 +2594,7 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
           onShowFailed={() => updateBrowse({ filter: "failed" })}
         />
       ) : null}
-      <ScanReviewPanel kind={kind} />
+      {canManageSettings ? <ScanReviewPanel kind={kind} /> : null}
       {browsingDefault && (summary?.total ?? 0) > 0 ? (
         <MediaLibraryShelves kind={kind} enabled onSelect={openLibraryItem} />
       ) : null}

@@ -201,10 +201,21 @@ export class DownloadRepository {
         downloadPath: input.downloadPath,
         createdAt: now,
         updatedAt: now,
+        ...(input.requestedByUserId === undefined
+          ? {}
+          : { requestedByUserId: input.requestedByUserId }),
       })
       .returning()
       .get();
     return mapDownload(row);
+  }
+
+  stampRequester(id: string, userId: number): void {
+    this.database.client
+      .update(downloads)
+      .set({ requestedByUserId: userId })
+      .where(eq(downloads.id, id))
+      .run();
   }
 
   get(id: string): Download | undefined {
@@ -655,6 +666,7 @@ function mapDownload(row: DownloadRow): Download {
     createdAt: toIsoDate(row.createdAt),
     updatedAt: toIsoDate(row.updatedAt),
     completedAt: row.completedAt === null ? null : toIsoDate(row.completedAt),
+    requestedByUserId: row.requestedByUserId,
   };
 }
 

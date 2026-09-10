@@ -245,6 +245,45 @@ export const apiRoutes = {
   ),
   currentSession: route<Session>()("GET", "/auth/me"),
   logout: route<{ loggedOut: true }>()("POST", "/auth/logout"),
+  updateCredentials: route<
+    { username: string },
+    never,
+    { username: string; password?: string }
+  >()("PATCH", "/auth/credentials"),
+  previewInvite: route<
+    { status: "open"; expiresAt: string },
+    { token: string }
+  >()("GET", "/invites/preview"),
+  acceptInvite: route<
+    Session,
+    never,
+    { token: string; username: string; password: string }
+  >()("POST", "/invites/accept"),
+  listUsers: route<{
+    users: Array<{
+      id: number;
+      username: string;
+      rank: "admin" | "user";
+      createdAt: string;
+      lastLoginAt: string | null;
+    }>;
+    invites: Array<{
+      id: string;
+      status: "open" | "accepted" | "revoked" | "expired";
+      createdAt: string;
+      expiresAt: string;
+      acceptedAt: string | null;
+      revokedAt: string | null;
+      acceptedBy: number | null;
+    }>;
+  }>()("GET", "/users"),
+  createInvite: route<
+    { id: string; token: string; expiresAt: string },
+    never,
+    { expiresInSeconds?: number }
+  >()("POST", "/users/invites"),
+  revokeInvite: route<{ revoked: true }>()("DELETE", "/users/invites/:id"),
+  deleteUser: route<{ deleted: true }>()("DELETE", "/users/:id"),
   getSettings: route<AppSettings>()("GET", "/settings"),
   updateSettings: route<AppSettings, never, Partial<AppSettings>>()(
     "PATCH",
@@ -254,11 +293,6 @@ export const apiRoutes = {
     "POST",
     "/settings/security/login-lock/reset",
   ),
-  updateAdminCredentials: route<
-    { username: string },
-    never,
-    { username: string; password?: string }
-  >()("PATCH", "/settings/security/admin"),
   systemStatus: route<SystemStatus>()("GET", "/system"),
   listLibrary: route<
     LibraryApiPage,

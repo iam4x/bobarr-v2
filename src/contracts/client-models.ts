@@ -30,6 +30,19 @@ export type OrganizationStrategy = "hardlink" | "symlink" | "copy" | "move";
 
 export interface Session {
   authenticated?: boolean;
+  user?: {
+    id: number;
+    username: string;
+    rank: "admin" | "user";
+    createdAt?: string;
+    lastLoginAt?: string | null;
+  };
+  capabilities?: {
+    rank: "admin" | "user";
+    canManageSettings: boolean;
+    canManageUsers: boolean;
+    canInvite: boolean;
+  };
   administrator?: {
     id: string | number;
     username: string;
@@ -157,6 +170,8 @@ export interface LibraryItem extends Omit<CatalogItem, "kind" | "tmdbId"> {
   monitorPolicy: MonitorPolicy;
   acquisitionState: AcquisitionState;
   metadata?: Record<string, unknown>;
+  createdByUserId?: number;
+  ownedByMe?: boolean;
   addedAt?: string;
   updatedAt?: string;
   nextAirDate?: string | null;
@@ -236,6 +251,8 @@ export interface Download {
   etaSeconds?: number | null;
   error?: string | null;
   createdAt?: string;
+  requestedByUserId?: number;
+  requestedByMe?: boolean;
   files?: Array<{
     index: number;
     name: string;

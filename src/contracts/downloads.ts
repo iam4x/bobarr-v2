@@ -76,6 +76,8 @@ export const DownloadSchema = z
     updatedAt: IsoDateTimeSchema,
     completedAt: IsoDateTimeSchema.nullable(),
     files: z.array(DownloadFileSchema).optional(),
+    requestedByUserId: z.number().int().positive(),
+    requestedByMe: z.boolean().optional(),
   })
   .openapi("Download");
 
@@ -89,6 +91,7 @@ export const CreateDownloadInputSchema = z
     state: DownloadStateSchema.default("queued"),
     totalBytes: z.number().int().nonnegative().default(0),
     downloadPath: z.string().max(4096).nullable().default(null),
+    requestedByUserId: z.number().int().positive().optional(),
   })
   .strict()
   .openapi("CreateDownloadInput");

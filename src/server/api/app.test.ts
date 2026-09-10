@@ -48,7 +48,7 @@ describe("Bobarr backend API", () => {
     expect(SetupStatusSchema.parse(await statusResponse.json())).toEqual({
       setupRequired: true,
     });
-    expect(runtime.database.migrationVersion).toBe(5);
+    expect(runtime.database.migrationVersion).toBe(6);
     expect(runtime.repositories.settings.ensureDefaults().version).toBe(1);
     expect(
       runtime.repositories.settings.ensureDefaults().settings.acquisition
@@ -132,6 +132,7 @@ describe("Bobarr backend API", () => {
     const publicMutations = new Set([
       "post /api/v1/setup",
       "post /api/v1/auth/login",
+      "post /api/v1/invites/accept",
     ]);
     const mutationMethods = new Set(["post", "put", "patch", "delete"]);
     const authenticatedMutations: string[] = [];
@@ -485,7 +486,7 @@ describe("Bobarr backend API", () => {
     });
 
     runtime.repositories.auth.recordFailedLogin(
-      session.admin.id,
+      session.user.id,
       1,
       Date.now() + 60_000,
       Date.now(),
@@ -506,7 +507,7 @@ describe("Bobarr backend API", () => {
 
     const credentialsResponse = await jsonRequest(
       runtime,
-      "/api/v1/settings/security/admin",
+      "/api/v1/auth/credentials",
       "PATCH",
       { username: "local-admin", password: "1" },
       authenticatedHeaders,
@@ -524,7 +525,7 @@ describe("Bobarr backend API", () => {
     );
     expect(loginResponse.status).toBe(200);
     expect(await loginResponse.json()).toMatchObject({
-      admin: { username: "local-admin" },
+      user: { username: "local-admin", rank: "admin" },
     });
   });
 });

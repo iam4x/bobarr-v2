@@ -36,7 +36,7 @@ try {
   const reset = database.transaction(() => {
     const result = database
       .query(
-        `UPDATE admins
+        `UPDATE users
          SET password_hash = ?1, failed_login_count = 0,
              locked_until = NULL, updated_at = ?2
          WHERE id = 1`,

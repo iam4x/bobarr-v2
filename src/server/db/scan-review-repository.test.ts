@@ -130,7 +130,7 @@ describe("library scan review persistence", () => {
 
       const reopened = await openBackendDatabase(path);
       try {
-        expect(reopened.migrationVersion).toBe(5);
+        expect(reopened.migrationVersion).toBe(6);
         expect(
           createRepositories(reopened).scanReviews.get(created.id),
         ).toMatchObject({

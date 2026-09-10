@@ -11,6 +11,7 @@ import {
   ScanReviewParamsSchema,
   ScanReviewSchema,
 } from "../../contracts";
+import { requireAllowed } from "../auth/policy";
 import { AppError } from "../core";
 import { createScanReviewService } from "../library";
 
@@ -94,6 +95,7 @@ export function registerScanReviewRoutes(
   });
 
   app.openapi(listRoute, (context) => {
+    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
     const query = context.req.valid("query");
     const result = dependencies.repositories.scanReviews.list(query);
     return context.json(
@@ -105,14 +107,22 @@ export function registerScanReviewRoutes(
     );
   });
   app.openapi(resolveRoute, async (context) => {
+    const actor = context.get("auth").actor;
+    requireAllowed(actor, { type: "manage_settings" });
     const { id } = context.req.valid("param");
     const { tmdbId } = context.req.valid("json");
     return context.json(
-      await reviews.resolve(id, tmdbId, context.req.raw.signal),
+      await reviews.resolve(
+        id,
+        tmdbId,
+        context.req.raw.signal,
+        actor.account.id,
+      ),
       200,
     );
   });
   app.openapi(dismissRoute, (context) => {
+    requireAllowed(context.get("auth").actor, { type: "manage_settings" });
     const review = reviews.dismiss(context.req.valid("param").id);
     return context.json({ dismissed: true as const, review }, 200);
   });

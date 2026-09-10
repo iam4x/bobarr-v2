@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect } from "react";
 import { useForm } from "react-hook-form";
-import { Link, Navigate, useNavigate } from "react-router";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router";
 import { z } from "zod";
 
 import { ApiError, api } from "../api/client";
@@ -147,7 +147,7 @@ export function LoginPage() {
     <AuthLayout
       eyebrow="Welcome back"
       title="Sign in to Bobarr"
-      description="Use the administrator account for this server."
+      description="Use your Bobarr username and password."
     >
       <form className="auth-form" onSubmit={handleSubmit(submit)}>
         <Field
@@ -289,6 +289,138 @@ export function SetupPage() {
           separately.
         </span>
       </div>
+    </AuthLayout>
+  );
+}
+
+const inviteSchema = z
+  .object({
+    username: z.string().trim().min(3, "Use at least 3 characters.").max(64),
+    password: z.string().min(1, "Enter a password."),
+    confirmation: z.string(),
+  })
+  .refine((value) => value.password === value.confirmation, {
+    path: ["confirmation"],
+    message: "Passwords do not match.",
+  });
+
+type InviteForm = z.infer<typeof inviteSchema>;
+
+export function InvitePage() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [params] = useSearchParams();
+  const token = params.get("token") ?? "";
+  const previewQuery = useQuery({
+    queryKey: ["invite", "preview", token],
+    queryFn: ({ signal }) =>
+      api.get("previewInvite", { query: { token }, signal }),
+    enabled: token.length > 0,
+    retry: false,
+  });
+  const {
+    register,
+    handleSubmit,
+    setError,
+    clearErrors,
+    formState: { errors },
+  } = useForm<InviteForm>();
+  const acceptMutation = useMutation({
+    mutationFn: (value: InviteForm) =>
+      api.post("acceptInvite", {
+        body: {
+          token,
+          username: value.username,
+          password: value.password,
+        },
+      }),
+    onSuccess: (session) => {
+      queryClient.setQueryData(["auth", "session"], session);
+      queryClient.setQueryData(["setup"], { setupRequired: false });
+      navigate("/discover", { replace: true });
+    },
+    onError: (error) => applyApiFieldErrors<InviteForm>(error, setError),
+  });
+
+  const submit = (value: InviteForm) => {
+    clearErrors();
+    const parsed = inviteSchema.safeParse(value);
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        const field = issue.path[0];
+        if (
+          field === "username" ||
+          field === "password" ||
+          field === "confirmation"
+        ) {
+          setError(field, { message: issue.message });
+        }
+      }
+      return;
+    }
+    acceptMutation.mutate(parsed.data);
+  };
+
+  if (token.length === 0 || previewQuery.isError) {
+    return (
+      <AuthLayout
+        eyebrow="Invite"
+        title="This invite isn’t valid"
+        description="Ask an administrator for a new link. Used and expired invites cannot be reused."
+      >
+        <Button type="button" onClick={() => navigate("/login")}>
+          Go to sign in
+        </Button>
+      </AuthLayout>
+    );
+  }
+
+  if (previewQuery.isLoading) {
+    return (
+      <main className="full-page-state">
+        <Brand />
+        <InlineSpinner label="Checking invite…" />
+      </main>
+    );
+  }
+
+  return (
+    <AuthLayout
+      eyebrow="You're invited"
+      title="Create your Bobarr account"
+      description="Choose a username and password. You’ll share this library with the people already here."
+    >
+      <form className="auth-form" onSubmit={handleSubmit(submit)}>
+        <Field
+          label="Username"
+          autoComplete="username"
+          autoFocus
+          error={errors.username?.message}
+          {...register("username")}
+        />
+        <Field
+          label="Password"
+          type="password"
+          autoComplete="new-password"
+          error={errors.password?.message}
+          {...register("password")}
+        />
+        <Field
+          label="Confirm password"
+          type="password"
+          autoComplete="new-password"
+          error={errors.confirmation?.message}
+          {...register("confirmation")}
+        />
+        {acceptMutation.isError ? (
+          <div className="notice notice--error" role="alert">
+            {acceptMutation.error.message}
+          </div>
+        ) : null}
+        <Button type="submit" size="lg" busy={acceptMutation.isPending}>
+          Join Bobarr <ArrowRight size={17} />
+        </Button>
+      </form>
     </AuthLayout>
   );
 }

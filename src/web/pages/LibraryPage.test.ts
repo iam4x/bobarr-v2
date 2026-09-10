@@ -314,6 +314,7 @@ describe("library manual release targets", () => {
     const markup = renderToStaticMarkup(
       createElement(MovieManagement, {
         item: imported,
+        viewerRank: "admin",
         downloadFiles: [
           {
             id: "file-1",

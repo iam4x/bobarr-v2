@@ -20,7 +20,9 @@ import {
 } from "./product";
 import {
   AuthService,
+  InviteService,
   SecretVault,
+  bunPasswordHasher,
   testPasswordHasher,
   type PasswordHasher,
 } from "../auth";
@@ -135,17 +137,26 @@ export async function initializeBackend(
       repositories.secrets,
       clock,
     );
+    const passwordHasher =
+      options.passwordHasher ??
+      (config.environment === "test" ? testPasswordHasher : bunPasswordHasher);
     const auth = await AuthService.create({
       repository: repositories.auth,
       config,
       clock,
-      passwordHasher:
-        options.passwordHasher ??
-        (config.environment === "test" ? testPasswordHasher : undefined),
+      passwordHasher,
       loginLockEnabled: () =>
         repositories.settings.ensureDefaults().settings.security
           .loginLockEnabled,
     });
+    const invites = new InviteService(
+      repositories.invites,
+      repositories.auth,
+      auth,
+      passwordHasher,
+      clock,
+      (work) => database.sqlite.transaction(work)(),
+    );
     const integrations = createIntegrationResolver({
       environment,
       secrets,
@@ -288,6 +299,7 @@ export async function initializeBackend(
       database,
       repositories,
       auth,
+      invites,
       secrets,
       queue,
       events,
