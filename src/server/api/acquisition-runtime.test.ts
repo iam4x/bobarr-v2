@@ -9,9 +9,9 @@ import { join } from "node:path";
 
 import {
   createAcquisitionRuntime,
-  scanTargetsFromJobPayload,
   updateMediaTreeState,
 } from "./acquisition-runtime";
+import { scanTargetsFromJobPayload } from "./library-scan-runtime";
 import { CreateLibraryItemRequestSchema } from "../../contracts";
 import { createEncryptionKey, parseBackendConfig } from "../config";
 import { createRepositories, openBackendDatabase } from "../db";
