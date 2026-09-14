@@ -20,6 +20,7 @@ import {
   type AppSettings,
 } from "../../contracts";
 import { createEncryptionKey } from "../config";
+import { saveVolumeTransfer } from "../db/volume-transfers";
 
 const nativeFetch = globalThis.fetch;
 const runtimes: BackendRuntime[] = [];
@@ -182,6 +183,82 @@ describe("library scan review API", () => {
     });
   });
 
+  test("resolves an unrelated review while another path is transferring", async () => {
+    const fixture = await createFixture();
+    const review = fixture.runtime.repositories.scanReviews.upsert({
+      kind: "movie",
+      title: "Matrix",
+      year: 1999,
+      rootPath: fixture.moviesRoot,
+      files: [{ path: fixture.movieFile, sizeBytes: 5 }],
+      candidates: [matrixCandidate(603, "The Matrix")],
+    });
+    startVolumeTransfer(fixture.runtime, [
+      join(fixture.moviesRoot, "Unrelated (2025)"),
+    ]);
+    const session = await setup(fixture.runtime);
+
+    const response = await jsonRequest(
+      fixture.runtime,
+      `/api/v1/library/scan-reviews/${review.id}/resolve`,
+      { tmdbId: 603 },
+      session,
+    );
+
+    expect(response.status).toBe(200);
+    expect(
+      fixture.runtime.repositories.scanReviews.get(review.id)?.status,
+    ).toBe("resolved");
+  });
+
+  test("rejects a review when its transfer completes during metadata lookup", async () => {
+    const fixture = await createFixture();
+    const review = fixture.runtime.repositories.scanReviews.upsert({
+      kind: "movie",
+      title: "Matrix",
+      year: 1999,
+      rootPath: fixture.moviesRoot,
+      files: [{ path: fixture.movieFile, sizeBytes: 5 }],
+      candidates: [matrixCandidate(603, "The Matrix")],
+    });
+    const fixtureFetch = globalThis.fetch;
+    let transferStarted = false;
+    globalThis.fetch = Object.assign(
+      async (
+        input: Parameters<typeof fixtureFetch>[0],
+        init?: Parameters<typeof fixtureFetch>[1],
+      ) => {
+        const url = new URL(String(input));
+        if (!transferStarted && url.pathname.endsWith("/movie/603")) {
+          transferStarted = true;
+          const transfer = startVolumeTransfer(fixture.runtime, [
+            fixture.movieFile,
+          ]);
+          saveVolumeTransfer(fixture.runtime.database, {
+            ...transfer,
+            stage: "complete",
+          });
+        }
+        return fixtureFetch(input, init);
+      },
+      { preconnect: fixtureFetch.preconnect },
+    );
+    const session = await setup(fixture.runtime);
+
+    const response = await jsonRequest(
+      fixture.runtime,
+      `/api/v1/library/scan-reviews/${review.id}/resolve`,
+      { tmdbId: 603 },
+      session,
+    );
+
+    expect(response.status).toBe(409);
+    expect(
+      fixture.runtime.repositories.scanReviews.get(review.id)?.status,
+    ).toBe("pending");
+    expect(fixture.runtime.repositories.libraryFiles.listPaths()).toEqual([]);
+  });
+
   test("rejects a recorded file that is outside the configured root", async () => {
     const fixture = await createFixture();
     const escapedFile = join(fixture.baseDirectory, "outside.mkv");
@@ -252,6 +329,27 @@ function matrixCandidate(tmdbId: number, title: string) {
     posterPath: "/matrix.jpg",
     overview: "A hacker discovers the nature of reality.",
   };
+}
+
+function startVolumeTransfer(runtime: BackendRuntime, paths: string[]) {
+  const groupKey = `movie:${crypto.randomUUID()}`;
+  const transfer = {
+    id: crypto.randomUUID(),
+    groupKey,
+    groupKeys: [groupKey],
+    jobId: crypto.randomUUID(),
+    title: "Moving movie",
+    mediaIds: [],
+    destinationVolumeId: "disk-b",
+    stagingRoot: join(paths[0] ?? "/tmp", ".bobarr-volume-organize"),
+    paths,
+    files: [],
+    libraryFiles: [],
+    downloads: [],
+    stage: "copying" as const,
+  };
+  saveVolumeTransfer(runtime.database, transfer);
+  return transfer;
 }
 
 async function createFixture(): Promise<{

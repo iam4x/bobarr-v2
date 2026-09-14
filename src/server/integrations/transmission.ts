@@ -127,6 +127,11 @@ export interface TorrentEngine {
   ): Promise<void>;
   start(hash: string, signal?: AbortSignal): Promise<void>;
   pause(hash: string, signal?: AbortSignal): Promise<void>;
+  setLocation(
+    hash: string,
+    location: string,
+    signal?: AbortSignal,
+  ): Promise<void>;
   remove(
     hash: string,
     deleteData?: boolean,
@@ -433,6 +438,18 @@ export function createTransmissionClient(
     async pause(hash, signal) {
       await ensureCompatible(signal);
       await rpc("torrent_stop", { ids: [validateInfoHash(hash)] }, signal);
+    },
+
+    async setLocation(hash, location, signal) {
+      if (!location.startsWith("/") || location.includes("\0")) {
+        throw new TypeError("Torrent location must be an absolute path");
+      }
+      await ensureCompatible(signal);
+      await rpc(
+        "torrent_set_location",
+        { ids: [validateInfoHash(hash)], location, move: false },
+        signal,
+      );
     },
 
     async remove(hash, deleteData = false, signal) {

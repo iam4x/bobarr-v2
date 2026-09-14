@@ -19,6 +19,7 @@ import {
   CreateLibraryFileInputSchema,
   CreateLibraryItemRequestSchema,
   DownloadPatchSchema,
+  JobSchema,
   type AppSettings,
 } from "../../contracts";
 import {
@@ -26,6 +27,7 @@ import {
   downloadRepositoryFromDatabase,
 } from "../application";
 import { createEncryptionKey } from "../config";
+import { saveVolumeTransfer } from "../db/volume-transfers";
 
 const INFO_HASH = "0123456789abcdef0123456789abcdef01234567";
 const TRACKER_SECRET = "tracker-passkey-super-secret";
@@ -49,6 +51,176 @@ afterEach(async () => {
 });
 
 describe("public product API", () => {
+  test("queues and deduplicates volume organization using saved settings", async () => {
+    const { runtime } = await createFixture();
+    const session = await setup(runtime);
+    const rejected = await jsonRequest(
+      runtime,
+      "/api/v1/settings/storage/organize",
+      "POST",
+      {},
+      session,
+    );
+    expect(rejected.status).toBe(400);
+    const storage =
+      runtime.repositories.settings.ensureDefaults().settings.storage;
+    runtime.repositories.settings.update({
+      storage: {
+        ...storage,
+        volumes: [
+          ...storage.volumes,
+          {
+            id: "second",
+            label: "Second",
+            downloadsPath: "/second/downloads",
+            moviesPath: "/second/movies",
+            televisionPath: "/second/tv",
+          },
+        ],
+      },
+    });
+    const requestedAt = Date.now();
+    const first = await jsonRequest(
+      runtime,
+      "/api/v1/settings/storage/organize",
+      "POST",
+      {},
+      session,
+    );
+    const second = await jsonRequest(
+      runtime,
+      "/api/v1/settings/storage/organize",
+      "POST",
+      {},
+      session,
+    );
+    expect(first.status).toBe(202);
+    expect(second.status).toBe(202);
+    const job = JobSchema.parse(await first.json());
+    expect(job).toMatchObject({
+      kind: "library.organize.v1",
+      status: "queued",
+      payload: { version: 1 },
+    });
+    expect(Date.parse(job.runAt)).toBeGreaterThan(requestedAt);
+    expect(JobSchema.parse(await second.json()).id).toBe(job.id);
+    expect(await runtime.queue.count({ types: ["library.organize.v1"] })).toBe(
+      1,
+    );
+  });
+
+  test("protects a transfer from media deletion and storage edits while other settings remain editable", async () => {
+    const { runtime } = await createFixture();
+    const session = await setup(runtime);
+    const movie = runtime.repositories.media.create(
+      CreateLibraryItemRequestSchema.parse({
+        kind: "movie",
+        title: "Moving movie",
+        status: "available",
+      }),
+    );
+    saveVolumeTransfer(runtime.database, {
+      id: crypto.randomUUID(),
+      groupKey: `movie:${movie.id}`,
+      groupKeys: [`movie:${movie.id}`],
+      jobId: crypto.randomUUID(),
+      title: movie.title,
+      mediaIds: [movie.id],
+      destinationVolumeId: "second",
+      stagingRoot: "/second/downloads/.bobarr-transfer",
+      paths: ["/media/movies/Moving movie", "/second/movies/Moving movie"],
+      files: [],
+      libraryFiles: [],
+      downloads: [],
+      stage: "copying",
+    });
+    const deletion = await jsonRequest(
+      runtime,
+      `/api/v1/library/${movie.id}`,
+      "DELETE",
+      { deleteLibraryRecord: true },
+      session,
+    );
+    expect(deletion.status).toBe(409);
+    expect(runtime.repositories.media.get(movie.id)).toBeDefined();
+    const storage =
+      runtime.repositories.settings.ensureDefaults().settings.storage;
+    const moved = await jsonRequest(
+      runtime,
+      "/api/v1/settings",
+      "PATCH",
+      {
+        storage: {
+          ...storage,
+          volumes: storage.volumes.map((volume) => ({
+            ...volume,
+            moviesPath: "/other/movies",
+          })),
+        },
+      },
+      session,
+    );
+    expect(moved.status).toBe(409);
+    const language = await jsonRequest(
+      runtime,
+      "/api/v1/settings",
+      "PATCH",
+      { locale: { language: "fr" } },
+      session,
+    );
+    expect(language.status).toBe(200);
+    const details = await runtime.app.request(`/api/v1/library/${movie.id}`, {
+      headers: { cookie: session.cookie },
+    });
+    expect(details.status).toBe(200);
+  });
+
+  test("refuses torrent file-selection changes while its payload is moving", async () => {
+    const { runtime } = await createFixture();
+    const session = await setup(runtime);
+    const download = runtime.repositories.downloads.create(
+      CreateDownloadInputSchema.parse({
+        title: "Moving payload",
+        externalId: INFO_HASH,
+      }),
+    );
+    saveVolumeTransfer(runtime.database, {
+      id: crypto.randomUUID(),
+      groupKey: "movie:selection-test",
+      groupKeys: ["movie:selection-test"],
+      jobId: crypto.randomUUID(),
+      title: download.title,
+      mediaIds: [],
+      destinationVolumeId: "second",
+      stagingRoot: "/second/downloads/.bobarr-volume-organize/test",
+      paths: [],
+      files: [],
+      libraryFiles: [],
+      downloads: [
+        {
+          id: download.id,
+          hash: INFO_HASH,
+          label: `bobarr:${download.id}`,
+          source: `/first/downloads/${download.id}`,
+          recordedSource: `/first/downloads/${download.id}`,
+          destination: `/second/downloads/${download.id}`,
+          running: true,
+          files: [],
+        },
+      ],
+      stage: "copying",
+    });
+    const response = await jsonRequest(
+      runtime,
+      `/api/v1/downloads/${download.id}/files`,
+      "PATCH",
+      { wanted: [0] },
+      session,
+    );
+    expect(response.status).toBe(409);
+    expect(JSON.stringify(await response.json())).toContain("being moved");
+  });
+
   test("documents normalized catalog ratings in OpenAPI", async () => {
     const fixture = await createFixture();
     const response = await fixture.runtime.app.request("/api/openapi.json");

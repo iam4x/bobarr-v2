@@ -488,6 +488,7 @@ export const apiRoutes = {
     never,
     AppSettings["storage"]
   >()("POST", "/settings/storage/validate"),
+  organizeStorage: route<Job>()("POST", "/settings/storage/organize"),
   createBackup: route<{ completed: boolean; result: unknown }>()(
     "POST",
     "/system/backups",

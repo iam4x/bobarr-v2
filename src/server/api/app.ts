@@ -77,6 +77,7 @@ import {
 } from "../../contracts";
 import { requireAdmin } from "../auth/policy";
 import { AppError, notFound, systemClock } from "../core";
+import { withStorageMutation } from "../db/volume-transfers";
 import { durableJobToContract, validateCronExpression } from "../jobs";
 import {
   libraryRoots,
@@ -573,19 +574,26 @@ export function createApiApp(
     );
     const patch = context.req.valid("json");
     validateSchedulePatch(patch);
-    await assertPersistableStoragePatch(
-      dependencies.repositories,
-      patch.storage,
-    );
-    await persistSecretInputs(dependencies.secrets, patch);
-    const updated = dependencies.repositories.settings.update(
-      withoutSecretInputs(patch),
-    );
-    notifyIntegrationConfigurationChanged(
-      dependencies,
-      integrationKeysForSettings(patch),
-    );
-    return context.json(withoutSecretInputs(updated.settings), 200);
+    const save = async () => {
+      await assertPersistableStoragePatch(
+        dependencies.repositories,
+        patch.storage,
+      );
+      await persistSecretInputs(dependencies.secrets, patch);
+      const updated = dependencies.repositories.settings.update(
+        withoutSecretInputs(patch),
+      );
+      notifyIntegrationConfigurationChanged(
+        dependencies,
+        integrationKeysForSettings(patch),
+      );
+      return context.json(withoutSecretInputs(updated.settings), 200);
+    };
+    const currentStorage =
+      dependencies.repositories.settings.ensureDefaults().settings.storage;
+    return patch.storage && !storageLayoutEquals(currentStorage, patch.storage)
+      ? withStorageMutation(dependencies.database, save)
+      : save();
   });
   app.openapi(routes.resetLoginLock, (context) => {
     requireAdmin(

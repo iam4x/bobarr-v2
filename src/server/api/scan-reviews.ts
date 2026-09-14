@@ -13,6 +13,7 @@ import {
 } from "../../contracts";
 import { requireAdmin } from "../auth/policy";
 import { AppError } from "../core";
+import { transferringPaths } from "../db/volume-transfers";
 import { createScanReviewService } from "../library";
 
 const errorResponse = {
@@ -82,6 +83,8 @@ export function registerScanReviewRoutes(
   const reviews = createScanReviewService({
     repositories: dependencies.repositories,
     events: dependencies.events,
+    transferringPaths: (changedSince) =>
+      transferringPaths(dependencies.database, changedSince),
     tmdb: async () => {
       if (dependencies.integrations === undefined) {
         throw new AppError({

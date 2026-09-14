@@ -6,6 +6,16 @@ export interface JobHandlerContext {
   heartbeat(): Promise<void>;
 }
 
+export class JobDeferredError extends Error {
+  constructor(
+    message: string,
+    readonly delayMs = 5_000,
+  ) {
+    super(message);
+    this.name = "JobDeferredError";
+  }
+}
+
 export type JobHandler<T = unknown> = (
   job: DurableJob<T>,
   context: JobHandlerContext,
@@ -85,6 +95,21 @@ export function createJobWorker(options: JobWorkerOptions): JobWorker {
     activeControllers.set(job.id, controller);
     const forwardAbort = (): void => controller.abort(signal?.reason);
     signal?.addEventListener("abort", forwardAbort, { once: true });
+    let heartbeatPending = false;
+    const heartbeatTimer = setInterval(
+      () => {
+        if (heartbeatPending || controller.signal.aborted) return;
+        heartbeatPending = true;
+        void options.queue
+          .heartbeat(job.id, leaseToken, leaseMs, now())
+          .catch((error: unknown) => controller.abort(error))
+          .finally(() => {
+            heartbeatPending = false;
+          });
+      },
+      Math.max(1, Math.floor(leaseMs / 3)),
+    );
+    heartbeatTimer.unref?.();
     try {
       jobLogger?.info("job.started");
       await handler(job, {
@@ -101,6 +126,17 @@ export function createJobWorker(options: JobWorkerOptions): JobWorker {
         return true;
       }
       const timestamp = now();
+      if (error instanceof JobDeferredError) {
+        await options.queue.defer(
+          job.id,
+          leaseToken,
+          timestamp + error.delayMs,
+          error.message,
+          timestamp,
+        );
+        jobLogger?.info("job.deferred", { reason: error.message });
+        return true;
+      }
       const delay = options.retryDelay?.(job, error, timestamp);
       await options.queue.fail(job.id, leaseToken, error, {
         retryAt:
@@ -113,6 +149,7 @@ export function createJobWorker(options: JobWorkerOptions): JobWorker {
           delay === undefined ? undefined : timestamp + Math.max(0, delay),
       });
     } finally {
+      clearInterval(heartbeatTimer);
       activeControllers.delete(job.id);
       signal?.removeEventListener("abort", forwardAbort);
     }

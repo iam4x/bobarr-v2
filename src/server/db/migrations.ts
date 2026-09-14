@@ -382,6 +382,22 @@ const migrations: readonly Migration[] = [
       ALTER TABLE users ADD COLUMN ui_locale TEXT CHECK (ui_locale IS NULL OR ui_locale IN ('en', 'fr'));
     `,
   },
+  {
+    version: 8,
+    name: "volume_transfers",
+    sql: `
+      CREATE TABLE volume_transfers (
+        id TEXT PRIMARY KEY,
+        group_key TEXT NOT NULL,
+        stage TEXT NOT NULL CHECK (stage IN ('copying', 'published', 'committed', 'complete')),
+        manifest_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE UNIQUE INDEX volume_transfers_active_group
+        ON volume_transfers(group_key) WHERE stage <> 'complete';
+    `,
+  },
 ];
 
 export const LATEST_DATABASE_MIGRATION =

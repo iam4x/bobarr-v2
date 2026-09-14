@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { createSqliteBackup } from "./backup";
 import { createBackupRestoreService } from "./restore";
-import { openBackendDatabase } from "../db";
+import { LATEST_DATABASE_MIGRATION, openBackendDatabase } from "../db";
 
 const temporaryDirectories: string[] = [];
 
@@ -55,12 +55,12 @@ describe("staged database restore", () => {
     expect(listed[0]).toMatchObject({
       name: "bobarr-2026-07-21T12-00-00-000Z.sqlite",
       verified: true,
-      migrationVersion: 7,
+      migrationVersion: LATEST_DATABASE_MIGRATION,
     });
 
     const staged = await restore.stageRestore(candidateBytes);
     expect(staged).toMatchObject({
-      migrationVersion: 7,
+      migrationVersion: LATEST_DATABASE_MIGRATION,
       restartRequired: true,
     });
     expect(await restore.getStagedRestore()).toEqual(staged);

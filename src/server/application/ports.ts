@@ -187,12 +187,14 @@ export interface LibraryOrganizationRequest {
   target: ReleaseTarget;
   torrentName: string;
   files: readonly TorrentFile[];
+  libraryVolumeId?: string;
 }
 
 export interface OrganizedFile {
   source: string;
   destination: string;
   created: boolean;
+  strategy?: "hardlink" | "symlink" | "copy" | "move";
 }
 
 export interface LibraryOrganizer {
@@ -273,6 +275,7 @@ export interface DownloadRecord {
   engineLabel: string;
   downloadDirectory: string;
   progress: number;
+  totalBytes?: number;
   error: string | null;
   pausedRequested: boolean;
   peerLimit: number | null;

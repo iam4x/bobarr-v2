@@ -17,6 +17,7 @@ import {
   SystemStatusSchema,
 } from "../../contracts";
 import { createEncryptionKey, type BackendConfig } from "../config";
+import { LATEST_DATABASE_MIGRATION } from "../db";
 
 const runtimes: BackendRuntime[] = [];
 const nativeFetch = globalThis.fetch;
@@ -86,7 +87,7 @@ describe("Bobarr backend API", () => {
     expect(SetupStatusSchema.parse(await statusResponse.json())).toEqual({
       setupRequired: true,
     });
-    expect(runtime.database.migrationVersion).toBe(7);
+    expect(runtime.database.migrationVersion).toBe(LATEST_DATABASE_MIGRATION);
     expect(runtime.repositories.settings.ensureDefaults().version).toBe(1);
     expect(
       runtime.repositories.settings.ensureDefaults().settings.acquisition

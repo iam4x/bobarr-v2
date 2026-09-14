@@ -120,6 +120,7 @@ describe("Transmission JSON-RPC adapter", () => {
     });
     await client.start(HASH);
     await client.pause(HASH);
+    await client.setLocation(HASH, "/media/new/download");
     await client.remove(HASH, true);
 
     expect(methods.map(({ method }) => method)).toEqual([
@@ -130,10 +131,33 @@ describe("Transmission JSON-RPC adapter", () => {
       "torrent_set",
       "torrent_start",
       "torrent_stop",
+      "torrent_set_location",
       "torrent_remove",
     ]);
     expect(methods[4]?.params["files_wanted"]).toEqual([0, 2]);
-    expect(methods[7]?.params["delete_local_data"]).toBe(true);
+    expect(methods[7]?.params).toEqual({
+      ids: [HASH],
+      location: "/media/new/download",
+      move: false,
+    });
+    expect(methods[8]?.params["delete_local_data"]).toBe(true);
+  });
+
+  test("rejects unsafe relocation paths before sending RPC", async () => {
+    let requests = 0;
+    const client = createTransmissionClient({
+      fetch: rpcFetcher(() => {
+        requests += 1;
+        return {};
+      }),
+    });
+    await expect(client.setLocation(HASH, "relative/path")).rejects.toThrow(
+      "absolute path",
+    );
+    await expect(client.setLocation(HASH, "/path\0invalid")).rejects.toThrow(
+      "absolute path",
+    );
+    expect(requests).toBe(0);
   });
 });
 

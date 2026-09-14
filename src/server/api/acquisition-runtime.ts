@@ -3,7 +3,10 @@ import type {
   LibraryItem,
   StorageVolume,
 } from "../../contracts";
-import type { AcquisitionService } from "../application";
+import type {
+  AcquisitionService,
+  DownloadPlacementContext,
+} from "../application";
 import type { BackendConfig } from "../config";
 import type { BackendDatabase, Repositories } from "../db";
 import type { ReleaseProfile, ReleaseTarget } from "../domain/releases";
@@ -25,17 +28,30 @@ import {
   isOwnedTorrent,
 } from "../application";
 import {
+  VolumeMutationConflictError,
+  isDownloadTransferring,
+  isMediaTransferring,
+  transferringPaths,
+  withMediaMutation,
+} from "../db/volume-transfers";
+import {
   aggregateChildAcquisitionState,
   completedSeasonHasNoUpcomingEpisodes,
   organizedEpisodeNumbers,
 } from "../domain";
+import { JobDeferredError } from "../jobs";
 import { importRecordedFiles, isPathContained, scanLibrary } from "../library";
 import {
-  downloadRoots,
-  measureFreeBytes,
-  placeDownload,
-  type LibraryRoot,
-} from "../storage";
+  expandStoragePathAliases,
+  isWithinStoragePaths,
+  storageRootAliases,
+} from "../library/volume-paths";
+import {
+  createDownloadPlacement,
+  groupForMedia,
+  volumeForLibraryGroup,
+} from "../library/volume-placement";
+import { downloadRoots, type LibraryRoot } from "../storage";
 
 const MEDIA_ACQUIRE_JOB = "media.acquire.v1";
 const LIBRARY_SCAN_JOB = "library.scan.v1";
@@ -57,7 +73,10 @@ export interface AcquisitionRuntimeOptions {
   events: EventHub;
   integrations: IntegrationResolver;
   prepareDownloadDirectory?: (path: string) => Promise<void>;
-  placeDownloadDirectory?: (downloadId: string) => Promise<string>;
+  placeDownloadDirectory?: (
+    downloadId: string,
+    context: DownloadPlacementContext,
+  ) => Promise<string>;
 }
 
 export function createAcquisitionRuntime(
@@ -68,23 +87,10 @@ export function createAcquisitionRuntime(
       alphabet: "base64url",
     }),
   });
+  const placement = createDownloadPlacement(options);
 
   async function service(): Promise<AcquisitionService> {
     const settings = options.repositories.settings.ensureDefaults().settings;
-    const filesystemOptions = {
-      storage: settings.storage,
-      mode: settings.storage.organizationStrategy,
-      fallbackToCopy: false,
-    } as const;
-    const filesystem = createFilesystemLibraryOrganizer({
-      ...filesystemOptions,
-      collision: "error",
-    });
-    const replacementFilesystem = createFilesystemLibraryOrganizer({
-      ...filesystemOptions,
-      collision: "replace",
-    });
-
     return createAcquisitionService(
       {
         indexer: {
@@ -143,84 +149,117 @@ export function createAcquisitionRuntime(
               );
               return [];
             }
-            const mediaBeforeOrganization = options.repositories.media.get(
-              download.mediaId,
-            );
-            const replacing =
-              mediaBeforeOrganization?.metadata["replacementPending"] === true;
-            const organized = await (
-              replacing ? replacementFilesystem : filesystem
-            ).organize(request, signal);
-            if (download?.mediaId) {
-              for (const file of organized) {
-                const fileInfo = await stat(file.destination);
-                options.repositories.libraryFiles.upsert({
-                  mediaId: download.mediaId,
-                  downloadId: download.id,
-                  path: file.destination,
-                  sizeBytes: fileInfo.size,
-                  quality: null,
-                  videoCodec: null,
-                  audioCodec: null,
-                  strategy: settings.storage.organizationStrategy,
-                });
+            const mediaId = download.mediaId;
+            const group = groupForMedia(mediaId, options.repositories);
+            const mediaIds = group ? group.mediaIds : [download.mediaId];
+            try {
+              return await withMediaMutation(
+                options.database,
+                mediaIds,
+                async () => {
+                  const currentStorage =
+                    options.repositories.settings.ensureDefaults().settings
+                      .storage;
+                  const libraryVolume = group
+                    ? await volumeForLibraryGroup({
+                        group,
+                        repositories: options.repositories,
+                        volumes: currentStorage.volumes,
+                      })
+                    : null;
+                  const mediaBeforeOrganization =
+                    options.repositories.media.get(mediaId);
+                  const replacing =
+                    mediaBeforeOrganization?.metadata["replacementPending"] ===
+                    true;
+                  const filesystem = createFilesystemLibraryOrganizer({
+                    storage: currentStorage,
+                    mode: currentStorage.organizationStrategy,
+                    collision: replacing ? "replace" : "error",
+                    fallbackToCopy: false,
+                  });
+                  const organized = await filesystem.organize(
+                    libraryVolume
+                      ? { ...request, libraryVolumeId: libraryVolume.id }
+                      : request,
+                    signal,
+                  );
+                  if (download?.mediaId) {
+                    for (const file of organized) {
+                      const fileInfo = await stat(file.destination);
+                      options.repositories.libraryFiles.upsert({
+                        mediaId: download.mediaId,
+                        downloadId: download.id,
+                        path: file.destination,
+                        sizeBytes: fileInfo.size,
+                        quality: null,
+                        videoCodec: null,
+                        audioCodec: null,
+                        strategy:
+                          file.strategy ?? currentStorage.organizationStrategy,
+                      });
+                    }
+                    markOrganizedEpisodes(
+                      download.mediaId,
+                      organized.map((file) => file.source),
+                      options.repositories,
+                    );
+                    if (replacing && mediaBeforeOrganization) {
+                      options.repositories.media.updateMetadata(
+                        download.mediaId,
+                        {
+                          metadata: {
+                            ...mediaBeforeOrganization.metadata,
+                            replacementPending: false,
+                          },
+                        },
+                      );
+                    }
+                    const organizedItem = options.repositories.media.get(
+                      download.mediaId,
+                    );
+                    const organizedState =
+                      organizedItem?.kind === "season" &&
+                      options.repositories.media.children(organizedItem.id)
+                        .length > 0
+                        ? aggregateChildAcquisitionState(
+                            options.repositories.media.children(
+                              organizedItem.id,
+                            ),
+                          )
+                        : "available";
+                    updateMediaTreeState(
+                      download.mediaId,
+                      organizedState,
+                      options.repositories,
+                    );
+                    options.events.publish("library.changed", {
+                      id: download.mediaId,
+                    });
+                  }
+                  options.events.publish("download.changed", {
+                    id: request.downloadId,
+                  });
+                  return organized;
+                },
+              );
+            } catch (error) {
+              if (error instanceof VolumeMutationConflictError) {
+                throw new JobDeferredError(
+                  "This movie or season is being organized; its download will be imported when the move finishes",
+                );
               }
-              markOrganizedEpisodes(
-                download.mediaId,
-                organized.map((file) => file.source),
-                options.repositories,
-              );
-              if (replacing && mediaBeforeOrganization) {
-                options.repositories.media.updateMetadata(download.mediaId, {
-                  metadata: {
-                    ...mediaBeforeOrganization.metadata,
-                    replacementPending: false,
-                  },
-                });
-              }
-              const organizedItem = options.repositories.media.get(
-                download.mediaId,
-              );
-              const organizedState =
-                organizedItem?.kind === "season" &&
-                options.repositories.media.children(organizedItem.id).length > 0
-                  ? aggregateChildAcquisitionState(
-                      options.repositories.media.children(organizedItem.id),
-                    )
-                  : "available";
-              updateMediaTreeState(
-                download.mediaId,
-                organizedState,
-                options.repositories,
-              );
-              options.events.publish("library.changed", {
-                id: download.mediaId,
-              });
+              throw error;
             }
-            options.events.publish("download.changed", {
-              id: request.downloadId,
-            });
-            return organized;
           },
         },
       },
       {
         placeDownloadDirectory:
-          options.placeDownloadDirectory ??
-          (async (downloadId) => {
-            const freeBytesByVolumeId = new Map<string, bigint>();
-            for (const volume of settings.storage.volumes) {
-              const freeBytes = await measureFreeBytes(volume.downloadsPath);
-              if (freeBytes !== null) {
-                freeBytesByVolumeId.set(volume.id, freeBytes);
-              }
-            }
-            return placeDownload({
-              volumes: settings.storage.volumes,
-              freeBytesByVolumeId,
-              downloadId,
-            }).downloadDirectory;
-          }),
+          options.placeDownloadDirectory ?? placement.placeDownloadDirectory,
+        withDownloadPlacement: placement.withDownloadPlacement,
+        isDownloadTransferring: (id) =>
+          isDownloadTransferring(options.database, id),
         prepareDownloadDirectory:
           options.prepareDownloadDirectory ??
           ((path) =>
@@ -239,11 +278,31 @@ export function createAcquisitionRuntime(
       });
     },
     [ORGANIZE_DOWNLOAD_JOB]: async (job, context) => {
-      await (
-        await service()
-      ).runOrganizeJob(jobDownloadId(job.payload), context.signal);
+      const downloadId = jobDownloadId(job.payload);
+      const download = options.repositories.downloads.get(downloadId);
+      const group = download?.mediaId
+        ? groupForMedia(download.mediaId, options.repositories)
+        : null;
+      if (
+        isDownloadTransferring(options.database, downloadId) ||
+        (group && isMediaTransferring(options.database, group.mediaIds))
+      ) {
+        throw new JobDeferredError(
+          "This movie or season is being moved between volumes",
+        );
+      }
+      await (await service()).runOrganizeJob(downloadId, context.signal);
     },
     [MEDIA_ACQUIRE_JOB]: async (job, context) => {
+      const group = groupForMedia(
+        jobMediaId(job.payload),
+        options.repositories,
+      );
+      if (group && isMediaTransferring(options.database, group.mediaIds)) {
+        throw new JobDeferredError(
+          "This movie or season is being moved between volumes",
+        );
+      }
       await acquireMedia(
         jobMediaId(job.payload),
         context.signal,
@@ -292,6 +351,7 @@ export function createAcquisitionRuntime(
         );
         if (!label) continue;
         const id = label.slice("bobarr:".length);
+        if (isDownloadTransferring(options.database, id)) continue;
         const durable = durableById.get(id);
         if (!durable || !isOwnedTorrent(durable, torrent)) {
           continue;
@@ -446,6 +506,17 @@ async function acquireMedia(
       item.id,
     );
   } catch (error) {
+    if (
+      error instanceof VolumeMutationConflictError ||
+      error instanceof JobDeferredError
+    ) {
+      updateMediaTreeState(
+        item.id,
+        item.acquisitionState,
+        options.repositories,
+      );
+      throw new JobDeferredError(error.message);
+    }
     const latest = options.repositories.media.get(item.id);
     if (!latest || latest.monitorPolicy === "none") {
       if (latest) {
@@ -623,7 +694,19 @@ async function importLibrary(
   heartbeat: () => Promise<void>,
   options: AcquisitionRuntimeOptions,
 ): Promise<void> {
+  const startedAt = Date.now();
   const settings = options.repositories.settings.ensureDefaults().settings;
+  const rootAliases = await storageRootAliases(
+    settings.storage.volumes.flatMap((volume) => [
+      volume.moviesPath,
+      volume.televisionPath,
+    ]),
+  );
+  const currentTransferPaths = (): readonly string[] =>
+    expandStoragePathAliases(
+      transferringPaths(options.database, startedAt),
+      rootAliases,
+    );
   const targets = scanTargetsFromJobPayload(payload, settings.storage);
   const tmdb = await options.integrations.tmdb();
   let imported = 0;
@@ -632,7 +715,16 @@ async function importLibrary(
     signal.throwIfAborted();
     const kind = target.kind;
     const root = target.path;
-    const files = await scanLibrary({ root, followSymlinks: true });
+    const scannedFiles = await scanLibrary({
+      root,
+      followSymlinks: true,
+      ignoredDirectories: [".git", "@eaDir", ".bobarr-volume-organize"],
+    });
+    const pathsAfterScan = currentTransferPaths();
+    const files = scannedFiles.filter(
+      (file) =>
+        !isWithinStoragePaths(file.absolutePath, pathsAfterScan, rootAliases),
+    );
     const groups = groupScanFiles(files.map((file) => ({ ...file, kind })));
     for (const group of groups.values()) {
       signal.throwIfAborted();
@@ -644,6 +736,28 @@ async function importLibrary(
         year: group.year ?? undefined,
         signal,
       });
+      const unchangedFiles = await Promise.all(
+        group.files.map(async (file) => {
+          const info = await stat(file.absolutePath).catch(() => null);
+          return (
+            info?.isFile() &&
+            info.size === file.sizeBytes &&
+            info.mtimeMs === file.modifiedAt
+          );
+        }),
+      );
+      const pathsBeforeWrite = currentTransferPaths();
+      if (
+        group.files.some((file) =>
+          isWithinStoragePaths(
+            file.absolutePath,
+            pathsBeforeWrite,
+            rootAliases,
+          ),
+        )
+      )
+        continue;
+      if (unchangedFiles.some((unchanged) => !unchanged)) continue;
       const matches = result.results.filter(
         (item) =>
           (item.mediaType === "movie" ? "movie" : "series") === group.kind &&
@@ -736,6 +850,7 @@ interface ScanGroupFile {
   absolutePath: string;
   relativePath: string;
   sizeBytes: number;
+  modifiedAt: number;
   kind: "movie" | "series";
 }
 

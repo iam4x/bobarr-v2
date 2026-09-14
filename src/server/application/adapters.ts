@@ -13,6 +13,7 @@ import type {
   TorrentFile,
 } from "./ports";
 
+import { mkdir } from "node:fs/promises";
 import { extname, posix } from "node:path";
 
 import { inspectRelease } from "../domain/releases";
@@ -26,7 +27,7 @@ import {
   isPathContained,
   movieLibraryPath,
 } from "../library/paths";
-import { libraryRootFor } from "../storage";
+import { measureFreeBytes, STORAGE_RESERVE_BYTES } from "../storage";
 
 interface DatabaseReleaseCandidate {
   id: string;
@@ -199,11 +200,31 @@ export function createFilesystemLibraryOrganizer(
       if (selected.length === 0) {
         throw new Error("Completed torrent contains no matching media files");
       }
-      const libraryRoot = libraryRootFor(
-        options.storage,
-        request.downloadDirectory,
-        request.target.kind === "movie" ? "movie" : "series",
-      );
+      const destinationVolume =
+        request.libraryVolumeId === undefined
+          ? volume
+          : options.storage.volumes.find(
+              (candidate) => candidate.id === request.libraryVolumeId,
+            );
+      if (!destinationVolume)
+        throw new Error("The media group's storage volume is unavailable");
+      const destinationRoot =
+        request.target.kind === "movie"
+          ? destinationVolume.moviesPath
+          : destinationVolume.televisionPath;
+      if (destinationVolume.id !== volume.id && mode !== "symlink") {
+        await mkdir(destinationRoot, { recursive: true });
+        const available = await measureFreeBytes(destinationRoot);
+        const needed = selected.reduce(
+          (total, file) => total + BigInt(file.length),
+          0n,
+        );
+        if (available === null || available - needed < STORAGE_RESERVE_BYTES) {
+          throw new Error(
+            "The movie or season volume has insufficient free space to import this download",
+          );
+        }
+      }
       const organized: OrganizedFile[] = [];
       for (const file of selected) {
         signal?.throwIfAborted();
@@ -218,17 +239,19 @@ export function createFilesystemLibraryOrganizer(
             : episodeDestination(request.target, file, extension);
         const result = await organizeFile({
           sourceRoot: request.downloadDirectory,
-          libraryRoot,
+          libraryRoot: destinationRoot,
           sourcePath: file.name,
           relativeDestination,
           mode,
           collision: options.collision,
-          fallbackToCopy: options.fallbackToCopy,
+          fallbackToCopy:
+            options.fallbackToCopy || destinationVolume.id !== volume.id,
         });
         organized.push({
           source: result.source,
           destination: result.destination,
           created: result.created,
+          strategy: result.actualMode,
         });
       }
       return organized;

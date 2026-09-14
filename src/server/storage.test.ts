@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 
 import {
   STORAGE_RESERVE_BYTES,
-  libraryRootFor,
   libraryRoots,
   placeDownload,
   storageLayoutEquals,
@@ -124,27 +123,6 @@ describe("storage roots", () => {
       { path: VOLUME_B.moviesPath, kind: "movie" },
       { path: VOLUME_B.televisionPath, kind: "series" },
     ]);
-  });
-
-  test("libraryRootFor uses the download dir's volume, not volumes[0]", () => {
-    const storage = {
-      volumes: VOLUMES,
-      organizationStrategy: "hardlink" as const,
-    };
-    expect(
-      libraryRootFor(
-        storage,
-        `${VOLUME_B.downloadsPath}/${DOWNLOAD_A}`,
-        "movie",
-      ),
-    ).toBe(VOLUME_B.moviesPath);
-    expect(
-      libraryRootFor(
-        storage,
-        `${VOLUME_B.downloadsPath}/${DOWNLOAD_A}`,
-        "series",
-      ),
-    ).toBe(VOLUME_B.televisionPath);
   });
 
   test("uncoveredStoragePaths lists files left without a volume", () => {

@@ -151,6 +151,14 @@ describe("user ranks, invites, and ownership", () => {
       friend.headers,
     );
     expect(scan.status).toBe(403);
+    const organize = await jsonRequest(
+      runtime,
+      "/api/v1/settings/storage/organize",
+      "POST",
+      {},
+      friend.headers,
+    );
+    expect(organize.status).toBe(403);
   });
 
   test("a user owns titles they add and cannot delete admin media", async () => {
@@ -420,7 +428,7 @@ describe("user ranks, invites, and ownership", () => {
 
   test("migration 7 adds a nullable ui_locale column", async () => {
     const runtime = await createRuntime();
-    expect(runtime.database.migrationVersion).toBe(7);
+    expect(runtime.database.migrationVersion).toBeGreaterThanOrEqual(7);
     const columns = runtime.database.sqlite
       .query<{ name: string; notnull: number }, []>("PRAGMA table_info(users)")
       .all();
