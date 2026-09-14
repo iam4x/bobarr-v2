@@ -27,6 +27,7 @@ services:
       TZ: ${TZ:-Etc/UTC}
     volumes:
       - ${BOBARR_CONFIG_PATH:-./config}:/config
+      # Optional second disk: compose.extra-media.yml
       - ${BOBARR_MEDIA_PATH:-./media}:/media
     ports:
       - ${BOBARR_BIND_ADDRESS:-0.0.0.0}:${BOBARR_PORT:-3000}:3000
