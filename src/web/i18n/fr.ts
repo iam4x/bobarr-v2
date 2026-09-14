@@ -900,6 +900,7 @@ export const fr = {
       "acquisition.add-torrent": "Ajouter un torrent",
       "acquisition.organize-download": "Classer le téléchargement",
       "library.scan.v1": "Analyse de la bibliothèque",
+      "library.organize.v1": "Organiser les volumes",
       "maintenance.reconcile.v1": "Réconcilier les services",
       "maintenance.search-missing.v1": "Rechercher les médias manquants",
       "maintenance.refresh-metadata.v1": "Actualiser les métadonnées",
@@ -939,7 +940,7 @@ export const fr = {
       "Les limites strictes excluent les releases ; les termes et la qualité déterminent le classement.",
     storageTitle: "Stockage et organisation",
     storageBody:
-      "Chaque disque est un triple téléchargements, films et séries sur un même système de fichiers. Les nouveaux téléchargements vont sur le disque qui a le plus d’espace libre.",
+      "Chaque volume contient les téléchargements, films et séries sur un même système de fichiers. Les nouveaux films et saisons utilisent le volume le plus libre. Les fichiers suivants restent avec leur film ou leur saison.",
     addVolume: "Ajouter un volume",
     volumePathHint:
       "Saisissez le chemin conteneur d’un disque déjà listé dans BOBARR_MEDIA_PATHS. Ce formulaire ne crée pas de dossiers sur l’hôte.",
@@ -948,6 +949,23 @@ export const fr = {
     volumeName: ({ n }: { n: number }) => `Volume ${n}`,
     volumeFree: ({ size }: { size: string }) => `${size} libres`,
     volumeFreeUnknown: "Espace libre inconnu",
+    organizeVolumes: "Organiser les volumes",
+    organizeVolumesHint:
+      "Répartissez les fichiers de la bibliothèque et leurs données en partage entre vos volumes enregistrés en arrière-plan. Les dossiers de films et les saisons restent groupés. Leur taille peut empêcher une répartition exacte à 50/50.",
+    organizeSaveFirst:
+      "Enregistrez les paramètres avant d’organiser les volumes.",
+    viewOrganizationJob: "Voir la tâche dans Activité",
+    organizationStatus: {
+      pending: "L’organisation des volumes est en attente.",
+      retrying: "L’organisation des volumes va réessayer prochainement.",
+      running:
+        "Organisation en cours. Vous pouvez continuer à utiliser Bobarr.",
+      completed: "L’organisation des volumes est terminée.",
+      failed:
+        "L’organisation a échoué. Consultez Activité pour les détails et réessayez.",
+      cancelled:
+        "L’organisation a été annulée. Relancez-la pour terminer les déplacements interrompus.",
+    },
     schedulesBody: "Expressions cron à cinq champs évaluées en UTC.",
     maintenanceBody:
       "Sauvegardez l’état de l’application avant une mise à niveau ou un changement de stockage.",

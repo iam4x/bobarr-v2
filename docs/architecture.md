@@ -56,14 +56,25 @@ tracker URLs and passkeys never round-trip through the client.
 
 Every source and destination is resolved and checked against configured roots.
 Settings store a non-empty list of volumes. Each volume is a downloads, movies,
-and television triple. New downloads freeze their directory on the volume with
-the most free space. Organization uses that frozen directory's volume, not the
-current first volume.
+and television triple. Movie folders and TV seasons are the placement units.
+New downloads use the unit's existing library or pending download volume.
+A new unit uses the volume with the most available space after reservations.
+Placement and download insertion are serialized so simultaneous episodes of a
+new season choose the same volume.
 Symlink traversal and malicious filenames are rejected. Organization is
 restart-safe and records every produced file. Hardlink is the default and is
-validated per volume; a cross-filesystem hardlink error is surfaced and never
-silently becomes a copy. Partial failures preserve the source data for an
-explicit retry.
+validated per volume. Imports queued before a placement change can copy across
+filesystems to join their movie or season. The library records the actual
+strategy. Partial failures preserve source data for a retry.
+
+Settings queues `library.organize.v1` on a dedicated worker. It balances bytes
+under the configured roots, including data that cannot move, and respects free
+space on each destination filesystem. Shared torrent payloads join dependent
+seasons into one transfer. The `volume_transfers` journal records staged copies,
+checksums, published destinations, and the database commit before source cleanup.
+Transmission uses the verified destination payload before the old data is
+removed. Interrupted transfers resume from their journal. Downloads and scans
+for unrelated media continue while the transfer runs.
 
 Library scans import only uniquely identified titles. Ambiguous folders become
 durable `library_scan_reviews` records containing the scanned files and a

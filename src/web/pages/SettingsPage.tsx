@@ -34,7 +34,7 @@ import {
 } from "./settings-form";
 import { StorageSection, type VolumeHealth } from "./StorageSection";
 import { api } from "../api/client";
-import { normalizeSystemStatus } from "../api/normalize";
+import { collectionItems, normalizeSystemStatus } from "../api/normalize";
 import { Page } from "../components/Page";
 import { ReleaseTermFields } from "../components/ReleaseTermFields";
 import {
@@ -121,6 +121,16 @@ export function SettingsPage() {
     queryKey: ["system", "backups"],
     queryFn: ({ signal }) => api.get("listBackups", { signal }),
   });
+  const organizationQuery = useQuery({
+    queryKey: ["jobs", "storage-organization"],
+    queryFn: ({ signal }) =>
+      api.get("listJobs", {
+        query: { kind: "library.organize.v1", limit: 1, offset: 0 },
+        signal,
+      }),
+    refetchInterval: 3_000,
+  });
+  const organizationJob = collectionItems(organizationQuery.data)[0];
   const {
     register,
     control,
@@ -210,6 +220,12 @@ export function SettingsPage() {
     onSuccess: () => {
       setNotice(messages.settings.backupCreated);
       void backupsQuery.refetch();
+    },
+  });
+  const organizeStorageMutation = useMutation({
+    mutationFn: () => api.post("organizeStorage"),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
   const restoreMutation = useMutation({
@@ -514,6 +530,11 @@ export function SettingsPage() {
             organizationError={fieldError("organizationStrategy")}
             validateBusy={validateStorageMutation.isPending}
             onValidate={() => validateStorageMutation.mutate()}
+            organizeBusy={organizeStorageMutation.isPending}
+            organizeDisabled={isDirty || saveMutation.isPending}
+            organizeError={organizeStorageMutation.error?.message}
+            organizationJob={organizationJob}
+            onOrganize={() => organizeStorageMutation.mutate()}
             messages={messages}
           />
 
