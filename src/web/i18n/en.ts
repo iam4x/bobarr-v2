@@ -909,7 +909,14 @@ export const en = {
     preferencesBody:
       "Hard limits exclude releases; term and quality rules determine ranking.",
     storageTitle: "Storage & organization",
-    storageBody: "All paths must live under the mounted media root.",
+    storageBody:
+      "Each drive is a downloads, movies, and TV triple on one filesystem. New downloads go to the drive with the most free space.",
+    addVolume: "Add volume",
+    removeVolume: "Remove volume",
+    volumeLabel: "Label",
+    volumeName: ({ n }: { n: number }) => `Volume ${n}`,
+    volumeFree: ({ size }: { size: string }) => `${size} free`,
+    volumeFreeUnknown: "Free space unknown",
     schedulesBody: "Standard five-field cron expressions evaluated in UTC.",
     maintenanceBody:
       "Back up application state before upgrades or storage changes.",

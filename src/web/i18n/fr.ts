@@ -939,7 +939,13 @@ export const fr = {
       "Les limites strictes excluent les releases ; les termes et la qualité déterminent le classement.",
     storageTitle: "Stockage et organisation",
     storageBody:
-      "Tous les chemins doivent se trouver sous la racine média montée.",
+      "Chaque disque est un triple téléchargements, films et séries sur un même système de fichiers. Les nouveaux téléchargements vont sur le disque qui a le plus d’espace libre.",
+    addVolume: "Ajouter un volume",
+    removeVolume: "Retirer le volume",
+    volumeLabel: "Libellé",
+    volumeName: ({ n }: { n: number }) => `Volume ${n}`,
+    volumeFree: ({ size }: { size: string }) => `${size} libres`,
+    volumeFreeUnknown: "Espace libre inconnu",
     schedulesBody: "Expressions cron à cinq champs évaluées en UTC.",
     maintenanceBody:
       "Sauvegardez l’état de l’application avant une mise à niveau ou un changement de stockage.",
