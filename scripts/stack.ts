@@ -1,11 +1,13 @@
-import { mkdir, unlink } from "node:fs/promises";
+import { unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import {
+  ensureMediaLayout,
   extraComposeYaml,
   mediaPathPlan,
   mediaRootsEnv,
   parseHostMediaPaths,
+  sameMediaRoot,
 } from "../src/server/media-paths";
 
 const repoRoot = resolve(import.meta.dir, "..");
@@ -17,13 +19,20 @@ if (primary === undefined) {
   throw new Error("BOBARR_MEDIA_PATHS must list at least one host folder");
 }
 const extra = extraComposeYaml(plan);
+const previousPrimary = process.env["BOBARR_MEDIA_PATH"]?.trim();
+if (
+  previousPrimary &&
+  !(await sameMediaRoot(previousPrimary, primary.hostPath))
+) {
+  throw new Error(
+    `BOBARR_MEDIA_PATHS first folder (${primary.hostPath}) is not the current BOBARR_MEDIA_PATH (${previousPrimary}). Put the existing library disk first so it stays mounted at /media.`,
+  );
+}
 process.env["BOBARR_MEDIA_PATH"] = primary.hostPath;
 process.env["BOBARR_MEDIA_ROOTS"] = mediaRootsEnv(plan);
 
 for (const item of plan) {
-  await mkdir(join(item.hostPath, "downloads"), { recursive: true });
-  await mkdir(join(item.hostPath, "movies"), { recursive: true });
-  await mkdir(join(item.hostPath, "tv"), { recursive: true });
+  await ensureMediaLayout(item.hostPath);
 }
 
 if (extra === null) {

@@ -1,7 +1,8 @@
 import type { StorageVolume } from "../contracts";
 
+import { mkdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, posix } from "node:path";
+import { basename, join, posix, resolve } from "node:path";
 
 export type HostMediaMount = {
   hostPath: string;
@@ -88,6 +89,46 @@ ${transmissionVolumes}
 `;
 }
 
+const MEDIA_CHILDREN = ["downloads", "movies", "tv"] as const;
+
+export async function ensureMediaLayout(hostPath: string): Promise<void> {
+  const root = resolve(hostPath);
+  const rootInfo = await stat(root).catch((error: unknown) => {
+    if (isNotFound(error)) {
+      throw new Error(
+        `Media folder does not exist: ${root}. Mount the disk first; Bobarr will not create it.`,
+      );
+    }
+    throw error;
+  });
+  if (!rootInfo.isDirectory()) {
+    throw new Error(`Media path is not a directory: ${root}`);
+  }
+  for (const child of MEDIA_CHILDREN) {
+    const childPath = join(root, child);
+    try {
+      await mkdir(childPath);
+    } catch (error) {
+      if (!isAlreadyExists(error)) throw error;
+    }
+    const childInfo = await stat(childPath);
+    if (!childInfo.isDirectory()) {
+      throw new Error(`${childPath} exists and is not a directory`);
+    }
+  }
+}
+
+export async function sameMediaRoot(
+  left: string,
+  right: string,
+): Promise<boolean> {
+  const [resolvedLeft, resolvedRight] = await Promise.all([
+    realpath(resolve(left)).catch(() => resolve(left)),
+    realpath(resolve(right)).catch(() => resolve(right)),
+  ]);
+  return resolvedLeft === resolvedRight;
+}
+
 export function volumesForMediaRoots(
   volumes: readonly StorageVolume[],
   roots: readonly MediaRoot[],
@@ -171,4 +212,12 @@ function yamlString(value: string): string {
     return JSON.stringify(value);
   }
   return value;
+}
+
+function isNotFound(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+function isAlreadyExists(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "EEXIST";
 }

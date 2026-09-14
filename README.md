@@ -54,10 +54,11 @@ BOBARR_MEDIA_PATHS=/Volumes/nvme_a,/Volumes/nvme_b
 bun run stack up --build
 ```
 
-`bun run stack` creates `downloads`, `movies`, and `tv` on each host path, mounts
-them, and adds the extra disks in Settings. `./restart.sh` uses the same command.
-A single disk can still use `docker compose up --build` with `BOBARR_MEDIA_PATH`
-or a one-item `BOBARR_MEDIA_PATHS` list.
+Each host path must already exist. `bun run stack` will not create a missing
+disk. It only adds empty `downloads`, `movies`, and `tv` children inside that
+folder and leaves files that are already there. Put the disk that currently
+holds the library first so it stays mounted at `/media`. If `BOBARR_MEDIA_PATH`
+is set, it must be that same folder. `./restart.sh` uses the same command.
 
 ## Development
 

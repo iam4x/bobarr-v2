@@ -1,12 +1,17 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, stat, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   containerRootForIndex,
+  ensureMediaLayout,
   extraComposeYaml,
   mediaPathPlan,
   mediaRootsEnv,
   parseHostMediaPaths,
   parseMediaRootsEnv,
+  sameMediaRoot,
   volumesForMediaRoots,
 } from "./media-paths";
 
@@ -103,5 +108,66 @@ describe("volumesForMediaRoots", () => {
     expect(
       volumesForMediaRoots([DEFAULT_VOLUME], parseMediaRootsEnv("/media")),
     ).toEqual([DEFAULT_VOLUME]);
+  });
+
+  test("does not rewrite paths on an existing volume", () => {
+    const current = [
+      {
+        id: "default",
+        label: "Library",
+        downloadsPath: "/media/downloads",
+        moviesPath: "/media/films",
+        televisionPath: "/media/shows",
+      },
+    ];
+    expect(
+      volumesForMediaRoots(current, parseMediaRootsEnv("nvme_a:/media")),
+    ).toEqual(current);
+  });
+});
+
+describe("ensureMediaLayout", () => {
+  test("does not replace a file that occupies the media path", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "bobarr-media-"));
+    const filePath = join(parent, "not-a-disk");
+    await Bun.write(filePath, "keep");
+    await expect(ensureMediaLayout(filePath)).rejects.toThrow(
+      "not a directory",
+    );
+    expect(await Bun.file(filePath).text()).toBe("keep");
+  });
+
+  test("refuses to create a missing disk root", async () => {
+    const missing = join(
+      await mkdtemp(join(tmpdir(), "bobarr-media-")),
+      "not-mounted",
+    );
+    await expect(ensureMediaLayout(missing)).rejects.toThrow(
+      "Media folder does not exist",
+    );
+    await expect(stat(missing)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("creates only missing children and leaves existing files", async () => {
+    const root = await mkdtemp(join(tmpdir(), "bobarr-media-"));
+    await mkdir(join(root, "movies"));
+    await Bun.write(join(root, "movies", "keep.mkv"), "library");
+    await ensureMediaLayout(root);
+    expect(await Bun.file(join(root, "movies", "keep.mkv")).text()).toBe(
+      "library",
+    );
+    expect((await stat(join(root, "downloads"))).isDirectory()).toBe(true);
+    expect((await stat(join(root, "tv"))).isDirectory()).toBe(true);
+  });
+
+  test("treats a symlink to an existing disk as the same root", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "bobarr-media-"));
+    const disk = join(parent, "nvme_a");
+    const link = join(parent, "storage");
+    await mkdir(disk);
+    await symlink(disk, link);
+    expect(await sameMediaRoot(link, disk)).toBe(true);
+    await ensureMediaLayout(link);
+    expect((await stat(join(disk, "downloads"))).isDirectory()).toBe(true);
   });
 });
