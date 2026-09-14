@@ -81,6 +81,10 @@ Destination data and directories are synced before source cleanup. Each cleanup
 compares current source and destination contents again, captures the original
 in a private directory, and verifies the captured file before removing it.
 Changed or conflicting files remain available for recovery.
+Retries create a fresh exclusive copy when an earlier staging attempt cannot be
+safely reused. The transfer journal retains the earlier paths, and Activity lists
+them for inspection after the transfer succeeds. Retained attempts continue to
+consume destination space and make the organization completion a warning.
 Transmission stays paused through copying, relocation, and cleanup. It resumes
 only after the old data is removed. Interrupted transfers resume from their
 journal. Downloads and scans for unrelated media continue while the transfer runs.

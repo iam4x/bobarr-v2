@@ -40,7 +40,6 @@ export async function copyVerifiedFile(
   input: {
     source: string;
     destination: string;
-    destinationIdentity?: Pick<Stats, "dev" | "ino">;
   } & OperationOptions,
 ): Promise<string> {
   const source = await openRegular(input.source);
@@ -51,18 +50,10 @@ export async function copyVerifiedFile(
       path,
       constants.O_RDWR |
         constants.O_NOFOLLOW |
-        (input.destinationIdentity ? 0 : constants.O_CREAT | constants.O_EXCL),
+        constants.O_CREAT |
+        constants.O_EXCL,
       source.identity.mode & 0o777,
     );
-    const identity = await destination.stat();
-    if (
-      !identity.isFile() ||
-      sameInode(identity, source.identity) ||
-      (input.destinationIdentity &&
-        !sameInode(identity, input.destinationIdentity))
-    )
-      throw new Error("Copy destination is not an owned independent file");
-    await destination.truncate(0);
     const buffer = Buffer.allocUnsafe(256 * 1024);
     const hash = new Bun.CryptoHasher("sha256");
     let position = 0;

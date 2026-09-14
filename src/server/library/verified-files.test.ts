@@ -68,17 +68,11 @@ test("exclusive copying never overwrites an existing destination", async () => {
   expect(await Bun.file(fixture.source).text()).toBe("old-content");
 });
 
-test("only an explicitly owned staging inode can be reused", async () => {
+test("recreated destination entries are never overwritten", async () => {
   const fixture = await setup();
-  const destinationIdentity = await lstat(fixture.destination);
-  await Bun.write(fixture.destination, "partial");
-  await copyVerifiedFile({ ...fixture, destinationIdentity });
-  expect(await Bun.file(fixture.destination).text()).toBe("old-content");
   await unlink(fixture.destination);
   await Bun.write(fixture.destination, "replacement");
-  await expect(
-    copyVerifiedFile({ ...fixture, destinationIdentity }),
-  ).rejects.toThrow("owned independent");
+  await expect(copyVerifiedFile(fixture)).rejects.toThrow();
   expect(await Bun.file(fixture.destination).text()).toBe("replacement");
 });
 
