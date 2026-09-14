@@ -1,18 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import {
-  containerRootForIndex,
+  assertPrimaryMediaRootUnchanged,
   ensureMediaLayout,
   extraComposeYaml,
   mediaPathPlan,
   mediaRootsEnv,
   parseHostMediaPaths,
   parseMediaRootsEnv,
+  readPrimaryMediaStamp,
   sameMediaRoot,
   volumesForMediaRoots,
+  writePrimaryMediaStamp,
 } from "./media-paths";
 
 const DEFAULT_VOLUME = {
@@ -50,7 +52,7 @@ describe("parseHostMediaPaths", () => {
 });
 
 describe("media path plan", () => {
-  test("maps the first host folder to /media and the next to /media-2", () => {
+  test("maps the first host folder to /media and extras to /media-<name>", () => {
     const plan = mediaPathPlan(["/Volumes/nvme_a", "/Volumes/nvme_b"]);
     expect(plan).toEqual([
       {
@@ -60,12 +62,18 @@ describe("media path plan", () => {
       },
       {
         hostPath: "/Volumes/nvme_b",
-        containerRoot: "/media-2",
+        containerRoot: "/media-nvme-b",
         name: "nvme_b",
       },
     ]);
-    expect(containerRootForIndex(2)).toBe("/media-3");
-    expect(mediaRootsEnv(plan)).toBe("nvme_a:/media,nvme_b:/media-2");
+    expect(mediaRootsEnv(plan)).toBe("nvme_a:/media,nvme_b:/media-nvme-b");
+  });
+
+  test("does not reuse an extra container root when the second disk changes", () => {
+    const withB = mediaPathPlan(["/Volumes/nvme_a", "/Volumes/nvme_b"]);
+    const withC = mediaPathPlan(["/Volumes/nvme_a", "/Volumes/nvme_c"]);
+    expect(withB[1]?.containerRoot).toBe("/media-nvme-b");
+    expect(withC[1]?.containerRoot).toBe("/media-nvme-c");
   });
 });
 
@@ -79,11 +87,13 @@ describe("extraComposeYaml", () => {
       mediaPathPlan(["/Volumes/nvme_a", "/Volumes/nvme_b"]),
     );
     expect(yaml).toContain(
-      'BOBARR_MEDIA_ROOTS: "nvme_a:/media,nvme_b:/media-2"',
+      'BOBARR_MEDIA_ROOTS: "nvme_a:/media,nvme_b:/media-nvme-b"',
     );
-    expect(yaml).toContain("- /Volumes/nvme_b:/media-2");
-    expect(yaml).toContain("- /Volumes/nvme_b/downloads:/media-2/downloads");
-    expect(yaml).not.toContain("/Volumes/nvme_a:/media");
+    expect(yaml).toContain("source: /Volumes/nvme_b");
+    expect(yaml).toContain("target: /media-nvme-b");
+    expect(yaml).toContain("create_host_path: false");
+    expect(yaml).toContain("target: /media-nvme-b/downloads");
+    expect(yaml).not.toContain("/Volumes/nvme_a");
   });
 });
 
@@ -91,16 +101,16 @@ describe("volumesForMediaRoots", () => {
   test("keeps the default volume and appends unused roots", () => {
     const volumes = volumesForMediaRoots(
       [DEFAULT_VOLUME],
-      parseMediaRootsEnv("nvme_a:/media,nvme_b:/media-2"),
+      parseMediaRootsEnv("nvme_a:/media,nvme_b:/media-nvme-b"),
     );
     expect(volumes).toHaveLength(2);
     expect(volumes[0]).toEqual(DEFAULT_VOLUME);
     expect(volumes[1]).toEqual({
       id: "nvme-b",
       label: "nvme_b",
-      downloadsPath: "/media-2/downloads",
-      moviesPath: "/media-2/movies",
-      televisionPath: "/media-2/tv",
+      downloadsPath: "/media-nvme-b/downloads",
+      moviesPath: "/media-nvme-b/movies",
+      televisionPath: "/media-nvme-b/tv",
     });
   });
 
@@ -169,5 +179,54 @@ describe("ensureMediaLayout", () => {
     expect(await sameMediaRoot(link, disk)).toBe(true);
     await ensureMediaLayout(link);
     expect((await stat(join(disk, "downloads"))).isDirectory()).toBe(true);
+  });
+
+  test("layout on a new disk does not create folders on another disk", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "bobarr-media-"));
+    const library = join(parent, "nvme_a");
+    const extra = join(parent, "nvme_b");
+    await mkdir(join(library, "movies"), { recursive: true });
+    await mkdir(extra);
+    await Bun.write(join(library, "movies", "keep.mkv"), "library");
+    await ensureMediaLayout(extra);
+    expect(await Bun.file(join(library, "movies", "keep.mkv")).text()).toBe(
+      "library",
+    );
+    await expect(stat(join(library, "downloads"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    expect((await stat(join(extra, "downloads"))).isDirectory()).toBe(true);
+  });
+});
+
+describe("primary media stamp", () => {
+  test("allows the same disk and a symlink to it", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "bobarr-media-"));
+    const disk = join(parent, "nvme_a");
+    const link = join(parent, "storage");
+    await mkdir(disk);
+    await symlink(disk, link);
+    await assertPrimaryMediaRootUnchanged(disk, disk);
+    await assertPrimaryMediaRootUnchanged(link, disk);
+  });
+
+  test("refuses a different first disk", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "bobarr-media-"));
+    const library = join(parent, "nvme_a");
+    const extra = join(parent, "nvme_b");
+    await mkdir(library);
+    await mkdir(extra);
+    await expect(
+      assertPrimaryMediaRootUnchanged(extra, library),
+    ).rejects.toThrow("library disk");
+  });
+
+  test("round-trips the resolved host path", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "bobarr-media-"));
+    const disk = join(parent, "nvme_a");
+    const stamp = join(parent, "compose.media-primary");
+    await mkdir(disk);
+    await writePrimaryMediaStamp(stamp, disk);
+    expect(await readPrimaryMediaStamp(stamp)).toBe(resolve(disk));
   });
 });

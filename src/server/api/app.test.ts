@@ -55,7 +55,7 @@ describe("Bobarr backend API", () => {
         loginLockSeconds: 60,
       },
       environment: {
-        BOBARR_MEDIA_ROOTS: "nvme_a:/media,nvme_b:/media-2",
+        BOBARR_MEDIA_ROOTS: "nvme_a:/media,nvme_b:/media-nvme-b",
       },
     });
     runtimes.push(runtime);
@@ -72,9 +72,9 @@ describe("Bobarr backend API", () => {
       {
         id: "nvme-b",
         label: "nvme_b",
-        downloadsPath: "/media-2/downloads",
-        moviesPath: "/media-2/movies",
-        televisionPath: "/media-2/tv",
+        downloadsPath: "/media-nvme-b/downloads",
+        moviesPath: "/media-nvme-b/movies",
+        televisionPath: "/media-nvme-b/tv",
       },
     ]);
   });
