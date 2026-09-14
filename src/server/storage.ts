@@ -61,17 +61,57 @@ export function libraryRootFor(
   return kind === "movie" ? volume.moviesPath : volume.televisionPath;
 }
 
-export function isDownloadDirectory(
-  storage: StorageLayout,
-  directory: string,
-  downloadId: string,
+export function storageVolumesEqual(
+  left: readonly StorageVolume[],
+  right: readonly StorageVolume[],
 ): boolean {
-  const normalized = posix.normalize(directory);
-  return storage.volumes.some(
-    (volume) =>
-      posix.normalize(posix.join(volume.downloadsPath, downloadId)) ===
-      normalized,
+  if (left.length !== right.length) return false;
+  return left.every((volume, index) => {
+    const other = right[index];
+    return (
+      other !== undefined &&
+      volume.id === other.id &&
+      volume.label === other.label &&
+      volume.downloadsPath === other.downloadsPath &&
+      volume.moviesPath === other.moviesPath &&
+      volume.televisionPath === other.televisionPath
+    );
+  });
+}
+
+export function storageLayoutEquals(
+  left: StorageLayout,
+  right: StorageLayout,
+): boolean {
+  return (
+    left.organizationStrategy === right.organizationStrategy &&
+    storageVolumesEqual(left.volumes, right.volumes)
   );
+}
+
+export function uncoveredStoragePaths(input: {
+  volumes: readonly StorageVolume[];
+  libraryFilePaths: readonly string[];
+  downloadDirectories: readonly string[];
+}): string[] {
+  const layout = {
+    volumes: input.volumes,
+    organizationStrategy: "hardlink" as const,
+  };
+  const library = libraryPaths(layout);
+  const downloads = downloadRoots(layout);
+  const uncovered: string[] = [];
+  for (const path of input.libraryFilePaths) {
+    if (!library.some((root) => isPathContained(root, path))) {
+      uncovered.push(path);
+    }
+  }
+  for (const path of input.downloadDirectories) {
+    if (!downloads.some((root) => isPathContained(root, path))) {
+      uncovered.push(path);
+    }
+  }
+  return uncovered;
 }
 
 export function placeDownload(input: {

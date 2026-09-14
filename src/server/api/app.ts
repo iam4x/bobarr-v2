@@ -78,7 +78,12 @@ import {
 import { requireAdmin } from "../auth/policy";
 import { AppError, notFound, systemClock } from "../core";
 import { durableJobToContract, validateCronExpression } from "../jobs";
-import { libraryRoots } from "../storage";
+import {
+  libraryRoots,
+  storageLayoutEquals,
+  uncoveredStoragePaths,
+  validateStorage,
+} from "../storage";
 
 interface ApiVariables {
   requestId: string;
@@ -568,6 +573,10 @@ export function createApiApp(
     );
     const patch = context.req.valid("json");
     validateSchedulePatch(patch);
+    await assertPersistableStoragePatch(
+      dependencies.repositories,
+      patch.storage,
+    );
     await persistSecretInputs(dependencies.secrets, patch);
     const updated = dependencies.repositories.settings.update(
       withoutSecretInputs(patch),
@@ -1130,6 +1139,36 @@ function notifyIntegrationConfigurationChanged(
     reason: "configuration-changed",
     integrations: [...keys],
   });
+}
+
+async function assertPersistableStoragePatch(
+  repositories: Repositories,
+  next: AppSettings["storage"] | undefined,
+): Promise<void> {
+  if (next === undefined) return;
+  const current = repositories.settings.ensureDefaults().settings.storage;
+  if (storageLayoutEquals(current, next)) return;
+  const validation = await validateStorage(next);
+  if (!validation.valid) {
+    throw new AppError({
+      code: "validation_failed",
+      message: validation.message,
+      status: 422,
+    });
+  }
+  const uncovered = uncoveredStoragePaths({
+    volumes: next.volumes,
+    libraryFilePaths: repositories.libraryFiles.listPaths(),
+    downloadDirectories: repositories.downloads.listDownloadDirectories(),
+  });
+  if (uncovered.length > 0) {
+    throw new AppError({
+      code: "conflict",
+      message:
+        "Cannot change storage volumes while recorded files still use them",
+      status: 409,
+    });
+  }
 }
 
 function validateSchedulePatch(patch: Partial<AppSettings>): void {

@@ -54,7 +54,7 @@ import {
   createSqliteBackup,
   type BackupRestoreService,
 } from "../operations";
-import { libraryRoots } from "../storage";
+import { libraryRoots, storageVolumesEqual } from "../storage";
 
 export interface InitializeBackendOptions {
   config?: BackendConfig;
@@ -583,9 +583,7 @@ function syncStorageVolumesFromMediaRoots(
   if (roots.length === 0) return;
   const current = repositories.settings.ensureDefaults();
   const volumes = volumesForMediaRoots(current.settings.storage.volumes, roots);
-  if (
-    JSON.stringify(volumes) === JSON.stringify(current.settings.storage.volumes)
-  ) {
+  if (storageVolumesEqual(volumes, current.settings.storage.volumes)) {
     return;
   }
   const [first, ...rest] = volumes;

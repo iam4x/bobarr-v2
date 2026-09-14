@@ -13,6 +13,7 @@ import {
 } from "./initialize";
 import {
   ApiErrorEnvelopeSchema,
+  AppSettingsSchema,
   AuthSessionSchema,
   CreateDownloadInputSchema,
   CreateLibraryFileInputSchema,
@@ -717,6 +718,137 @@ describe("public product API", () => {
     expect(body.volumes).toHaveLength(1);
     expect(body.volumes[0]).toMatchObject({ id: "default", ok: true });
     expect(body.volumes[0]?.freeBytes).toBeGreaterThanOrEqual(0);
+  });
+
+  test("refuses to persist storage that is not an accessible directory", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    const response = await jsonRequest(
+      fixture.runtime,
+      "/api/v1/settings",
+      "PATCH",
+      {
+        storage: {
+          organizationStrategy: "hardlink",
+          volumes: [
+            {
+              id: "default",
+              label: "Default",
+              downloadsPath: "/nope/downloads",
+              moviesPath: "/nope/movies",
+              televisionPath: "/nope/tv",
+            },
+          ],
+        },
+      },
+      session,
+    );
+    expect(response.status).toBe(422);
+    expect(
+      fixture.runtime.repositories.settings.getRequired().settings.storage
+        .volumes[0]?.moviesPath,
+    ).toBe("/media/movies");
+  });
+
+  test("persists an additional accessible volume", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    const baseDirectory = await mkdtemp(join(tmpdir(), "bobarr-storage-"));
+    temporaryDirectories.push(baseDirectory);
+    const first = await createVolumeLayout(baseDirectory, "first");
+    const second = await createVolumeLayout(baseDirectory, "second");
+    const storage = AppSettingsSchema.parse({
+      storage: {
+        organizationStrategy: "hardlink",
+        volumes: [
+          { id: "default", label: "Default", ...first },
+          { id: "volume-1", label: "Volume 1", ...second },
+        ],
+      },
+    }).storage;
+    const response = await jsonRequest(
+      fixture.runtime,
+      "/api/v1/settings",
+      "PATCH",
+      { storage },
+      session,
+    );
+    expect(response.status).toBe(200);
+    expect(
+      fixture.runtime.repositories.settings.getRequired().settings.storage
+        .volumes,
+    ).toEqual(storage.volumes);
+  });
+
+  test("refuses to drop a volume that still has recorded files", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    const baseDirectory = await mkdtemp(join(tmpdir(), "bobarr-storage-"));
+    temporaryDirectories.push(baseDirectory);
+    const first = await createVolumeLayout(baseDirectory, "first");
+    const second = await createVolumeLayout(baseDirectory, "second");
+    const both = {
+      organizationStrategy: "hardlink" as const,
+      volumes: [
+        { id: "default", label: "Default", ...first },
+        { id: "volume-1", label: "Volume 1", ...second },
+      ],
+    };
+    expect(
+      (
+        await jsonRequest(
+          fixture.runtime,
+          "/api/v1/settings",
+          "PATCH",
+          { storage: both },
+          session,
+        )
+      ).status,
+    ).toBe(200);
+    const movie = fixture.runtime.repositories.media.create({
+      kind: "movie",
+      tmdbId: 1,
+      parentId: null,
+      seasonNumber: null,
+      episodeNumber: null,
+      title: "Keep",
+      year: 1999,
+      posterUrl: null,
+      status: "available",
+      monitorPolicy: "none",
+      releaseDate: null,
+      metadata: { imported: true },
+    });
+    fixture.runtime.repositories.libraryFiles.upsert(
+      CreateLibraryFileInputSchema.parse({
+        mediaId: movie.id,
+        downloadId: null,
+        path: join(first.moviesPath, "Keep.mkv"),
+        sizeBytes: 100,
+        quality: null,
+        videoCodec: null,
+        audioCodec: null,
+        strategy: "copy",
+      }),
+    );
+    const response = await jsonRequest(
+      fixture.runtime,
+      "/api/v1/settings",
+      "PATCH",
+      {
+        storage: {
+          organizationStrategy: "hardlink",
+          volumes: [{ id: "volume-1", label: "Volume 1", ...second }],
+        },
+      },
+      session,
+    );
+    expect(response.status).toBe(409);
+    expect(
+      fixture.runtime.repositories.settings
+        .getRequired()
+        .settings.storage.volumes.map((volume) => volume.id),
+    ).toEqual(["default", "volume-1"]);
   });
 
   test("applies required terms to manual and automatic acquisition", async () => {
@@ -3720,6 +3852,24 @@ function escapeXml(value: string): string {
 
 function rpcResponse(id: number, result: Record<string, unknown>): Response {
   return Response.json({ jsonrpc: "2.0", id, result });
+}
+
+async function createVolumeLayout(
+  parent: string,
+  name: string,
+): Promise<{
+  downloadsPath: string;
+  moviesPath: string;
+  televisionPath: string;
+}> {
+  const root = join(parent, name);
+  const downloadsPath = join(root, "downloads");
+  const moviesPath = join(root, "movies");
+  const televisionPath = join(root, "tv");
+  await mkdir(downloadsPath, { recursive: true });
+  await mkdir(moviesPath, { recursive: true });
+  await mkdir(televisionPath, { recursive: true });
+  return { downloadsPath, moviesPath, televisionPath };
 }
 
 function withLibraryRoots(
