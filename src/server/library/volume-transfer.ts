@@ -29,6 +29,7 @@ import { basename, dirname, relative, resolve, sep } from "node:path";
 
 import { isPathContained } from "./paths";
 import { lstatOrMissing, validateDirectory } from "./volume-inventory";
+import { isOwnedTorrentIdentity } from "../application/torrent-ownership";
 import { saveVolumeTransfer } from "../db/volume-transfers";
 import { measureFreeBytes, STORAGE_RESERVE_BYTES } from "../storage";
 
@@ -551,7 +552,19 @@ async function verifyTorrent(
 ): Promise<TorrentSnapshot> {
   if (download.hash === null) throw new Error("Torrent identity is missing");
   const torrent = await engine.get(download.hash, signal);
-  if (!torrent || !download.label || !torrent.labels.includes(download.label))
+  if (
+    !torrent ||
+    download.label === null ||
+    !isOwnedTorrentIdentity(
+      {
+        id: download.id,
+        engineLabel: download.label,
+        engineInfoHash: download.hash,
+        expectedInfoHash: null,
+      },
+      torrent,
+    )
+  )
     throw new Error(
       "Torrent location changed or ownership could not be verified",
     );

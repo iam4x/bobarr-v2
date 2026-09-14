@@ -19,6 +19,7 @@ import type {
 import { Buffer } from "node:buffer";
 import { posix } from "node:path";
 
+import { isOwnedTorrent } from "./torrent-ownership";
 import {
   normalizeReleaseTitle,
   rankReleases,
@@ -945,66 +946,6 @@ function validatePositiveInteger(value: number, name: string): void {
   if (!Number.isSafeInteger(value) || value <= 0) {
     throw new TypeError(`${name} must be a positive integer`);
   }
-}
-
-export function isOwnedTorrent(
-  record: DownloadRecord,
-  torrent: TorrentSnapshot,
-  requiredInfoHash?: string,
-): boolean {
-  const expectedLabel = `bobarr:${record.id}`;
-  const recordDirectory = posix.normalize(record.downloadDirectory);
-  if (
-    record.engineLabel !== expectedLabel ||
-    posix.basename(recordDirectory) !== record.id ||
-    !torrent.labels.includes(expectedLabel) ||
-    posix.normalize(torrent.downloadDirectory) !== recordDirectory
-  ) {
-    return false;
-  }
-
-  const actualInfoHash = canonicalInfoHash(torrent.hash);
-  if (actualInfoHash === null) return false;
-  const knownInfoHashes: string[] = [];
-  for (const hash of [
-    record.engineInfoHash,
-    record.expectedInfoHash,
-    requiredInfoHash,
-  ]) {
-    if (hash === null || hash === undefined) continue;
-    const canonical = canonicalInfoHash(hash);
-    if (canonical === null) return false;
-    knownInfoHashes.push(canonical);
-  }
-  return knownInfoHashes.every((known) => known === actualInfoHash);
-}
-
-function canonicalInfoHash(value: string | null | undefined): string | null {
-  if (!value) return null;
-  if (/^[a-f\d]{40}$/i.test(value)) return value.toLowerCase();
-  if (/^[a-z2-7]{32}$/i.test(value)) return decodeBase32Hash(value);
-  if (/^1220[a-f\d]{64}$/i.test(value)) return value.slice(4).toLowerCase();
-  if (/^[a-f\d]{64}$/i.test(value)) return value.toLowerCase();
-  return null;
-}
-
-function decodeBase32Hash(value: string): string | null {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-  const bytes: number[] = [];
-  let buffer = 0;
-  let bitCount = 0;
-  for (const character of value.toUpperCase()) {
-    const digit = alphabet.indexOf(character);
-    if (digit < 0) return null;
-    buffer = (buffer << 5) | digit;
-    bitCount += 5;
-    while (bitCount >= 8) {
-      bitCount -= 8;
-      bytes.push((buffer >> bitCount) & 0xff);
-      buffer &= (1 << bitCount) - 1;
-    }
-  }
-  return bytes.length === 20 ? Buffer.from(bytes).toString("hex") : null;
 }
 
 function reconciledState(

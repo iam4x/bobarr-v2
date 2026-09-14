@@ -10,6 +10,7 @@ import { basename, dirname, extname, relative, resolve, sep } from "node:path";
 import { parseExistingEpisodeIdentity } from "./importer";
 import { isPathContained } from "./paths";
 import { groupForMedia, listLibraryGroups } from "./volume-placement";
+import { isOwnedTorrentIdentity } from "../application/torrent-ownership";
 import { isMediaMutating } from "../db/volume-transfers";
 
 export interface InventoryFile {
@@ -354,7 +355,7 @@ async function inspectDownload(
       files: [],
     };
     if (!removed && !neverOwned) {
-      if (recordedHash === null)
+      if (recordedHash === null || row.engine_label === null)
         throw new Error("Linked torrent ownership could not be verified");
       const torrent = await (
         await options.transmission()
@@ -365,9 +366,15 @@ async function inspectDownload(
         );
       const label = `bobarr:${row.id}`;
       if (
-        torrent.hash.toLowerCase() !== recordedHash.toLowerCase() ||
-        row.engine_label !== label ||
-        !torrent.labels.includes(label) ||
+        !isOwnedTorrentIdentity(
+          {
+            id: row.id,
+            engineLabel: row.engine_label,
+            engineInfoHash: recordedHash,
+            expectedInfoHash: null,
+          },
+          torrent,
+        ) ||
         (await realpath(torrent.downloadDirectory)) !== (await realpath(source))
       ) {
         throw new Error(

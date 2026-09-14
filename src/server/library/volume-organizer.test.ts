@@ -321,6 +321,30 @@ describe("volume organization", () => {
     expect(fixture.calls).not.toContain(`start:${seeded.hash}`);
   });
 
+  test("rejects a different torrent returned during transfer recovery", async () => {
+    const fixture = await setup();
+    const seeded = await fixture.seeded("hardlink");
+    await fixture.addLargeMovie();
+    let changed = false;
+    await expect(
+      fixture.organize(async () => {
+        if (
+          !changed &&
+          activeVolumeTransfers(fixture.database)[0]?.stage === "published"
+        ) {
+          changed = true;
+          fixture.torrents.get(seeded.hash)!.hash = "f".repeat(40);
+        }
+      }),
+    ).rejects.toThrow("ownership could not be verified");
+    expect(await Bun.file(seeded.source).text()).toBe("seeded-content");
+    expect(await Bun.file(seeded.file.path).text()).toBe("seeded-content");
+    expect(fixture.calls).not.toContain(`location:${seeded.hash}`);
+    fixture.torrents.get(seeded.hash)!.hash = seeded.hash;
+    await fixture.organize();
+    expect(hasActiveVolumeTransfer(fixture.database)).toBe(false);
+  });
+
   test("consolidates a split season while preserving all episode records", async () => {
     const fixture = await setup();
     const series = fixture.series("Split");
