@@ -293,6 +293,14 @@ export class DownloadRepository {
       .get()?.count;
     return { downloads: rows.map(mapDownload), total: Number(total ?? 0) };
   }
+
+  listDownloadDirectories(): string[] {
+    return this.database.client
+      .select({ downloadDirectory: downloads.downloadDirectory })
+      .from(downloads)
+      .all()
+      .flatMap((row) => (row.downloadDirectory ? [row.downloadDirectory] : []));
+  }
 }
 
 export class LibraryFileRepository {
@@ -344,6 +352,14 @@ export class LibraryFileRepository {
       .orderBy(libraryFiles.path)
       .all()
       .map(mapLibraryFile);
+  }
+
+  listPaths(): string[] {
+    return this.database.client
+      .select({ path: libraryFiles.path })
+      .from(libraryFiles)
+      .all()
+      .map((row) => row.path);
   }
 
   get(id: string): LibraryFile | undefined {

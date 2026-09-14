@@ -2,10 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import {
   STORAGE_RESERVE_BYTES,
-  isDownloadDirectory,
   libraryRootFor,
   libraryRoots,
   placeDownload,
+  storageLayoutEquals,
+  uncoveredStoragePaths,
 } from "./storage";
 import { AppSettingsSchema } from "../contracts/settings";
 
@@ -146,35 +147,38 @@ describe("storage roots", () => {
     ).toBe(VOLUME_B.televisionPath);
   });
 
-  test("isDownloadDirectory true only for {downloadsPath}/{id}", () => {
-    const storage = {
+  test("uncoveredStoragePaths lists files left without a volume", () => {
+    expect(
+      uncoveredStoragePaths({
+        volumes: [VOLUME_B],
+        libraryFilePaths: [`${VOLUME_A.moviesPath}/Keep.mkv`],
+        downloadDirectories: [`${VOLUME_A.downloadsPath}/${DOWNLOAD_A}`],
+      }),
+    ).toEqual([
+      `${VOLUME_A.moviesPath}/Keep.mkv`,
+      `${VOLUME_A.downloadsPath}/${DOWNLOAD_A}`,
+    ]);
+    expect(
+      uncoveredStoragePaths({
+        volumes: VOLUMES,
+        libraryFilePaths: [`${VOLUME_A.moviesPath}/Keep.mkv`],
+        downloadDirectories: [`${VOLUME_B.downloadsPath}/${DOWNLOAD_A}`],
+      }),
+    ).toEqual([]);
+  });
+
+  test("storageLayoutEquals compares volumes and strategy", () => {
+    const left = {
       volumes: VOLUMES,
       organizationStrategy: "hardlink" as const,
     };
+    expect(storageLayoutEquals(left, left)).toBe(true);
     expect(
-      isDownloadDirectory(
-        storage,
-        `${VOLUME_B.downloadsPath}/${DOWNLOAD_A}`,
-        DOWNLOAD_A,
-      ),
-    ).toBe(true);
-    expect(
-      isDownloadDirectory(
-        storage,
-        `${VOLUME_A.downloadsPath}/${DOWNLOAD_A}`,
-        DOWNLOAD_B,
-      ),
+      storageLayoutEquals(left, { ...left, organizationStrategy: "copy" }),
     ).toBe(false);
-    expect(
-      isDownloadDirectory(storage, VOLUME_A.downloadsPath, DOWNLOAD_A),
-    ).toBe(false);
-    expect(
-      isDownloadDirectory(
-        storage,
-        `${VOLUME_A.moviesPath}/${DOWNLOAD_A}`,
-        DOWNLOAD_A,
-      ),
-    ).toBe(false);
+    expect(storageLayoutEquals(left, { ...left, volumes: [VOLUME_A] })).toBe(
+      false,
+    );
   });
 });
 
@@ -232,6 +236,25 @@ describe("settings storage parse", () => {
     expect(() =>
       AppSettingsSchema.parse({
         storage: { volumes: [], organizationStrategy: "hardlink" },
+      }),
+    ).toThrow();
+  });
+
+  test("filesystem root is not a valid volume path", () => {
+    expect(() =>
+      AppSettingsSchema.parse({
+        storage: {
+          volumes: [
+            {
+              id: "default",
+              label: "Default",
+              downloadsPath: "/",
+              moviesPath: "/media/movies",
+              televisionPath: "/media/tv",
+            },
+          ],
+          organizationStrategy: "hardlink",
+        },
       }),
     ).toThrow();
   });

@@ -10,9 +10,9 @@ export const StorageVolumeSchema = z
   .object({
     id: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
     label: z.string().trim().min(1).max(100),
-    downloadsPath: z.string().min(1).max(4096),
-    moviesPath: z.string().min(1).max(4096),
-    televisionPath: z.string().min(1).max(4096),
+    downloadsPath: z.string().min(2).max(4096).startsWith("/"),
+    moviesPath: z.string().min(2).max(4096).startsWith("/"),
+    televisionPath: z.string().min(2).max(4096).startsWith("/"),
   })
   .strict()
   .openapi("StorageVolume");
