@@ -912,6 +912,8 @@ export const en = {
     storageBody:
       "Each drive is a downloads, movies, and TV triple on one filesystem. New downloads go to the drive with the most free space.",
     addVolume: "Add volume",
+    volumePathHint:
+      "Type the container path for a disk already listed in BOBARR_MEDIA_PATHS. This form does not create folders on the host.",
     removeVolume: "Remove volume",
     volumeLabel: "Label",
     volumeName: ({ n }: { n: number }) => `Volume ${n}`,

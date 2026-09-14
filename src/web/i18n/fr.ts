@@ -941,6 +941,8 @@ export const fr = {
     storageBody:
       "Chaque disque est un triple téléchargements, films et séries sur un même système de fichiers. Les nouveaux téléchargements vont sur le disque qui a le plus d’espace libre.",
     addVolume: "Ajouter un volume",
+    volumePathHint:
+      "Saisissez le chemin conteneur d’un disque déjà listé dans BOBARR_MEDIA_PATHS. Ce formulaire ne crée pas de dossiers sur l’hôte.",
     removeVolume: "Retirer le volume",
     volumeLabel: "Libellé",
     volumeName: ({ n }: { n: number }) => `Volume ${n}`,
