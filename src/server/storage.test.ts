@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   STORAGE_RESERVE_BYTES,
@@ -6,6 +9,7 @@ import {
   placeDownload,
   storageLayoutEquals,
   uncoveredStoragePaths,
+  uncoveredStoragePathsOnDisk,
 } from "./storage";
 import { AppSettingsSchema } from "../contracts/settings";
 
@@ -143,6 +147,75 @@ describe("storage roots", () => {
         downloadDirectories: [`${VOLUME_B.downloadsPath}/${DOWNLOAD_A}`],
       }),
     ).toEqual([]);
+  });
+
+  test("resolved coverage follows root aliases and rejects directory symlinks outside them", async () => {
+    const root = await realpath(
+      await mkdtemp(join(tmpdir(), "bobarr-storage-coverage-")),
+    );
+    try {
+      const physical = join(root, "physical");
+      const alias = join(root, "alias");
+      const outside = join(root, "outside");
+      const volume = {
+        ...VOLUME_A,
+        moviesPath: join(physical, "movies"),
+        televisionPath: join(physical, "tv"),
+        downloadsPath: join(physical, "downloads"),
+      };
+      for (const path of [
+        volume.moviesPath,
+        volume.televisionPath,
+        volume.downloadsPath,
+        outside,
+      ]) {
+        await mkdir(path, { recursive: true });
+      }
+      await symlink(physical, alias);
+      await Bun.write(join(outside, "Keep.mkv"), "movie");
+      const libraryLink = join(volume.moviesPath, "Keep.mkv");
+      await symlink(join(outside, "Keep.mkv"), libraryLink);
+      await symlink(outside, join(volume.moviesPath, "escape"));
+      await symlink(
+        join(root, "unavailable"),
+        join(volume.moviesPath, "dangling"),
+      );
+      await symlink(outside, join(volume.downloadsPath, "escape"));
+      const escapedLibrary = join(
+        alias,
+        "movies",
+        "escape",
+        "Missing",
+        "Keep.mkv",
+      );
+      const danglingLibrary = join(alias, "movies", "dangling", "Keep.mkv");
+      const siblingLibrary = join(physical, "movies-other", "Keep.mkv");
+      const escapedDownload = join(alias, "downloads", "escape");
+
+      expect(
+        await uncoveredStoragePathsOnDisk({
+          volumes: [volume],
+          libraryFilePaths: [
+            libraryLink,
+            join(alias, "movies", "Missing", "Keep.mkv"),
+            escapedLibrary,
+            danglingLibrary,
+            siblingLibrary,
+          ],
+          downloadDirectories: [
+            join(alias, "downloads", "missing-download"),
+            escapedDownload,
+          ],
+        }),
+      ).toEqual([
+        escapedLibrary,
+        danglingLibrary,
+        siblingLibrary,
+        escapedDownload,
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("storageLayoutEquals compares volumes and strategy", () => {
