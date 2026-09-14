@@ -83,6 +83,13 @@ volume. Move-mode imports use `.bobarr-import-retired` beside the source instead
 Keep these directories while resolving the error reported in Activity; they can
 contain the only current version of a file changed during a move.
 
+When an interrupted copy cannot be safely reused, a retry creates a new copy and
+preserves the earlier attempt. These retained files occupy destination space
+even after organization completes. Activity reports the exact paths in a
+`library.organize.retained` warning. Inspect those files and verify their contents
+against the current library before deciding whether they can be removed. Keep
+the source recovery directories described above while investigating a failure.
+
 ## Master key
 
 When `BOBARR_MASTER_KEY` is absent, Bobarr creates `/config/master.key` with

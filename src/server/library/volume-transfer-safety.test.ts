@@ -1,10 +1,20 @@
 import type { GroupInventory } from "./volume-inventory";
 
 import { afterEach, expect, test } from "bun:test";
-import { lstat, mkdir, mkdtemp, realpath, rm, utimes } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  realpath,
+  rename,
+  rm,
+  unlink,
+  utimes,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { createVolumeOrganizer } from "./volume-organizer";
 import { buildVolumeTransfer, resumeVolumeTransfer } from "./volume-transfer";
 import { CreateLibraryItemRequestSchema } from "../../contracts";
 import { createRepositories, openBackendDatabase } from "../db";
@@ -12,6 +22,7 @@ import {
   activeVolumeTransfers,
   saveVolumeTransfer,
 } from "../db/volume-transfers";
+import { STORAGE_RESERVE_BYTES } from "../storage";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -95,6 +106,93 @@ test("a failed journal commit cannot advance the live transfer to cleanup", asyn
   );
   expect(await Bun.file(fixture.destination).text()).toBe("old-content");
   await expect(lstat(fixture.source)).rejects.toThrow();
+});
+
+test("incomplete staging attempts survive retry and are reported in Activity", async () => {
+  const fixture = await createFixture();
+  const file = fixture.transfer.files[0]!;
+  const incomplete = file.stagingPath;
+  await mkdir(dirname(incomplete), { recursive: true });
+  await Bun.write(incomplete, "partial");
+  fixture.repositories.settings.ensureDefaults();
+  fixture.repositories.settings.update({
+    storage: { volumes: fixture.volumes, organizationStrategy: "copy" },
+  });
+  await createVolumeOrganizer({
+    ...fixture.options,
+    repositories: fixture.repositories,
+    integrations: { transmission: fixture.options.transmission },
+  }).organize({ ...fixture.options, jobId: "test" });
+  expect(await Bun.file(incomplete).text()).toBe("partial");
+  expect(await Bun.file(fixture.destination).text()).toBe("old-content");
+  expect(activeVolumeTransfers(fixture.database)).toHaveLength(0);
+  const events = fixture.repositories.activity.list({
+    offset: 0,
+    limit: 20,
+  }).events;
+  const retained = events.find(
+    (event) => event.type === "library.organize.retained",
+  );
+  expect(retained?.message).toContain(incomplete);
+  expect(retained?.data).toEqual({ paths: [incomplete] });
+  expect(
+    events.find((event) => event.type === "library.organize.completed")?.level,
+  ).toBe("warning");
+  await expect(lstat(fixture.source)).rejects.toThrow();
+});
+
+test("retry capacity includes the full new copy while retaining partial data", async () => {
+  const fixture = await createFixture();
+  const file = fixture.transfer.files[0]!;
+  await mkdir(dirname(file.stagingPath), { recursive: true });
+  await Bun.write(file.stagingPath, "partial");
+  await expect(
+    resumeVolumeTransfer({
+      ...fixture.options,
+      transfer: fixture.transfer,
+      measureFreeBytes: async () => STORAGE_RESERVE_BYTES + 4n,
+    }),
+  ).rejects.toThrow("Not enough free space");
+  expect(await Bun.file(file.stagingPath).text()).toBe("partial");
+  expect(await Bun.file(fixture.source).text()).toBe("old-content");
+  await expect(lstat(fixture.destination)).rejects.toThrow();
+});
+
+test("a replaced staging entry is preserved during committed cleanup", async () => {
+  const fixture = await createFixture();
+  const file = fixture.transfer.files[0]!;
+  let changed = false;
+  await expect(
+    fixture.resume(async () => {
+      if (!changed && fixture.transfer.stage === "committed") {
+        changed = true;
+        await unlink(file.stagingPath);
+        await Bun.write(file.stagingPath, "unrelated data");
+      }
+    }),
+  ).rejects.toThrow("contents do not match");
+  expect(await Bun.file(file.stagingPath).text()).toBe("unrelated data");
+  expect(await Bun.file(fixture.destination).text()).toBe("old-content");
+  expect(fixture.transfer.stage).toBe("committed");
+});
+
+test("cleanup resumes a staging entry captured before interruption", async () => {
+  const fixture = await createFixture();
+  const file = fixture.transfer.files[0]!;
+  const retirementPath = `${file.stagingPath}.source`;
+  await expect(
+    fixture.resume(async () => {
+      if (fixture.transfer.stage === "committed") {
+        await rename(file.stagingPath, retirementPath);
+        throw new Error("Interrupted after staging capture");
+      }
+    }),
+  ).rejects.toThrow("Interrupted after staging capture");
+  const recovered = activeVolumeTransfers(fixture.database)[0]!;
+  await resumeVolumeTransfer({ ...fixture.options, transfer: recovered });
+  await expect(lstat(retirementPath)).rejects.toThrow();
+  expect(await Bun.file(fixture.destination).text()).toBe("old-content");
+  expect(recovered.stage).toBe("complete");
 });
 
 async function createFixture() {
@@ -196,6 +294,7 @@ async function createFixture() {
   return {
     database,
     repositories,
+    volumes: [first, second] satisfies [typeof first, typeof second],
     transfer,
     options,
     source,

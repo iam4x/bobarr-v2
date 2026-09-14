@@ -25,8 +25,8 @@ const TransferFileSchema = z
     destinationRoot: z.string(),
     identity: FileIdentitySchema,
     checksum: z.string().nullable(),
-    stagingIdentity: z.object({ dev: z.number(), ino: z.number() }).nullable(),
     stagingPath: z.string(),
+    retainedStagingPaths: z.array(z.string()),
     retirementPath: z.string(),
   })
   .and(TransferFileModeSchema);

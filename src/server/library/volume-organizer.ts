@@ -1,6 +1,7 @@
 import type { StorageVolume } from "../../contracts";
 import type { IntegrationResolver } from "../api/integration-resolver";
 import type { BackendDatabase, Repositories } from "../db";
+import type { VolumeTransfer } from "../db/volume-transfers";
 import type { EventHub } from "../events";
 import type { GroupInventory } from "./volume-inventory";
 
@@ -51,9 +52,26 @@ export function createVolumeOrganizer(options: VolumeOrganizerOptions) {
       let movedBytes = 0n;
       const skipped = new Map<string, string>();
       const completedGroups = new Set<string>();
+      const retainedStagingPaths = new Set<string>();
       const transmission = () => options.integrations.transmission();
       const skippedGroup = (key: string, reason: string): void => {
         skipped.set(key, reason);
+      };
+      const reportRetainedCopies = (transfer: VolumeTransfer): void => {
+        const paths = [
+          ...new Set(
+            transfer.files.flatMap((file) => file.retainedStagingPaths),
+          ),
+        ];
+        if (paths.length === 0) return;
+        for (const path of paths) retainedStagingPaths.add(path);
+        activity(
+          options,
+          "library.organize.retained",
+          "warning",
+          `Previous copy attempts still occupy destination space. Inspect these files and verify their contents before removing any retained data: ${paths.join("; ")}`,
+          { paths },
+        );
       };
       try {
         for (const transfer of activeVolumeTransfers(options.database)) {
@@ -67,6 +85,7 @@ export function createVolumeOrganizer(options: VolumeOrganizerOptions) {
           });
           completedGroups.add(transfer.groupKey);
           movedGroups += transfer.groupKeys.length;
+          reportRetainedCopies(transfer);
           publishChanges(options);
         }
         while (true) {
@@ -177,6 +196,7 @@ export function createVolumeOrganizer(options: VolumeOrganizerOptions) {
           completedGroups.add(move.group.key);
           movedGroups += move.group.groups.length;
           movedBytes += move.bytes;
+          reportRetainedCopies(transfer);
           publishChanges(options);
         }
         for (const [groupKey, reason] of skipped)
@@ -190,12 +210,15 @@ export function createVolumeOrganizer(options: VolumeOrganizerOptions) {
         activity(
           options,
           "library.organize.completed",
-          skipped.size > 0 ? "warning" : "success",
+          skipped.size > 0 || retainedStagingPaths.size > 0
+            ? "warning"
+            : "success",
           `Volume organization moved ${movedGroups} movie or season groups${skipped.size > 0 ? ` and skipped ${skipped.size}` : ""}`,
           {
             movedGroups,
             movedBytes: Number(movedBytes),
             skippedGroups: skipped.size,
+            retainedStagingFiles: retainedStagingPaths.size,
           },
         );
         publishChanges(options);

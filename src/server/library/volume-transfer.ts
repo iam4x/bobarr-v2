@@ -17,13 +17,11 @@ import {
   link,
   lstat,
   mkdir,
-  open,
   readlink,
   realpath,
   rmdir,
   stat,
   symlink,
-  unlink,
 } from "node:fs/promises";
 import { basename, dirname, relative, resolve, sep } from "node:path";
 
@@ -159,7 +157,7 @@ export async function buildVolumeTransfer(
       identity: file.identity,
       ...mode,
       checksum: null,
-      stagingIdentity: null,
+      retainedStagingPaths: [],
       stagingPath: resolve(
         paths.destinationRoot,
         ".bobarr-volume-organize",
@@ -302,42 +300,29 @@ export async function resumeVolumeTransfer(
         if (file.source === file.destination) {
           file.checksum = await hashFile(file.source, signal);
         } else {
-          const staged = file.stagingPath;
           if (
             file.checksum === null ||
-            !(await matchesChecksum(staged, file.checksum, signal))
+            !(await matchesChecksum(file.stagingPath, file.checksum, signal))
           ) {
-            await verifyCapacity(transfer, input);
-            const stagedInfo = await lstatOrMissing(staged);
-            if (stagedInfo) {
-              if (
-                !stagedInfo.isFile() ||
-                stagedInfo.isSymbolicLink() ||
-                !file.stagingIdentity ||
-                stagedInfo.dev !== file.stagingIdentity.dev ||
-                stagedInfo.ino !== file.stagingIdentity.ino
-              )
-                throw new Error("Transfer staging file was replaced");
-              await unlink(staged);
+            if (await lstatOrMissing(file.stagingPath)) {
+              file.retainedStagingPaths.push(file.stagingPath);
+              file.stagingPath = resolve(
+                dirname(file.stagingPath),
+                `${crypto.randomUUID()}.file`,
+              );
             }
-            const created = await open(staged, "wx");
-            const createdInfo = await created.stat();
-            await created.close();
-            file.stagingIdentity = {
-              dev: createdInfo.dev,
-              ino: createdInfo.ino,
-            };
+            file.checksum = null;
             saveVolumeTransfer(database, transfer);
+            await verifyCapacity(transfer, input);
             file.checksum = await copyVerifiedFile({
               source: file.source,
-              destination: staged,
-              destinationIdentity: file.stagingIdentity,
+              destination: file.stagingPath,
               signal,
             });
           }
           await assertMatchingContents({
             source: file.source,
-            destination: staged,
+            destination: file.stagingPath,
             checksum: file.checksum,
             signal,
           });
@@ -462,18 +447,25 @@ export async function resumeVolumeTransfer(
         await removeEmptyParents(dirname(file.source), file.sourceRoot);
     }
     for (const file of transfer.files) {
-      const staged = file.stagingPath;
-      const info = await lstatOrMissing(staged);
-      if (!info) continue;
+      if (file.kind !== "copy" || file.source === file.destination) continue;
+      const retirementPath = `${file.stagingPath}.source`;
       if (
-        !info.isFile() ||
-        info.isSymbolicLink() ||
-        !file.stagingIdentity ||
-        info.dev !== file.stagingIdentity.dev ||
-        info.ino !== file.stagingIdentity.ino
+        !(await lstatOrMissing(file.stagingPath)) &&
+        !(await lstatOrMissing(retirementPath))
       )
-        throw new Error("Transfer staging file was replaced before cleanup");
-      await unlink(staged);
+        continue;
+      if (file.checksum === null)
+        throw new Error(
+          "A staging file cannot be removed without a verified copy",
+        );
+      await removeVerifiedSource({
+        kind: "file",
+        source: file.stagingPath,
+        retirementPath,
+        destination: file.destination,
+        checksum: file.checksum,
+        signal,
+      });
     }
     for (const root of new Set(
       transfer.files.flatMap((file) => [
@@ -481,7 +473,7 @@ export async function resumeVolumeTransfer(
         dirname(file.retirementPath),
       ]),
     ))
-      await rmdir(root).catch(ignoreMissing);
+      await removeEmptyParents(root, dirname(root));
     for (const download of transfer.downloads) {
       signal.throwIfAborted();
       if (download.hash === null) continue;
@@ -573,16 +565,11 @@ async function verifyCapacity(
       throw new Error("Destination filesystem could not be measured");
     const staged = await lstatOrMissing(file.stagingPath);
     if (
-      staged &&
-      (!staged.isFile() ||
-        staged.isSymbolicLink() ||
-        !file.stagingIdentity ||
-        staged.dev !== file.stagingIdentity.dev ||
-        staged.ino !== file.stagingIdentity.ino)
+      file.checksum === null ||
+      !staged?.isFile() ||
+      staged.size !== file.identity.size
     )
-      throw new Error("Transfer staging file was replaced");
-    const remaining = BigInt(file.identity.size) - BigInt(staged?.size ?? 0);
-    if (remaining > 0n) capacity.required += remaining;
+      capacity.required += BigInt(file.identity.size);
   }
   for (const capacity of devices.values()) {
     if (capacity.available - capacity.required < STORAGE_RESERVE_BYTES)
@@ -881,9 +868,4 @@ async function removeEmptyParents(
     }
     current = dirname(current);
   }
-}
-
-function ignoreMissing(error: unknown): void {
-  if (!(error instanceof Error && "code" in error && error.code === "ENOENT"))
-    throw error;
 }
