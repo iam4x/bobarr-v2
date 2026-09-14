@@ -14,6 +14,7 @@ Browser
        -> Transmission JSON-RPC
        -> /config/bobarr.sqlite + /config/jobs.sqlite
        -> /media/downloads, /media/movies, /media/tv
+       -> optional extra volume at /media-b/downloads, /media-b/movies, /media-b/tv
 ```
 
 The code is split into shared contracts, server modules, and the web app:
@@ -54,13 +55,19 @@ tracker URLs and passkeys never round-trip through the client.
 ## Filesystem safety
 
 Every source and destination is resolved and checked against configured roots.
+Settings store a non-empty list of volumes. Each volume is a downloads, movies,
+and television triple. New downloads freeze their directory on the volume with
+the most free space. Organization uses that frozen directory's volume, not the
+current first volume.
 Symlink traversal and malicious filenames are rejected. Organization is
-restart-safe and records every produced file. Hardlink is the default; a
-cross-filesystem hardlink error is surfaced and never silently becomes a copy.
-Partial failures preserve the source data for an explicit retry.
+restart-safe and records every produced file. Hardlink is the default and is
+validated per volume; a cross-filesystem hardlink error is surfaced and never
+silently becomes a copy. Partial failures preserve the source data for an
+explicit retry.
 
 Library scans import only uniquely identified titles. Ambiguous folders become
 durable `library_scan_reviews` records containing the scanned files and a
 bounded set of TMDB candidate summaries. Resolution requires an explicit
-candidate, revalidates every recorded path against the current configured root,
-and uses idempotent media/file upserts so it can safely resume after a restart.
+candidate, revalidates every recorded path against a current root of the same
+kind, and uses idempotent media/file upserts so it can safely resume after a
+restart.

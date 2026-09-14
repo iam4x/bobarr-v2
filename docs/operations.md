@@ -33,11 +33,24 @@ stat -c '%u:%g %n' config config/jackett config/transmission media
   tv/
 ```
 
-For hardlinks, `downloads`, `movies`, and `tv` must be on one filesystem and be
-presented to Bobarr through the single `/media` container mount. Transmission
-mounts that same host `downloads` directory at both `/downloads` for LinuxServer
-ownership initialization and `/media/downloads` for Bobarr's durable paths. Do
-not mount each child from a different host filesystem.
+For hardlinks on one disk, `downloads`, `movies`, and `tv` must be on one
+filesystem and be presented to Bobarr through the `/media` container mount.
+Transmission mounts that same host `downloads` directory at both `/downloads`
+for LinuxServer ownership initialization and `/media/downloads` for Bobarr's
+durable paths. Do not mount each child from a different host filesystem.
+
+To add a second disk:
+
+1. Set `BOBARR_MEDIA_PATH_2` in `.env` to the host path of the extra drive.
+2. Create `downloads`, `movies`, and `tv` on that host path.
+3. Start with the overlay. Run `docker compose -f compose.yml -f compose.extra-media.yml up`.
+4. In Settings, add a volume whose paths are `/media-b/downloads`,
+   `/media-b/movies`, and `/media-b/tv`.
+
+Hardlink is per volume. Only the three paths in one volume need to share a
+device. Transmission must see every downloads path at the same container path.
+Do not mount movies or tv into Transmission. New downloads go to the volume
+with the most free space.
 
 ## Master key
 

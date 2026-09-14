@@ -41,9 +41,21 @@ Compose default permits its session cookie over direct HTTP access, including a
 private Tailscale address. Set `BOBARR_COOKIE_SECURE=true` when serving Bobarr
 over HTTPS.
 
-All three media folders must live below the same `/media` mount if hardlink
-organization is enabled. This lets Transmission continue seeding without a
-second copy of each file.
+One disk is unchanged. Keep `downloads`, `movies`, and `tv` under the `/media`
+mount. Hardlink organization still needs those three paths on one filesystem.
+
+To add a second disk, set `BOBARR_MEDIA_PATH_2` in `.env` to the host path,
+create `downloads`, `movies`, and `tv` on that path, then start with the overlay:
+
+```sh
+mkdir -p /Volumes/nvme_b/downloads /Volumes/nvme_b/movies /Volumes/nvme_b/tv
+docker compose -f compose.yml -f compose.extra-media.yml up
+```
+
+In Settings, add a volume with `/media-b/downloads`, `/media-b/movies`, and
+`/media-b/tv`. Hardlink is per volume. Only the three paths in that triple must
+share a device. Transmission must see every downloads path at the same
+container path. Do not mount movies or tv into Transmission.
 
 ## Development
 
