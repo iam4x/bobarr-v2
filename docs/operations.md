@@ -69,10 +69,19 @@ data together. A TV series can span disks, but each season stays together.
 Seasons sharing a torrent move together. Whole groups and the 10 GiB free-space
 reserve can prevent an exact equal split.
 
-The job preserves verified copies before removing source files and resumes
-unfinished transfers after a restart. If you cancel it, click **Organize volumes**
-again to finish the interrupted move. Activity lists data skipped because a
-download is incomplete or its ownership or files cannot be verified.
+The job copies files first, rereads and compares their SHA-256 checksums, and
+syncs the destination files and directories before removing originals. It checks
+file contents again during cleanup and keeps the affected torrents paused until
+cleanup finishes. A failed verification, sync, or database commit preserves the
+original bytes.
+
+Interrupted transfers resume after a restart. If you cancel a transfer, click
+**Organize volumes** again to finish it. Activity lists data skipped because a
+download is incomplete or its ownership or files cannot be verified. A failed
+cleanup can retain original files under `.bobarr-volume-organize` on the source
+volume. Move-mode imports use `.bobarr-import-retired` beside the source instead.
+Keep these directories while resolving the error reported in Activity; they can
+contain the only current version of a file changed during a move.
 
 ## Master key
 
