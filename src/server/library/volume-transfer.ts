@@ -4,6 +4,7 @@ import type {
   FileIdentity,
   TransferDownload,
   TransferFile,
+  TransferFileMode,
   VolumeTransfer,
 } from "../db/volume-transfers";
 import type {
@@ -19,7 +20,6 @@ import {
   open,
   readlink,
   realpath,
-  rename,
   rmdir,
   stat,
   symlink,
@@ -28,6 +28,15 @@ import {
 import { basename, dirname, relative, resolve, sep } from "node:path";
 
 import { isPathContained } from "./paths";
+import {
+  assertMatchingContents,
+  copyVerifiedFile,
+  removeVerifiedSource,
+  retireVerifiedSource,
+  syncDirectoryAndParents,
+  syncFileAndParents,
+  type RetainedSource,
+} from "./verified-files";
 import { lstatOrMissing, validateDirectory } from "./volume-inventory";
 import { isOwnedTorrentIdentity } from "../application/torrent-ownership";
 import { saveVolumeTransfer } from "../db/volume-transfers";
@@ -131,18 +140,16 @@ export async function buildVolumeTransfer(
     if (!paths) throw new Error("Missing destination for group file");
     const inode = `${paths.device}:${file.identity.dev}:${file.identity.ino}`;
     const previous = primaryByDeviceAndInode.get(inode);
-    let kind: TransferFile["kind"] = "copy";
-    let target: string | null = null;
+    let mode: TransferFileMode = { kind: "copy", target: null };
     if (file.identity.link !== null) {
-      target = destinationsBySource.get(await realpath(file.path)) ?? null;
-      if (target === null)
+      const target = destinationsBySource.get(await realpath(file.path));
+      if (target === undefined)
         throw new Error(
           "A library symlink points to data outside its transfer group",
         );
-      kind = "symlink";
+      mode = { kind: "symlink", target };
     } else if (previous !== undefined && previous !== paths.destination) {
-      kind = "hardlink";
-      target = previous;
+      mode = { kind: "hardlink", target: previous };
     } else primaryByDeviceAndInode.set(inode, paths.destination);
     files.push({
       source: paths.source,
@@ -150,8 +157,7 @@ export async function buildVolumeTransfer(
       destination: paths.destination,
       destinationRoot: paths.destinationRoot,
       identity: file.identity,
-      kind,
-      target,
+      ...mode,
       checksum: null,
       stagingIdentity: null,
       stagingPath: resolve(
@@ -159,6 +165,12 @@ export async function buildVolumeTransfer(
         ".bobarr-volume-organize",
         id,
         `${index}.file`,
+      ),
+      retirementPath: resolve(
+        paths.sourceRoot,
+        ".bobarr-volume-organize",
+        id,
+        `${index}.source`,
       ),
     });
   }
@@ -210,6 +222,7 @@ export async function buildVolumeTransfer(
     paths.add(file.source);
     paths.add(file.destination);
     paths.add(dirname(file.stagingPath));
+    paths.add(dirname(file.retirementPath));
   }
   for (const download of downloads) {
     paths.add(download.source);
@@ -271,6 +284,7 @@ export async function resumeVolumeTransfer(
 ): Promise<void> {
   const { transfer, database, signal, heartbeat } = input;
   if (transfer.stage === "complete") return;
+  await pauseTorrents(transfer, input);
   if (transfer.stage === "copying") {
     await verifyCapacity(transfer, input);
     await prepareStaging(transfer);
@@ -314,23 +328,32 @@ export async function resumeVolumeTransfer(
               ino: createdInfo.ino,
             };
             saveVolumeTransfer(database, transfer);
-            file.checksum = await copyAndHash(file.source, staged, signal);
+            file.checksum = await copyVerifiedFile({
+              source: file.source,
+              destination: staged,
+              destinationIdentity: file.stagingIdentity,
+              signal,
+            });
           }
-          if (!(await matchesChecksum(staged, file.checksum, signal)))
-            throw new Error(`Copied file failed verification: ${file.source}`);
+          await assertMatchingContents({
+            source: file.source,
+            destination: staged,
+            checksum: file.checksum,
+            signal,
+          });
         }
         await assertSource(file);
         saveVolumeTransfer(database, transfer);
       }
     }
     for (const file of transfer.files) {
-      if (file.kind !== "hardlink") continue;
+      if (file.kind === "copy") continue;
       const primary = transfer.files.find(
         (candidate) =>
           candidate.destination === file.target && candidate.checksum !== null,
       );
       if (!primary?.checksum)
-        throw new Error("A hardlink has no verified payload");
+        throw new Error("A library link has no verified payload");
       file.checksum = primary.checksum;
     }
     saveVolumeTransfer(database, transfer);
@@ -349,6 +372,7 @@ export async function resumeVolumeTransfer(
       signal.throwIfAborted();
       if (file.source !== file.destination) await assertSource(file);
       await verifyDestination(file, signal);
+      await syncPublishedFile(file);
     }
     for (const download of transfer.downloads) {
       signal.throwIfAborted();
@@ -402,39 +426,35 @@ export async function resumeVolumeTransfer(
         if (updated.changes !== 1)
           throw new Error("Download record changed while organizing volumes");
       }
-      transfer.stage = "committed";
-      saveVolumeTransfer(database, transfer);
+      saveVolumeTransfer(database, { ...transfer, stage: "committed" });
     })();
+    transfer.stage = "committed";
     await heartbeat();
   }
   if (transfer.stage === "committed") {
     await verifyTorrents(transfer, input, "destination");
-    for (const download of transfer.downloads) {
-      signal.throwIfAborted();
-      if (download.hash === null || download.source === download.destination)
-        continue;
-      const engine = await input.transmission();
-      const torrent = await verifyTorrent(
-        download,
-        engine,
-        signal,
-        "destination",
-      );
-      if (download.running && torrent.status === "stopped")
-        await engine.start(download.hash, signal);
-    }
-    for (const file of transfer.files) {
+    const cleanupOrder = [...transfer.files].sort(
+      (left, right) =>
+        Number(right.kind === "symlink") - Number(left.kind === "symlink"),
+    );
+    for (const file of cleanupOrder) {
       signal.throwIfAborted();
       await heartbeat();
-      if (file.source === file.destination) continue;
+      if (file.source === file.destination && file.kind === "copy") continue;
       await verifyDestination(file, signal);
-      if (await lstatOrMissing(file.source)) {
+      const retained = await lstatOrMissing(file.retirementPath);
+      if (file.source === file.destination && !retained) continue;
+      if (retained || (await lstatOrMissing(file.source))) {
         await assertSource(file);
-        if (await sameEntry(file.source, file.destination))
+        if (
+          file.source !== file.destination &&
+          !retained &&
+          (await sameEntry(file.source, file.destination))
+        )
           throw new Error(
             "Source and destination resolve to the same directory entry",
           );
-        await unlink(file.source);
+        await removeVerifiedSource({ ...retainedSource(file), signal });
       }
     }
     for (const file of transfer.files) {
@@ -456,11 +476,61 @@ export async function resumeVolumeTransfer(
       await unlink(staged);
     }
     for (const root of new Set(
-      transfer.files.map((file) => dirname(file.stagingPath)),
+      transfer.files.flatMap((file) => [
+        dirname(file.stagingPath),
+        dirname(file.retirementPath),
+      ]),
     ))
       await rmdir(root).catch(ignoreMissing);
+    for (const download of transfer.downloads) {
+      signal.throwIfAborted();
+      if (download.hash === null) continue;
+      const engine = await input.transmission();
+      const torrent = await verifyTorrent(
+        download,
+        engine,
+        signal,
+        "destination",
+      );
+      if (download.running && torrent.status === "stopped")
+        await engine.start(download.hash, signal);
+    }
     transfer.stage = "complete";
     saveVolumeTransfer(database, transfer);
+  }
+}
+
+async function pauseTorrents(
+  transfer: VolumeTransfer,
+  input: {
+    transmission: () => Promise<TorrentEngine>;
+    signal: AbortSignal;
+    heartbeat: () => Promise<void>;
+  },
+): Promise<void> {
+  for (const download of transfer.downloads) {
+    input.signal.throwIfAborted();
+    await input.heartbeat();
+    if (download.hash === null) continue;
+    const engine = await input.transmission();
+    const location =
+      transfer.stage === "committed" ? "destination" : "source-or-destination";
+    const torrent = await verifyTorrent(
+      download,
+      engine,
+      input.signal,
+      location,
+    );
+    if (torrent.status !== "stopped")
+      await engine.pause(download.hash, input.signal);
+    const stopped = await verifyTorrent(
+      download,
+      engine,
+      input.signal,
+      location,
+    );
+    if (stopped.status !== "stopped")
+      throw new Error("Torrent did not stop before volume organization");
   }
 }
 
@@ -534,13 +604,18 @@ async function verifyTorrents(
   for (const download of transfer.downloads) {
     input.signal.throwIfAborted();
     await input.heartbeat();
-    if (download.hash !== null)
-      await verifyTorrent(
+    if (download.hash !== null) {
+      const torrent = await verifyTorrent(
         download,
         await input.transmission(),
         input.signal,
         location,
       );
+      if (torrent.status !== "stopped")
+        throw new Error(
+          "Torrent restarted before volume organization finished",
+        );
+    }
   }
 }
 
@@ -639,41 +714,20 @@ async function publishFile(
       );
       if (!alreadyPublished) {
         await assertSource(file);
-        const temporary = `${file.stagingPath}.link`;
-        const existing = await lstatOrMissing(temporary);
-        if (existing) {
-          if (file.kind === "symlink") {
-            if (
-              !existing.isSymbolicLink() ||
-              resolve(dirname(file.destination), await readlink(temporary)) !==
-                file.target
-            )
-              throw new Error("Staging link was replaced");
-          } else {
-            if (!file.target) throw new Error("Hardlink target is missing");
-            const targetInfo = await lstat(file.target);
-            if (
-              !existing.isFile() ||
-              existing.dev !== targetInfo.dev ||
-              existing.ino !== targetInfo.ino
-            )
-              throw new Error("Staging link was replaced");
-          }
-        } else if (file.kind === "symlink") {
-          if (!file.target) throw new Error("Symlink target is missing");
+        await retireVerifiedSource({ ...retainedSource(file), signal });
+        if (file.kind === "symlink") {
           await symlink(
             relative(dirname(file.destination), file.target),
-            temporary,
+            file.destination,
             "file",
           );
         } else {
-          if (!file.target) throw new Error("Hardlink target is missing");
-          await link(file.target, temporary);
+          await link(file.target, file.destination);
         }
-        await rename(temporary, file.destination);
       }
     }
     await verifyDestination(file, signal);
+    await syncPublishedFile(file);
     return;
   }
   if (await lstatOrMissing(file.destination)) {
@@ -681,19 +735,18 @@ async function publishFile(
     return;
   }
   if (file.kind === "symlink") {
-    if (!file.target) throw new Error("Symlink target is missing");
     await symlink(
       relative(dirname(file.destination), file.target),
       file.destination,
       "file",
     );
   } else if (file.kind === "hardlink") {
-    if (!file.target) throw new Error("Hardlink target is missing");
     await link(file.target, file.destination);
   } else {
     await link(file.stagingPath, file.destination);
   }
   await verifyDestination(file, signal);
+  await syncPublishedFile(file);
 }
 
 async function verifyDestination(
@@ -706,7 +759,9 @@ async function verifyDestination(
     if (
       !info?.isSymbolicLink() ||
       resolve(dirname(file.destination), await readlink(file.destination)) !==
-        file.target
+        file.target ||
+      file.checksum === null ||
+      !(await matchesChecksum(file.target, file.checksum, signal))
     )
       throw new Error(`Library destination collision: ${file.destination}`);
     return;
@@ -720,7 +775,7 @@ async function verifyDestination(
     throw new Error(
       `Library destination collision or verification failure: ${file.destination}`,
     );
-  if (file.kind === "hardlink" && file.target) {
+  if (file.kind === "hardlink") {
     const target = await lstat(file.target);
     if (info.dev !== target.dev || info.ino !== target.ino)
       throw new Error(
@@ -730,14 +785,17 @@ async function verifyDestination(
 }
 
 async function assertSource(file: TransferFile): Promise<void> {
-  await validateDirectory(file.sourceRoot, dirname(file.source));
-  const info = await lstat(file.source);
+  const source = (await lstatOrMissing(file.retirementPath))
+    ? file.retirementPath
+    : file.source;
+  await validateDirectory(file.sourceRoot, dirname(source));
+  const info = await lstat(source);
   const current: FileIdentity = {
     dev: info.dev,
     ino: info.ino,
     size: info.size,
     mtimeMs: info.mtimeMs,
-    link: info.isSymbolicLink() ? await readlink(file.source) : null,
+    link: info.isSymbolicLink() ? await readlink(source) : null,
   };
   if (
     JSON.stringify(current) !== JSON.stringify(file.identity) ||
@@ -746,24 +804,38 @@ async function assertSource(file: TransferFile): Promise<void> {
     throw new Error(`Source changed while organizing volumes: ${file.source}`);
 }
 
-async function copyAndHash(
-  source: string,
-  destination: string,
-  signal: AbortSignal,
-): Promise<string> {
-  const hasher = new Bun.CryptoHasher("sha256");
-  const writer = Bun.file(destination).writer();
-  try {
-    for await (const chunk of Bun.file(source).stream()) {
-      signal.throwIfAborted();
-      writer.write(chunk);
-      await writer.flush();
-      hasher.update(chunk);
-    }
-  } finally {
-    await writer.end();
+function retainedSource(file: TransferFile): RetainedSource {
+  if (file.checksum === null)
+    throw new Error("An original cannot be removed without a verified copy");
+  const common = {
+    source: file.source,
+    retirementPath: file.retirementPath,
+    destination: file.destination,
+    checksum: file.checksum,
+    expectedSource: file.identity,
+  };
+  if (file.kind === "symlink") {
+    if (file.identity.link === null)
+      throw new Error("Symlink payload identity is missing");
+    return {
+      ...common,
+      kind: "symlink",
+      destination: file.target,
+      linkText: file.identity.link,
+      payloadSource: resolve(dirname(file.source), file.identity.link),
+    };
   }
-  return hasher.digest("hex");
+  if (file.source === file.destination && file.kind === "hardlink") {
+    common.destination = file.target;
+  }
+  return { ...common, kind: "file" };
+}
+
+async function syncPublishedFile(file: TransferFile): Promise<void> {
+  const payload = file.kind === "symlink" ? file.target : file.destination;
+  await syncFileAndParents(payload);
+  if (file.kind === "symlink")
+    await syncDirectoryAndParents(dirname(file.destination));
 }
 
 async function hashFile(path: string, signal: AbortSignal): Promise<string> {
