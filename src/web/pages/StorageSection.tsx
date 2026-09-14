@@ -1,4 +1,5 @@
 import type { Messages } from "../i18n/en";
+import type { Job } from "../types";
 import type { SettingsForm } from "./settings-form";
 import type {
   UseFieldArrayReturn,
@@ -6,7 +7,8 @@ import type {
   UseFormRegister,
 } from "react-hook-form";
 
-import { FolderCheck, HardDrive, Plus } from "lucide-react";
+import { FolderCheck, HardDrive, Plus, RefreshCw } from "lucide-react";
+import { Link } from "react-router";
 
 import { Button, Field, SelectField } from "../components/ui";
 import { formatBytes } from "../lib/format";
@@ -28,6 +30,11 @@ export function StorageSection({
   organizationError,
   validateBusy,
   onValidate,
+  organizeBusy,
+  organizeDisabled,
+  organizeError,
+  organizationJob,
+  onOrganize,
   messages,
 }: {
   register: UseFormRegister<SettingsForm>;
@@ -41,8 +48,17 @@ export function StorageSection({
   organizationError?: string;
   validateBusy: boolean;
   onValidate: () => void;
+  organizeBusy: boolean;
+  organizeDisabled: boolean;
+  organizeError?: string;
+  organizationJob?: Job;
+  onOrganize: () => void;
   messages: Messages;
 }) {
+  const organizing =
+    organizationJob?.state === "pending" ||
+    organizationJob?.state === "retrying" ||
+    organizationJob?.state === "running";
   return (
     <section className="settings-section" id="storage">
       <header>
@@ -152,6 +168,43 @@ export function StorageSection({
       >
         <FolderCheck size={17} /> {messages.settings.validatePaths}
       </Button>
+      <div className="storage-organization">
+        <h3>{messages.settings.organizeVolumes}</h3>
+        <p className="settings-muted">
+          {messages.settings.organizeVolumesHint}
+        </p>
+        {organizeDisabled ? (
+          <p className="settings-muted">
+            {messages.settings.organizeSaveFirst}
+          </p>
+        ) : null}
+        <Button
+          type="button"
+          variant="secondary"
+          busy={organizeBusy || organizing}
+          disabled={
+            organizeDisabled || organizing || volumeFields.fields.length < 2
+          }
+          onClick={onOrganize}
+        >
+          <RefreshCw size={17} /> {messages.settings.organizeVolumes}
+        </Button>
+        {organizationJob ? (
+          <p role="status">
+            {messages.settings.organizationStatus[organizationJob.state]}{" "}
+            <Link
+              to={`/activity?tab=jobs&job=${encodeURIComponent(organizationJob.id)}`}
+            >
+              {messages.settings.viewOrganizationJob}
+            </Link>
+          </p>
+        ) : null}
+        {organizeError ? (
+          <p role="alert" className="field__error">
+            {organizeError}
+          </p>
+        ) : null}
+      </div>
     </section>
   );
 }

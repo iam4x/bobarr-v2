@@ -26,6 +26,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { useSearchParams } from "react-router";
 
 import { api } from "../api/client";
 import { collectionItems, normalizeJobDetails } from "../api/normalize";
@@ -63,6 +64,7 @@ const JOB_KIND_VALUES = [
   "acquisition.add-torrent",
   "acquisition.organize-download",
   "library.scan.v1",
+  "library.organize.v1",
   "maintenance.reconcile.v1",
   "maintenance.search-missing.v1",
   "maintenance.refresh-metadata.v1",
@@ -770,7 +772,10 @@ export function ActivityPage() {
   });
   const canManageSettings =
     sessionQuery.data?.capabilities?.canManageSettings === true;
-  const [tab, setTab] = useState<ActivityTab>("downloads");
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<ActivityTab>(() =>
+    searchParams.get("tab") === "jobs" ? "jobs" : "downloads",
+  );
   const [addOpen, setAddOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<Download | null>(null);
   const [deleteData, setDeleteData] = useState(false);
@@ -779,7 +784,9 @@ export function ActivityPage() {
   const [jobKind, setJobKind] = useState("");
   const [jobOffset, setJobOffset] = useState(0);
   const [manualJobKind, setManualJobKind] = useState("library.scan.v1");
-  const [selectedJobId, setSelectedJobId] = useState<string>();
+  const [selectedJobId, setSelectedJobId] = useState<string | undefined>(
+    () => searchParams.get("job") ?? undefined,
+  );
   const downloadsQuery = useInfiniteQuery({
     queryKey: ["downloads", { completion: downloadFilter }],
     queryFn: ({ pageParam, signal }) =>

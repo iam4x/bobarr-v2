@@ -871,6 +871,7 @@ export const en = {
       "acquisition.add-torrent": "Add torrent",
       "acquisition.organize-download": "Organize download",
       "library.scan.v1": "Library scan",
+      "library.organize.v1": "Organize volumes",
       "maintenance.reconcile.v1": "Reconcile services",
       "maintenance.search-missing.v1": "Search missing media",
       "maintenance.refresh-metadata.v1": "Refresh metadata",
@@ -910,7 +911,7 @@ export const en = {
       "Hard limits exclude releases; term and quality rules determine ranking.",
     storageTitle: "Storage & organization",
     storageBody:
-      "Each drive is a downloads, movies, and TV triple on one filesystem. New downloads go to the drive with the most free space.",
+      "Each volume has downloads, movies, and TV folders on one filesystem. New movies and seasons use the volume with the most free space. Later files stay with their movie or season.",
     addVolume: "Add volume",
     volumePathHint:
       "Type the container path for a disk already listed in BOBARR_MEDIA_PATHS. This form does not create folders on the host.",
@@ -919,6 +920,21 @@ export const en = {
     volumeName: ({ n }: { n: number }) => `Volume ${n}`,
     volumeFree: ({ size }: { size: string }) => `${size} free`,
     volumeFreeUnknown: "Free space unknown",
+    organizeVolumes: "Organize volumes",
+    organizeVolumesHint:
+      "Balance library files and their seeding data across your saved volumes in the background. Movie folders and TV seasons stay together. Whole folders may prevent an exact 50/50 split.",
+    organizeSaveFirst: "Save your settings before organizing volumes.",
+    viewOrganizationJob: "View job in Activity",
+    organizationStatus: {
+      pending: "Volume organization is queued.",
+      retrying: "Volume organization will retry shortly.",
+      running: "Organizing volumes. You can keep using Bobarr.",
+      completed: "Volume organization completed.",
+      failed:
+        "Volume organization failed. Open Activity for details and retry.",
+      cancelled:
+        "Volume organization was cancelled. Organize again to finish any interrupted move.",
+    },
     schedulesBody: "Standard five-field cron expressions evaluated in UTC.",
     maintenanceBody:
       "Back up application state before upgrades or storage changes.",

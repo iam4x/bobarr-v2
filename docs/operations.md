@@ -58,9 +58,21 @@ existing volume paths.
 
 Hardlink is per volume. Only the three paths in one volume need to share a
 device. Transmission must see every downloads path at the same container path.
-Do not mount movies or television into Transmission. New downloads go to the
-volume with the most free space. `BOBARR_MEDIA_PATH` is still the fallback when
-`BOBARR_MEDIA_PATHS` is unset.
+Do not mount movies or television into Transmission. New movies and seasons use
+the volume with the most available space. Later files join the same movie or
+season. `BOBARR_MEDIA_PATH` is still the fallback when `BOBARR_MEDIA_PATHS` is unset.
+
+To redistribute an existing library after adding a disk, save the volumes in
+**Settings**, then click **Organize volumes**. Follow the job through **View job
+in Activity**. The job moves library folders and Transmission's completed seeding
+data together. A TV series can span disks, but each season stays together.
+Seasons sharing a torrent move together. Whole groups and the 10 GiB free-space
+reserve can prevent an exact equal split.
+
+The job preserves verified copies before removing source files and resumes
+unfinished transfers after a restart. If you cancel it, click **Organize volumes**
+again to finish the interrupted move. Activity lists data skipped because a
+download is incomplete or its ownership or files cannot be verified.
 
 ## Master key
 
