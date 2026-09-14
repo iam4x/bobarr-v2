@@ -14,7 +14,7 @@ Browser
        -> Transmission JSON-RPC
        -> /config/bobarr.sqlite + /config/jobs.sqlite
        -> /media/downloads, /media/movies, /media/tv
-       -> optional extra volume at /media-b/downloads, /media-b/movies, /media-b/tv
+       -> optional extra volumes at /media-2, /media-3, ...
 ```
 
 The code is split into shared contracts, server modules, and the web app:

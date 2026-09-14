@@ -5,7 +5,7 @@ set -Eeuo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$script_dir"
 
-docker compose up \
+bun "$script_dir/scripts/stack.ts" up \
   --detach \
   --build \
   --force-recreate \

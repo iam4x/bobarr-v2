@@ -191,6 +191,27 @@ function nextVolumeNumber(ids: readonly string[]): number {
   return n;
 }
 
+function nextSuggestedVolumePaths(used: Set<string>): {
+  downloadsPath: string;
+  moviesPath: string;
+  televisionPath: string;
+} {
+  for (let n = 2; n <= 99; n += 1) {
+    const root = `/media-${n}`;
+    const downloadsPath = `${root}/downloads`;
+    const moviesPath = `${root}/movies`;
+    const televisionPath = `${root}/tv`;
+    if (
+      !used.has(downloadsPath) &&
+      !used.has(moviesPath) &&
+      !used.has(televisionPath)
+    ) {
+      return { downloadsPath, moviesPath, televisionPath };
+    }
+  }
+  return { downloadsPath: "", moviesPath: "", televisionPath: "" };
+}
+
 function fromForm(value: ParsedSettingsForm): AppSettings {
   return {
     locale: { language: value.language, region: value.region.toUpperCase() },
@@ -778,25 +799,13 @@ export function SettingsPage() {
                       volume.televisionPath,
                     ]),
                   );
-                  const suggested = {
-                    downloadsPath: "/media-b/downloads",
-                    moviesPath: "/media-b/movies",
-                    televisionPath: "/media-b/tv",
-                  };
-                  const suggestOverlay =
-                    !used.has(suggested.downloadsPath) &&
-                    !used.has(suggested.moviesPath) &&
-                    !used.has(suggested.televisionPath);
+                  const suggested = nextSuggestedVolumePaths(used);
                   volumeFields.append({
                     id: `volume-${n}`,
                     label: messages.settings.volumeName({ n }),
-                    downloadsPath: suggestOverlay
-                      ? suggested.downloadsPath
-                      : "",
-                    moviesPath: suggestOverlay ? suggested.moviesPath : "",
-                    televisionPath: suggestOverlay
-                      ? suggested.televisionPath
-                      : "",
+                    downloadsPath: suggested.downloadsPath,
+                    moviesPath: suggested.moviesPath,
+                    televisionPath: suggested.televisionPath,
                   });
                 }}
               >

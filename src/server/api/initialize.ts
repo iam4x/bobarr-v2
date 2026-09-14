@@ -48,6 +48,7 @@ import {
   type JobHandler,
   type JobQueue,
 } from "../jobs";
+import { parseMediaRootsEnv, volumesForMediaRoots } from "../media-paths";
 import {
   createBackupRestoreService,
   createSqliteBackup,
@@ -134,6 +135,10 @@ export async function initializeBackend(
 
   try {
     const repositories = createRepositories(database, clock);
+    syncStorageVolumesFromMediaRoots(
+      repositories,
+      environment["BOBARR_MEDIA_ROOTS"],
+    );
     const secrets = await SecretVault.create(
       config.encryptionKey,
       repositories.secrets,
@@ -568,6 +573,29 @@ async function enqueueScheduledMaintenance(
       maxAttempts: 3,
     });
   }
+}
+
+function syncStorageVolumesFromMediaRoots(
+  repositories: Repositories,
+  raw: string | undefined,
+): void {
+  const roots = parseMediaRootsEnv(raw);
+  if (roots.length === 0) return;
+  const current = repositories.settings.ensureDefaults();
+  const volumes = volumesForMediaRoots(current.settings.storage.volumes, roots);
+  if (
+    JSON.stringify(volumes) === JSON.stringify(current.settings.storage.volumes)
+  ) {
+    return;
+  }
+  const [first, ...rest] = volumes;
+  if (first === undefined) return;
+  repositories.settings.update({
+    storage: {
+      organizationStrategy: current.settings.storage.organizationStrategy,
+      volumes: [first, ...rest],
+    },
+  });
 }
 
 export async function enqueueMissingMedia(

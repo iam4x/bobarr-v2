@@ -1,7 +1,0 @@
-services:
-  bobarr:
-    volumes:
-      - ${BOBARR_MEDIA_PATH_2}:/media-b
-  transmission:
-    volumes:
-      - ${BOBARR_MEDIA_PATH_2}/downloads:/media-b/downloads

@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "bun --cwd dist index.js",
+    "stack": "bun scripts/stack.ts",
     "build": "bun scripts/build.ts",
     "admin:reset": "bun scripts/reset-admin.ts",
     "test": "bun test",

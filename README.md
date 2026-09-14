@@ -41,21 +41,23 @@ Compose default permits its session cookie over direct HTTP access, including a
 private Tailscale address. Set `BOBARR_COOKIE_SECURE=true` when serving Bobarr
 over HTTPS.
 
-One disk is unchanged. Keep `downloads`, `movies`, and `tv` under the `/media`
-mount. Hardlink organization still needs those three paths on one filesystem.
-
-To add a second disk, set `BOBARR_MEDIA_PATH_2` in `.env` to the host path,
-create `downloads`, `movies`, and `tv` on that path, then start with the overlay:
+Media folders are `BOBARR_MEDIA_PATHS` in `.env`. One folder is `/media`. Extra
+folders are `/media-2`, `/media-3`, and so on. Hardlink organization still needs
+the three children of each folder on one filesystem.
 
 ```sh
-mkdir -p /Volumes/nvme_b/downloads /Volumes/nvme_b/movies /Volumes/nvme_b/tv
-docker compose -f compose.yml -f compose.extra-media.yml up
+# .env
+BOBARR_MEDIA_PATHS=/Volumes/nvme_a,/Volumes/nvme_b
 ```
 
-In Settings, add a volume with `/media-b/downloads`, `/media-b/movies`, and
-`/media-b/tv`. Hardlink is per volume. Only the three paths in that triple must
-share a device. Transmission must see every downloads path at the same
-container path. Do not mount movies or tv into Transmission.
+```sh
+bun run stack up --build
+```
+
+`bun run stack` creates `downloads`, `movies`, and `tv` on each host path, mounts
+them, and adds the extra disks in Settings. `./restart.sh` uses the same command.
+A single disk can still use `docker compose up --build` with `BOBARR_MEDIA_PATH`
+or a one-item `BOBARR_MEDIA_PATHS` list.
 
 ## Development
 
@@ -93,7 +95,7 @@ To route only Transmission through a VPN, configure the VPN variables and apply
 the Gluetun overlay:
 
 ```sh
-docker compose -f compose.yml -f compose.gluetun.yml up --build
+bun run stack -f compose.gluetun.yml up --build
 ```
 
 The overlay joins Transmission to Gluetun's network namespace and makes Bobarr
