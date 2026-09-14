@@ -147,7 +147,7 @@ export function transferringPaths(
   return transfers.flatMap((transfer) => transfer.paths);
 }
 
-const mutations = new WeakMap<BackendDatabase, Set<string>>();
+const mutations = new WeakMap<BackendDatabase, Set<ReadonlySet<string>>>();
 const storageMutations = new WeakSet<BackendDatabase>();
 
 export function isMediaMutating(
@@ -156,7 +156,9 @@ export function isMediaMutating(
 ): boolean {
   return (
     storageMutations.has(database) ||
-    mediaIds.some((id) => mutations.get(database)?.has(id))
+    [...(mutations.get(database) ?? [])].some((reserved) =>
+      mediaIds.some((id) => reserved.has(id)),
+    )
   );
 }
 
@@ -175,13 +177,15 @@ export async function withMediaMutation<T>(
   ) {
     throw volumeConflict();
   }
-  const reserved = mutations.get(database) ?? new Set<string>();
-  mutations.set(database, reserved);
-  for (const id of mediaIds) reserved.add(id);
+  const operations = mutations.get(database) ?? new Set<ReadonlySet<string>>();
+  const reserved = new Set(mediaIds);
+  mutations.set(database, operations);
+  operations.add(reserved);
   try {
     return await operation();
   } finally {
-    for (const id of mediaIds) reserved.delete(id);
+    operations.delete(reserved);
+    if (operations.size === 0) mutations.delete(database);
   }
 }
 
