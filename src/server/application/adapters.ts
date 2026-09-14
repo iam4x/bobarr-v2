@@ -237,16 +237,19 @@ export function createFilesystemLibraryOrganizer(
                 extension,
               })
             : episodeDestination(request.target, file, extension);
-        const result = await organizeFile({
-          sourceRoot: request.downloadDirectory,
-          libraryRoot: destinationRoot,
-          sourcePath: file.name,
-          relativeDestination,
-          mode,
-          collision: options.collision,
-          fallbackToCopy:
-            options.fallbackToCopy || destinationVolume.id !== volume.id,
-        });
+        const result = await organizeFile(
+          {
+            sourceRoot: request.downloadDirectory,
+            libraryRoot: destinationRoot,
+            sourcePath: file.name,
+            relativeDestination,
+            mode,
+            collision: options.collision,
+            fallbackToCopy:
+              options.fallbackToCopy || destinationVolume.id !== volume.id,
+          },
+          { signal },
+        );
         organized.push({
           source: result.source,
           destination: result.destination,

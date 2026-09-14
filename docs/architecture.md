@@ -29,7 +29,10 @@ The code is split into shared contracts, server modules, and the web app:
 
 ## Persistence and consistency
 
-SQLite runs with foreign keys, WAL, and a busy timeout. Domain IDs are UUIDs;
+SQLite runs with foreign keys, WAL, `synchronous=FULL`, `fullfsync=ON`, and a busy timeout.
+The [durable WAL setting](https://sqlite.org/pragma.html#pragma_synchronous)
+prevents an acknowledged recovery-journal commit from being lost after source cleanup.
+Domain IDs are UUIDs;
 Transmission's numeric torrent IDs never cross the public API. Long-running or
 external side effects do not happen inside database transactions.
 
@@ -71,10 +74,16 @@ Settings queues `library.organize.v1` on a dedicated worker. It balances bytes
 under the configured roots, including data that cannot move, and respects free
 space on each destination filesystem. Shared torrent payloads join dependent
 seasons into one transfer. The `volume_transfers` journal records staged copies,
-checksums, published destinations, and the database commit before source cleanup.
-Transmission uses the verified destination payload before the old data is
-removed. Interrupted transfers resume from their journal. Downloads and scans
-for unrelated media continue while the transfer runs.
+checksums, published destinations, retained originals, and the database commit.
+`verified-files.ts` owns copying and source removal for both volume transfers and
+move-mode imports. Copies use open file handles and independent SHA-256 readback.
+Destination data and directories are synced before source cleanup. Each cleanup
+compares current source and destination contents again, captures the original
+in a private directory, and verifies the captured file before removing it.
+Changed or conflicting files remain available for recovery.
+Transmission stays paused through copying, relocation, and cleanup. It resumes
+only after the old data is removed. Interrupted transfers resume from their
+journal. Downloads and scans for unrelated media continue while the transfer runs.
 
 Library scans import only uniquely identified titles. Ambiguous folders become
 durable `library_scan_reviews` records containing the scanned files and a

@@ -1,6 +1,7 @@
+import type { VerifiedFileHooks } from "./verified-files";
+import type { Stats } from "node:fs";
+
 import {
-  constants,
-  copyFile,
   link,
   lstat,
   mkdir,
@@ -13,6 +14,12 @@ import {
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import { isPathContained, resolveContainedPath } from "./paths";
+import {
+  assertMatchingContents,
+  copyVerifiedFile,
+  removeVerifiedSource,
+  syncFileAndParents,
+} from "./verified-files";
 
 export type OrganizationMode = "hardlink" | "symlink" | "copy" | "move";
 export type CollisionPolicy = "error" | "skip" | "replace";
@@ -35,6 +42,11 @@ export interface OrganizeFileResult {
   created: boolean;
 }
 
+interface OrganizationOptions {
+  signal?: AbortSignal;
+  hooks?: VerifiedFileHooks;
+}
+
 export class UnsafeLibraryPathError extends Error {
   constructor(message: string) {
     super(message);
@@ -44,6 +56,7 @@ export class UnsafeLibraryPathError extends Error {
 
 export async function organizeFile(
   request: OrganizeFileRequest,
+  options: OrganizationOptions = {},
 ): Promise<OrganizeFileResult> {
   const sourceRoot = await realpath(request.sourceRoot);
   await mkdir(request.libraryRoot, { recursive: true });
@@ -86,21 +99,12 @@ export async function organizeFile(
   const parent = dirname(destination);
   await ensureContainedDirectory(libraryRoot, parent);
 
+  if (request.mode === "move") {
+    return organizeMove(sourceRoot, source, destination, request, options);
+  }
+
   const destinationInfo = await lstatOrNull(destination);
   if (!sourceInfo) {
-    if (
-      request.mode === "move" &&
-      destinationInfo?.isFile() &&
-      !destinationInfo.isSymbolicLink()
-    ) {
-      return {
-        source,
-        destination,
-        requestedMode: request.mode,
-        actualMode: request.mode,
-        created: false,
-      };
-    }
     throw new Error(`Source file does not exist: ${source}`);
   }
   if (destinationInfo) {
@@ -108,9 +112,9 @@ export async function organizeFile(
       source,
       destination,
       request,
+      options,
     );
     if (existingMode) {
-      if (request.mode === "move") await unlink(source);
       return {
         source,
         destination,
@@ -129,7 +133,7 @@ export async function organizeFile(
       };
     }
     if (request.collision === "replace") {
-      return replaceOrganizedFile(source, destination, request);
+      return replaceOrganizedFile(source, destination, request, options);
     }
     throw new Error(`Library destination already exists: ${destination}`);
   }
@@ -140,28 +144,14 @@ export async function organizeFile(
       await link(source, destination);
     } catch (error) {
       if (!request.fallbackToCopy || !isCrossDeviceError(error)) throw error;
-      await publishCopy(source, destination);
+      await publishCopy(source, destination, options);
       actualMode = "copy";
     }
   } else if (request.mode === "symlink") {
     const relativeTarget = relative(parent, source) || source;
     await symlink(relativeTarget, destination, "file");
-  } else if (request.mode === "copy") {
-    await publishCopy(source, destination);
   } else {
-    try {
-      await link(source, destination);
-      await unlink(source);
-    } catch (error) {
-      if (!isCrossDeviceError(error)) throw error;
-      await publishCopy(source, destination);
-      try {
-        await unlink(source);
-      } catch (unlinkError) {
-        await unlink(destination).catch(() => undefined);
-        throw unlinkError;
-      }
-    }
+    await publishCopy(source, destination, options);
   }
 
   return {
@@ -173,40 +163,144 @@ export async function organizeFile(
   };
 }
 
+async function organizeMove(
+  sourceRoot: string,
+  source: string,
+  destination: string,
+  request: OrganizeFileRequest,
+  options: OrganizationOptions,
+): Promise<OrganizeFileResult> {
+  if (source === destination)
+    throw new UnsafeLibraryPathError(
+      "Source and destination must be separate entries",
+    );
+  const retirementId = new Bun.CryptoHasher("sha256")
+    .update(JSON.stringify([relative(sourceRoot, source), destination]))
+    .digest("hex");
+  const retirementPath = resolve(
+    dirname(source),
+    ".bobarr-import-retired",
+    `${retirementId}.file`,
+  );
+  const [sourceInfo, retainedInfo, destinationInfo] = await Promise.all([
+    lstatOrNull(source),
+    lstatOrNull(retirementPath),
+    lstatOrNull(destination),
+  ]);
+  let created = false;
+  if (retainedInfo) {
+    await ensureContainedDirectory(sourceRoot, dirname(retirementPath));
+    if (sourceInfo)
+      throw new Error(
+        `A new source appeared during the move; captured data is retained at ${retirementPath}`,
+      );
+    if (!destinationInfo?.isFile() || destinationInfo.isSymbolicLink())
+      throw new Error(
+        `The move destination is unavailable; original data is retained at ${retirementPath}`,
+      );
+    const checksum = await assertMatchingContents({
+      source: retirementPath,
+      destination,
+      ...options,
+    });
+    await removeVerifiedSource({
+      kind: "file",
+      source,
+      retirementPath,
+      destination,
+      checksum,
+      expectedSource: retainedInfo,
+      ...options,
+    });
+  } else if (!sourceInfo) {
+    if (!destinationInfo?.isFile() || destinationInfo.isSymbolicLink())
+      throw new Error(`Source file does not exist: ${source}`);
+  } else {
+    let checksum: string;
+    const matching = destinationInfo?.isFile()
+      ? await matchingChecksum(source, destination, options)
+      : null;
+    if (
+      destinationInfo &&
+      matching &&
+      (sourceInfo.dev !== destinationInfo.dev ||
+        sourceInfo.ino !== destinationInfo.ino)
+    ) {
+      checksum = matching;
+    } else {
+      if (destinationInfo && matching === null) {
+        if (request.collision === "skip")
+          return {
+            source,
+            destination,
+            requestedMode: "move",
+            actualMode: "move",
+            created: false,
+          };
+        if (request.collision !== "replace")
+          throw new Error(`Library destination already exists: ${destination}`);
+      }
+      checksum = await publishCopy(
+        source,
+        destination,
+        options,
+        destinationInfo ? "replace" : "create",
+      );
+      created = true;
+    }
+    await removeVerifiedSource({
+      kind: "file",
+      source,
+      retirementPath,
+      destination,
+      checksum,
+      expectedSource: sourceInfo,
+      ...options,
+    });
+  }
+  if (await lstatOrNull(source))
+    throw new Error(
+      `A new file appeared at the original source and was preserved: ${source}`,
+    );
+  return {
+    source,
+    destination,
+    requestedMode: "move",
+    actualMode: "move",
+    created,
+  };
+}
+
 async function replaceOrganizedFile(
   source: string,
   destination: string,
   request: OrganizeFileRequest,
+  options: OrganizationOptions,
 ): Promise<OrganizeFileResult> {
   const temporary = `${destination}.bobarr-${crypto.randomUUID()}.tmp`;
   let actualMode = request.mode;
   try {
-    if (request.mode === "hardlink" || request.mode === "move") {
+    if (request.mode === "hardlink") {
       try {
         await link(source, temporary);
       } catch (error) {
-        if (
-          request.mode === "hardlink" &&
-          (!request.fallbackToCopy || !isCrossDeviceError(error))
-        ) {
+        if (!request.fallbackToCopy || !isCrossDeviceError(error)) {
           throw error;
         }
-        if (!isCrossDeviceError(error)) throw error;
-        await copyFile(source, temporary, constants.COPYFILE_EXCL);
-        if (request.mode === "hardlink") actualMode = "copy";
+        await copyVerifiedFile({ source, destination: temporary, ...options });
+        actualMode = "copy";
       }
     } else if (request.mode === "symlink") {
       const relativeTarget = relative(dirname(destination), source) || source;
       await symlink(relativeTarget, temporary, "file");
     } else {
-      await copyFile(source, temporary, constants.COPYFILE_EXCL);
+      await copyVerifiedFile({ source, destination: temporary, ...options });
     }
 
     // Renaming a fully-published sibling over the old regular file or symlink
     // makes replacement atomic for readers and leaves the old file untouched
     // when publication fails.
     await rename(temporary, destination);
-    if (request.mode === "move") await unlink(source);
   } finally {
     await unlink(temporary).catch(() => undefined);
   }
@@ -270,20 +364,33 @@ async function ensureContainedDirectory(
   }
 }
 
-async function publishCopy(source: string, destination: string): Promise<void> {
+async function publishCopy(
+  source: string,
+  destination: string,
+  options: OrganizationOptions,
+  publication: "create" | "replace" = "create",
+): Promise<string> {
   const temporary = `${destination}.bobarr-${crypto.randomUUID()}.tmp`;
-  try {
-    await copyFile(source, temporary, constants.COPYFILE_EXCL);
-    await link(temporary, destination);
-  } finally {
-    await unlink(temporary).catch(() => undefined);
+  const checksum = await copyVerifiedFile({
+    source,
+    destination: temporary,
+    ...options,
+  });
+  if (publication === "replace") await rename(temporary, destination);
+  else await link(temporary, destination);
+  await syncFileAndParents(destination, options.hooks);
+  if (publication === "create") {
+    await unlink(temporary);
+    await syncFileAndParents(destination, options.hooks);
   }
+  return checksum;
 }
 
 async function existingOrganizationMode(
   source: string,
   destination: string,
   request: OrganizeFileRequest,
+  options: OrganizationOptions,
 ): Promise<OrganizationMode | null> {
   const sourceInfo = await lstat(source);
   const destinationInfo = await lstat(destination);
@@ -301,19 +408,20 @@ async function existingOrganizationMode(
   if (
     !destinationInfo.isFile() ||
     (request.mode !== "copy" &&
-      request.mode !== "move" &&
       !(request.mode === "hardlink" && request.fallbackToCopy))
   ) {
     return null;
   }
-  if (!(await filesHaveSameContents(source, destination))) return null;
+  if ((await matchingChecksum(source, destination, options)) === null)
+    return null;
   return request.mode === "hardlink" ? "copy" : request.mode;
 }
 
-async function filesHaveSameContents(
+async function matchingChecksum(
   source: string,
   destination: string,
-): Promise<boolean> {
+  options: OrganizationOptions,
+): Promise<string | null> {
   const [sourceInfo, destinationInfo] = await Promise.all([
     lstat(source),
     lstat(destination),
@@ -323,24 +431,14 @@ async function filesHaveSameContents(
     !destinationInfo.isFile() ||
     sourceInfo.size !== destinationInfo.size
   ) {
-    return false;
+    return null;
   }
-  const [sourceHash, destinationHash] = await Promise.all([
-    hashFile(source),
-    hashFile(destination),
-  ]);
-  return sourceHash === destinationHash;
+  return assertMatchingContents({ source, destination, ...options }).catch(
+    () => null,
+  );
 }
 
-async function hashFile(path: string): Promise<string> {
-  const hasher = new Bun.CryptoHasher("sha256");
-  for await (const chunk of Bun.file(path).stream()) hasher.update(chunk);
-  return hasher.digest("hex");
-}
-
-async function lstatOrNull(
-  path: string,
-): Promise<Awaited<ReturnType<typeof lstat>> | null> {
+async function lstatOrNull(path: string): Promise<Stats | null> {
   try {
     return await lstat(path);
   } catch (error) {
