@@ -30,7 +30,8 @@ export async function openBackendDatabase(
   sqlite.exec("PRAGMA busy_timeout = 5000;");
   if (path !== ":memory:") {
     sqlite.exec("PRAGMA journal_mode = WAL;");
-    sqlite.exec("PRAGMA synchronous = NORMAL;");
+    sqlite.exec("PRAGMA synchronous = FULL;");
+    sqlite.exec("PRAGMA fullfsync = ON;");
   }
 
   try {
