@@ -23,12 +23,16 @@ if (!controlToken || controlToken.length < 24) {
   );
 }
 
-await rm(root, { recursive: true, force: true });
-await Promise.all(
-  ["config", "media/downloads", "media/movies", "media/tv"].map((path) =>
-    mkdir(join(root, path), { recursive: true }),
-  ),
-);
+async function resetData(): Promise<void> {
+  await rm(root, { recursive: true, force: true });
+  await Promise.all(
+    ["config", "media/downloads", "media/movies", "media/tv"].map((path) =>
+      mkdir(join(root, path), { recursive: true }),
+    ),
+  );
+}
+
+await resetData();
 
 type AppChild = Bun.Subprocess<"ignore", "inherit", "inherit">;
 type SupervisorState =
@@ -118,11 +122,12 @@ async function stopApp(expected: AppChild): Promise<void> {
   }
 }
 
-async function restartApp(): Promise<SupervisorSnapshot> {
+async function restartApp(reset: boolean): Promise<SupervisorSnapshot> {
   state = "restarting";
   const previous = child;
   if (previous) await stopApp(previous);
   if (stopping) throw new Error("Bobarr supervisor is stopping");
+  if (reset) await resetData();
   const next = spawnApp();
   try {
     await waitForAppReady(next);
@@ -155,7 +160,7 @@ const controlServer = Bun.serve({
         status: state === "exited" ? 503 : 200,
       });
     }
-    if (url.pathname !== "/__control/restart") {
+    if (!["/__control/restart", "/__control/reset"].includes(url.pathname)) {
       return new Response("Not found", { status: 404 });
     }
     if (request.method !== "POST") {
@@ -168,7 +173,9 @@ const controlServer = Bun.serve({
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
     try {
-      restartPromise ??= restartApp().finally(() => {
+      restartPromise ??= restartApp(
+        url.pathname === "/__control/reset",
+      ).finally(() => {
         restartPromise = null;
       });
       return Response.json(await restartPromise);

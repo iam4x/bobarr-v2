@@ -145,8 +145,10 @@ export async function controlFakeServices(
 
 export async function restartBobarr(
   request: APIRequestContext,
+  options: { resetData?: boolean } = {},
 ): Promise<AppSupervisorState> {
-  const response = await request.post(`${appControlUrl}/__control/restart`, {
+  const action = options.resetData ? "reset" : "restart";
+  const response = await request.post(`${appControlUrl}/__control/${action}`, {
     headers: { "x-bobarr-e2e-control-token": appControlToken },
   });
   const body = (await response.json()) as AppSupervisorState & {
