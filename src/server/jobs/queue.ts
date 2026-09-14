@@ -75,6 +75,13 @@ export interface JobQueue {
     now?: number,
   ): Promise<void>;
   complete(id: string, leaseToken: string, now?: number): Promise<void>;
+  defer(
+    id: string,
+    leaseToken: string,
+    runAt: number,
+    message: string,
+    now?: number,
+  ): Promise<void>;
   fail(
     id: string,
     leaseToken: string,
@@ -403,6 +410,22 @@ export function createSqliteJobQueue(options: SqliteJobQueueOptions): JobQueue {
         .run(timestamp, id, leaseToken);
       if (result.changes !== 1) throw new JobLeaseLostError(id);
       insertLog.run(id, timestamp, "info", "job.completed", "Completed");
+    },
+
+    async defer(id, leaseToken, runAt, message, timestamp = now()) {
+      if (!Number.isSafeInteger(runAt) || runAt < timestamp) {
+        throw new TypeError("Deferred runAt must not precede now");
+      }
+      const result = database
+        .query(`
+        UPDATE jobs SET state = 'queued', run_at = ?1,
+          attempt = max(0, attempt - 1), lease_owner = NULL,
+          lease_token = NULL, lease_expires_at = NULL, updated_at = ?2
+        WHERE id = ?3 AND state = 'running' AND lease_token = ?4
+      `)
+        .run(runAt, timestamp, id, leaseToken);
+      if (result.changes !== 1) throw new JobLeaseLostError(id);
+      insertLog.run(id, timestamp, "info", "job.deferred", redactText(message));
     },
 
     async fail(id, leaseToken, error, failOptions = {}) {

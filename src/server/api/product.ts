@@ -24,6 +24,7 @@ import {
   DownloadsQuerySchema,
   DownloadsListSchema,
   IntegrationStatusSchema,
+  JobSchema,
   LibraryItemSchema,
   OpaqueReleaseIdSchema,
   PaginationQuerySchema,
@@ -45,12 +46,18 @@ import {
 } from "../application";
 import { requireAdmin, requireOwner } from "../auth/policy";
 import { AppError, notFound } from "../core";
+import {
+  isDownloadTransferring,
+  withMediaMutation,
+} from "../db/volume-transfers";
 import { aggregateChildAcquisitionState } from "../domain/media-state";
+import { durableJobToContract } from "../jobs";
 import {
   deleteRecordedFile,
   resolveRecordedFileForRead,
   UnsafeLibraryDeletionError,
 } from "../library";
+import { ORGANIZE_VOLUMES_JOB } from "../library/volume-organizer";
 import {
   libraryPaths,
   libraryRoots,
@@ -1282,76 +1289,82 @@ export function registerProductRoutes(
       item.createdByUserId,
       "You can only change titles you added",
     );
-    const deleteLibraryRecord =
-      input.deleteLibraryRecord ||
-      (input.deleteLibraryFiles &&
-        input.deleteTorrent &&
-        input.deleteDownloadData);
-    if (
-      deleteLibraryRecord &&
-      !input.deleteTorrent &&
-      mediaTree(item, dependencies).some(
-        (member) =>
-          dependencies.repositories.downloads.list({
-            limit: 1,
-            offset: 0,
-            mediaId: member.id,
-          }).downloads.length > 0,
-      )
-    ) {
-      throw conflictError(
-        "Remove linked torrents before deleting this library record",
-      );
-    }
-    const tree = await stopMediaAutomation(item, dependencies);
-    const mediaIds = tree.map((member) => member.id);
-    if (input.deleteLibraryFiles) {
-      for (const mediaId of mediaIds) {
-        await deleteRecordedLibraryFiles(mediaId, dependencies);
-      }
-      for (const mediaId of mediaIds) {
-        const remaining = dependencies.repositories.media.get(mediaId);
-        if (!remaining) continue;
-        dependencies.repositories.media.updateState(
-          remaining.id,
-          hasRecordedFiles(remaining, dependencies)
-            ? "available"
-            : "unmonitored",
-        );
-      }
-    }
-    if (input.deleteTorrent)
-      for (const mediaId of mediaIds) {
-        await removeMediaTorrents(
-          mediaId,
-          input.deleteDownloadData,
+    return withMediaMutation(
+      dependencies.database,
+      mediaTree(item, dependencies).map((member) => member.id),
+      async () => {
+        const deleteLibraryRecord =
+          input.deleteLibraryRecord ||
+          (input.deleteLibraryFiles &&
+            input.deleteTorrent &&
+            input.deleteDownloadData);
+        if (
+          deleteLibraryRecord &&
+          !input.deleteTorrent &&
+          mediaTree(item, dependencies).some(
+            (member) =>
+              dependencies.repositories.downloads.list({
+                limit: 1,
+                offset: 0,
+                mediaId: member.id,
+              }).downloads.length > 0,
+          )
+        ) {
+          throw conflictError(
+            "Remove linked torrents before deleting this library record",
+          );
+        }
+        const tree = await stopMediaAutomation(item, dependencies);
+        const mediaIds = tree.map((member) => member.id);
+        if (input.deleteLibraryFiles) {
+          for (const mediaId of mediaIds) {
+            await deleteRecordedLibraryFiles(mediaId, dependencies);
+          }
+          for (const mediaId of mediaIds) {
+            const remaining = dependencies.repositories.media.get(mediaId);
+            if (!remaining) continue;
+            dependencies.repositories.media.updateState(
+              remaining.id,
+              hasRecordedFiles(remaining, dependencies)
+                ? "available"
+                : "unmonitored",
+            );
+          }
+        }
+        if (input.deleteTorrent)
+          for (const mediaId of mediaIds) {
+            await removeMediaTorrents(
+              mediaId,
+              input.deleteDownloadData,
+              dependencies,
+            );
+          }
+        if (deleteLibraryRecord) {
+          dependencies.repositories.calendar.deleteForLibraryItems(mediaIds);
+          if (!dependencies.repositories.media.delete(item.id)) {
+            throw internalError("Library item could not be deleted");
+          }
+          recomputeAncestorAcquisitionStates(item.parentId, dependencies);
+        }
+        recordActivity(
           dependencies,
+          deleteLibraryRecord ? "library.removed" : "library.unmonitored",
+          "warning",
+          deleteLibraryRecord
+            ? `Removed ${item.title} from the library`
+            : `Stopped monitoring ${item.title}`,
+          id,
         );
-      }
-    if (deleteLibraryRecord) {
-      dependencies.repositories.calendar.deleteForLibraryItems(mediaIds);
-      if (!dependencies.repositories.media.delete(item.id)) {
-        throw internalError("Library item could not be deleted");
-      }
-      recomputeAncestorAcquisitionStates(item.parentId, dependencies);
-    }
-    recordActivity(
-      dependencies,
-      deleteLibraryRecord ? "library.removed" : "library.unmonitored",
-      "warning",
-      deleteLibraryRecord
-        ? `Removed ${item.title} from the library`
-        : `Stopped monitoring ${item.title}`,
-      id,
+        dependencies.events?.publish("library.changed", { id });
+        return context.json({
+          deleted: deleteLibraryRecord,
+          monitoringStopped: true,
+          libraryFilesDeleted: input.deleteLibraryFiles,
+          torrentDeleted: input.deleteTorrent,
+          downloadDataDeleted: input.deleteDownloadData,
+        });
+      },
     );
-    dependencies.events?.publish("library.changed", { id });
-    return context.json({
-      deleted: deleteLibraryRecord,
-      monitoringStopped: true,
-      libraryFilesDeleted: input.deleteLibraryFiles,
-      torrentDeleted: input.deleteTorrent,
-      downloadDataDeleted: input.deleteDownloadData,
-    });
   });
 
   app.get("/api/v1/releases", async (context) => {
@@ -1554,19 +1567,28 @@ export function registerProductRoutes(
     );
     if (!download.externalId)
       throw conflictError("Download has not been submitted to Transmission");
-    const owned = await requireOwnedTorrent(
-      download,
-      dependencies,
-      context.req.raw.signal,
+    if (isDownloadTransferring(dependencies.database, id)) {
+      throw conflictError("This download is being moved between volumes");
+    }
+    return withMediaMutation(
+      dependencies.database,
+      download.mediaId ? [download.mediaId] : [],
+      async () => {
+        const owned = await requireOwnedTorrent(
+          download,
+          dependencies,
+          context.req.raw.signal,
+        );
+        await integrationCall("transmission", () =>
+          owned.transmission.selectFiles(
+            owned.torrent.hash,
+            input,
+            context.req.raw.signal,
+          ),
+        );
+        return context.json({ updated: true });
+      },
     );
-    await integrationCall("transmission", () =>
-      owned.transmission.selectFiles(
-        owned.torrent.hash,
-        input,
-        context.req.raw.signal,
-      ),
-    );
-    return context.json({ updated: true });
   });
   app.delete("/api/v1/downloads/:id", async (context) => {
     const id = parse(DownloadParamsSchema, context.req.param()).id;
@@ -1581,55 +1603,64 @@ export function registerProductRoutes(
       download.requestedByUserId,
       "You can only change downloads you started",
     );
-    const owned = download.externalId
-      ? await findOwnedTorrentForRemoval(
-          download,
-          dependencies,
-          context.req.raw.signal,
-        )
-      : null;
-    if (download.mediaId) {
-      const media = dependencies.repositories.media.get(download.mediaId);
-      if (media) await stopMediaAutomation(media, dependencies);
+    if (isDownloadTransferring(dependencies.database, id)) {
+      throw conflictError("This download is being moved between volumes");
     }
-    await cancelDownloadJobs([download.id], dependencies);
-    if (owned) {
-      await integrationCall("transmission", () =>
-        owned.transmission.remove(
-          owned.torrent.hash,
-          input.deleteData,
-          context.req.raw.signal,
-        ),
-      );
-    }
-    const durableDownloads = downloadRepositoryFromDatabase(
+    return withMediaMutation(
       dependencies.database,
+      download.mediaId ? [download.mediaId] : [],
+      async () => {
+        const owned = download.externalId
+          ? await findOwnedTorrentForRemoval(
+              download,
+              dependencies,
+              context.req.raw.signal,
+            )
+          : null;
+        if (download.mediaId) {
+          const media = dependencies.repositories.media.get(download.mediaId);
+          if (media) await stopMediaAutomation(media, dependencies);
+        }
+        await cancelDownloadJobs([download.id], dependencies);
+        if (owned) {
+          await integrationCall("transmission", () =>
+            owned.transmission.remove(
+              owned.torrent.hash,
+              input.deleteData,
+              context.req.raw.signal,
+            ),
+          );
+        }
+        const durableDownloads = downloadRepositoryFromDatabase(
+          dependencies.database,
+        );
+        const durable = await durableDownloads.findById(id);
+        if (durable) {
+          await durableDownloads.transition(id, [durable.state], {
+            state: "removed",
+            error: "Removed by administrator",
+            updatedAt: Date.now(),
+          });
+        } else {
+          dependencies.repositories.downloads.update(id, {
+            state: "failed",
+            error: "Removed by administrator",
+          });
+        }
+        recordActivity(
+          dependencies,
+          "download.removed",
+          "warning",
+          `${download.title} was removed`,
+          id,
+        );
+        dependencies.events?.publish("download.changed", { id });
+        return context.json({
+          removed: true,
+          dataDeleted: owned !== null && input.deleteData,
+        });
+      },
     );
-    const durable = await durableDownloads.findById(id);
-    if (durable) {
-      await durableDownloads.transition(id, [durable.state], {
-        state: "removed",
-        error: "Removed by administrator",
-        updatedAt: Date.now(),
-      });
-    } else {
-      dependencies.repositories.downloads.update(id, {
-        state: "failed",
-        error: "Removed by administrator",
-      });
-    }
-    recordActivity(
-      dependencies,
-      "download.removed",
-      "warning",
-      `${download.title} was removed`,
-      id,
-    );
-    dependencies.events?.publish("download.changed", { id });
-    return context.json({
-      removed: true,
-      dataDeleted: owned !== null && input.deleteData,
-    });
   });
 
   app.get("/api/v1/events", (context) => {
@@ -1694,6 +1725,25 @@ export function registerProductRoutes(
     );
     const input = parse(StorageSettingsSchema, await context.req.json());
     return context.json(await validateStorage(input));
+  });
+
+  app.post("/api/v1/settings/storage/organize", async (context) => {
+    requireAdmin(context.get("auth").actor);
+    const storage =
+      dependencies.repositories.settings.ensureDefaults().settings.storage;
+    if (storage.volumes.length < 2) {
+      throw badRequest("Add and save at least two volumes before organizing");
+    }
+    const job = await requireQueue(dependencies).enqueue({
+      type: ORGANIZE_VOLUMES_JOB,
+      payload: { version: 1 },
+      dedupeKey: "library-volumes",
+      priority: -10,
+      maxAttempts: 10,
+      runAt: Date.now() + 1_000,
+    });
+    dependencies.events?.publish("job.changed", { id: job.id });
+    return context.json(durableJobToContract(job), 202);
   });
 }
 
@@ -2117,6 +2167,16 @@ function registerProductDocumentation(app: OpenAPIHono<ApiEnvironment>): void {
     },
     responses: {
       200: json(StorageValidationResultSchema, "Storage validation result"),
+      ...productErrors,
+    },
+  });
+  register({
+    method: "post",
+    path: "/api/v1/settings/storage/organize",
+    tags: ["settings"],
+    security: secured,
+    responses: {
+      202: json(JobSchema, "Queued volume organization"),
       ...productErrors,
     },
   });
@@ -3367,37 +3427,49 @@ async function controlDownload(
     download.requestedByUserId,
     "You can only change downloads you started",
   );
-  if (!download.externalId)
-    throw conflictError("Download has not been submitted to Transmission");
-  const owned = await requireOwnedTorrent(
-    download,
-    dependencies,
-    context.req.raw.signal,
-  );
-  await integrationCall("transmission", () =>
-    action === "pause"
-      ? owned.transmission.pause(owned.torrent.hash, context.req.raw.signal)
-      : owned.transmission.start(owned.torrent.hash, context.req.raw.signal),
-  );
-  const durableDownloads = downloadRepositoryFromDatabase(
-    dependencies.database,
-  );
-  const durable = await durableDownloads.findById(id);
-  if (durable) {
-    await durableDownloads.transition(id, [durable.state], {
-      state: action === "pause" ? "paused" : "downloading",
-      error: null,
-      updatedAt: Date.now(),
-      lastEngineSeenAt: Date.now(),
-    });
-  } else {
-    dependencies.repositories.downloads.update(id, {
-      state: action === "pause" ? "paused" : "downloading",
-    });
+  if (isDownloadTransferring(dependencies.database, id)) {
+    throw conflictError("This download is being moved between volumes");
   }
-  const updated = dependencies.repositories.downloads.get(id);
-  dependencies.events?.publish("download.changed", { id });
-  return context.json(updated ?? download);
+  return withMediaMutation(
+    dependencies.database,
+    download.mediaId ? [download.mediaId] : [],
+    async () => {
+      if (!download.externalId)
+        throw conflictError("Download has not been submitted to Transmission");
+      const owned = await requireOwnedTorrent(
+        download,
+        dependencies,
+        context.req.raw.signal,
+      );
+      await integrationCall("transmission", () =>
+        action === "pause"
+          ? owned.transmission.pause(owned.torrent.hash, context.req.raw.signal)
+          : owned.transmission.start(
+              owned.torrent.hash,
+              context.req.raw.signal,
+            ),
+      );
+      const durableDownloads = downloadRepositoryFromDatabase(
+        dependencies.database,
+      );
+      const durable = await durableDownloads.findById(id);
+      if (durable) {
+        await durableDownloads.transition(id, [durable.state], {
+          state: action === "pause" ? "paused" : "downloading",
+          error: null,
+          updatedAt: Date.now(),
+          lastEngineSeenAt: Date.now(),
+        });
+      } else {
+        dependencies.repositories.downloads.update(id, {
+          state: action === "pause" ? "paused" : "downloading",
+        });
+      }
+      const updated = dependencies.repositories.downloads.get(id);
+      dependencies.events?.publish("download.changed", { id });
+      return context.json(updated ?? download);
+    },
+  );
 }
 
 async function deleteRecordedLibraryFiles(
@@ -3540,54 +3612,63 @@ async function retireSupersededDownloads(
   dependencies: ApiDependencies,
 ): Promise<void> {
   if (downloadIds.length === 0) return;
-  await cancelDownloadJobs(downloadIds, dependencies);
-  const durableDownloads = downloadRepositoryFromDatabase(
+  return withMediaMutation(
     dependencies.database,
-  );
-  const prepared: Array<{
-    download: Download;
-    durable: DownloadRecord;
-    owned?: Awaited<ReturnType<typeof requireOwnedTorrent>>;
-  }> = [];
-  for (const id of downloadIds) {
-    const download = dependencies.repositories.downloads.get(id);
-    if (!download) continue;
-    const durable = await durableDownloads.findById(id);
-    if (!durable) {
-      throw conflictError("Download ownership record is unavailable");
-    }
-    prepared.push({
-      download,
-      durable,
-      ...(download.externalId
-        ? { owned: await requireOwnedTorrent(download, dependencies) }
-        : {}),
-    });
-  }
-  for (const entry of prepared) {
-    if (entry.owned) {
-      await integrationCall("transmission", () =>
-        entry.owned!.transmission.remove(entry.owned!.torrent.hash, true),
+    downloadIds.flatMap((id) => {
+      const mediaId = dependencies.repositories.downloads.get(id)?.mediaId;
+      return mediaId ? [mediaId] : [];
+    }),
+    async () => {
+      await cancelDownloadJobs(downloadIds, dependencies);
+      const durableDownloads = downloadRepositoryFromDatabase(
+        dependencies.database,
       );
-    }
-  }
-  for (const entry of prepared) {
-    const removed = await durableDownloads.transition(
-      entry.download.id,
-      [entry.durable.state],
-      {
-        state: "removed",
-        error: "Superseded by an explicit replacement",
-        updatedAt: Date.now(),
-      },
-    );
-    if (!removed) {
-      throw conflictError("Superseded download changed during replacement");
-    }
-    dependencies.events?.publish("download.changed", {
-      id: entry.download.id,
-    });
-  }
+      const prepared: Array<{
+        download: Download;
+        durable: DownloadRecord;
+        owned?: Awaited<ReturnType<typeof requireOwnedTorrent>>;
+      }> = [];
+      for (const id of downloadIds) {
+        const download = dependencies.repositories.downloads.get(id);
+        if (!download) continue;
+        const durable = await durableDownloads.findById(id);
+        if (!durable) {
+          throw conflictError("Download ownership record is unavailable");
+        }
+        prepared.push({
+          download,
+          durable,
+          ...(download.externalId
+            ? { owned: await requireOwnedTorrent(download, dependencies) }
+            : {}),
+        });
+      }
+      for (const entry of prepared) {
+        if (entry.owned) {
+          await integrationCall("transmission", () =>
+            entry.owned!.transmission.remove(entry.owned!.torrent.hash, true),
+          );
+        }
+      }
+      for (const entry of prepared) {
+        const removed = await durableDownloads.transition(
+          entry.download.id,
+          [entry.durable.state],
+          {
+            state: "removed",
+            error: "Superseded by an explicit replacement",
+            updatedAt: Date.now(),
+          },
+        );
+        if (!removed) {
+          throw conflictError("Superseded download changed during replacement");
+        }
+        dependencies.events?.publish("download.changed", {
+          id: entry.download.id,
+        });
+      }
+    },
+  );
 }
 
 async function requireOwnedTorrent(

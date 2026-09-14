@@ -24,6 +24,7 @@ import {
   rankReleases,
   type ReleaseTarget,
 } from "../domain/releases";
+import { JobDeferredError } from "../jobs";
 
 export const ADD_TORRENT_JOB = "acquisition.add-torrent";
 export const ORGANIZE_DOWNLOAD_JOB = "acquisition.organize-download";
@@ -33,8 +34,22 @@ const DEFAULT_DOWNLOAD_ROOT = "/downloads";
 const DEFAULT_MAX_METAINFO_BYTES = 10 * 1024 * 1024;
 const ORGANIZATION_ERROR_PREFIX = "Organization failed: ";
 
+export interface DownloadPlacementContext {
+  candidateId: string | null;
+  target: ReleaseTarget;
+  expectedBytes: number | null;
+}
+
 export interface AcquisitionServiceOptions {
-  placeDownloadDirectory?: (downloadId: string) => Promise<string>;
+  placeDownloadDirectory?: (
+    downloadId: string,
+    context: DownloadPlacementContext,
+  ) => Promise<string>;
+  withDownloadPlacement?: (
+    context: DownloadPlacementContext,
+    operation: () => Promise<DownloadRecord>,
+  ) => Promise<DownloadRecord>;
+  isDownloadTransferring?: (downloadId: string) => boolean;
   prepareDownloadDirectory?: (path: string) => Promise<void>;
   maxMetainfoBytes?: number;
   defaultPeerLimit?: number;
@@ -187,6 +202,7 @@ export function createAcquisitionService(
     source: CandidateSource;
     sourceCiphertext?: string;
     expectedInfoHash: string | null;
+    expectedBytes?: number;
     paused?: boolean;
     peerLimit?: number;
     requestedByUserId?: number;
@@ -203,33 +219,45 @@ export function createAcquisitionService(
         target: input.target,
         infoHash: input.expectedInfoHash,
       }));
-    const record: DownloadRecord = {
-      id,
+    const placement: DownloadPlacementContext = {
       candidateId: input.candidateId,
       target: input.target,
-      title: input.title,
-      state: "queued",
-      sourceCiphertext,
-      expectedInfoHash: input.expectedInfoHash,
-      engineInfoHash: null,
-      engineName: null,
-      engineLabel: `bobarr:${id}`,
-      downloadDirectory: validateDownloadDirectory(
-        await placeDownloadDirectory(id),
-      ),
-      progress: 0,
-      error: null,
-      pausedRequested: input.paused ?? false,
-      peerLimit,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      lastEngineSeenAt: null,
-      requestedByUserId: input.requestedByUserId,
+      expectedBytes: input.expectedBytes ?? null,
+    };
+    const persist = async (): Promise<DownloadRecord> => {
+      const record: DownloadRecord = {
+        id,
+        candidateId: input.candidateId,
+        target: input.target,
+        title: input.title,
+        state: "queued",
+        sourceCiphertext,
+        expectedInfoHash: input.expectedInfoHash,
+        engineInfoHash: null,
+        engineName: null,
+        engineLabel: `bobarr:${id}`,
+        downloadDirectory: validateDownloadDirectory(
+          await placeDownloadDirectory(id, placement),
+        ),
+        progress: 0,
+        totalBytes: input.expectedBytes ?? 0,
+        error: null,
+        pausedRequested: input.paused ?? false,
+        peerLimit,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        lastEngineSeenAt: null,
+        requestedByUserId: input.requestedByUserId,
+      };
+      await dependencies.downloadRepository.insert(record);
+      return record;
     };
 
     // Persistence deliberately completes before the durable job is enqueued.
     // Reconciliation can re-enqueue the record if the process exits here.
-    await dependencies.downloadRepository.insert(record);
+    const record = options.withDownloadPlacement
+      ? await options.withDownloadPlacement(placement, persist)
+      : await persist();
     await enqueueAddJob(record.id);
     return downloadView(record);
   }
@@ -275,6 +303,7 @@ export function createAcquisitionService(
       sourceCiphertext: candidate.sourceCiphertext,
       expectedInfoHash:
         protectedPayload.infoHash ?? sourceInfoHash(protectedPayload.source),
+      expectedBytes: candidate.sizeBytes,
       paused: addOptions.paused,
       peerLimit: addOptions.peerLimit,
       requestedByUserId: addOptions.requestedByUserId,
@@ -350,6 +379,11 @@ export function createAcquisitionService(
   ): Promise<void> {
     requireUuid(downloadId);
     signal?.throwIfAborted();
+    if (options.isDownloadTransferring?.(downloadId)) {
+      throw new JobDeferredError(
+        "This download is being moved between volumes",
+      );
+    }
     const timestamp = now();
     const record = await dependencies.downloadRepository.transition(
       downloadId,
@@ -443,6 +477,11 @@ export function createAcquisitionService(
     signal?: AbortSignal,
   ): Promise<void> {
     requireUuid(downloadId);
+    if (options.isDownloadTransferring?.(downloadId)) {
+      throw new JobDeferredError(
+        "This download is being moved between volumes",
+      );
+    }
     if (!dependencies.libraryOrganizer) {
       throw new Error("Library organization is not configured");
     }
@@ -470,6 +509,11 @@ export function createAcquisitionService(
         record.engineInfoHash,
         signal,
       );
+      if (options.isDownloadTransferring?.(downloadId)) {
+        throw new JobDeferredError(
+          "This download is being moved between volumes",
+        );
+      }
       if (!torrent) {
         throw new Error("Torrent is not complete");
       }
@@ -495,6 +539,18 @@ export function createAcquisitionService(
         { state: "organized", progress: 1, error: null, updatedAt: now() },
       );
     } catch (error) {
+      if (error instanceof JobDeferredError) {
+        await dependencies.downloadRepository.transition(
+          record.id,
+          ["organizing"],
+          {
+            state: "completed",
+            error: null,
+            updatedAt: now(),
+          },
+        );
+        throw error;
+      }
       await dependencies.downloadRepository.transition(
         record.id,
         ["organizing"],
@@ -530,6 +586,11 @@ export function createAcquisitionService(
     for (const record of records) {
       if (record.state === "removed") continue;
       const expectedLabel = `bobarr:${record.id}`;
+      if (options.isDownloadTransferring?.(record.id)) {
+        for (const torrent of byLabel.get(expectedLabel) ?? [])
+          matchedTorrents.add(torrent);
+        continue;
+      }
       const torrent = byLabel
         .get(expectedLabel)
         ?.find((candidate) => isOwnedTorrent(record, candidate));

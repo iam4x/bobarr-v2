@@ -2,10 +2,106 @@ import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 
 import { createSqliteJobQueue, durableJobToContract } from "./queue";
-import { createJobWorker } from "./worker";
+import { createJobWorker, JobDeferredError } from "./worker";
 import { JobSchema } from "../../contracts/jobs";
 
 describe("SQLite durable job queue", () => {
+  test("defers an import during a volume transfer without exhausting retries", async () => {
+    let timestamp = 1_000;
+    let transferring = true;
+    const queue = createSqliteJobQueue({
+      database: new Database(":memory:"),
+      now: () => timestamp,
+    });
+    const worker = createJobWorker({
+      queue,
+      now: () => timestamp,
+      handlers: {
+        import: async () => {
+          if (transferring) throw new JobDeferredError("Season is being moved");
+        },
+      },
+    });
+    try {
+      const job = await queue.enqueue({
+        type: "import",
+        payload: {},
+        maxAttempts: 1,
+      });
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        expect(await worker.runOnce()).toBe(true);
+        expect(await queue.get(job.id)).toMatchObject({
+          state: "queued",
+          attempt: 0,
+        });
+        expect(await worker.runOnce()).toBe(false);
+        timestamp += 5_000;
+      }
+      transferring = false;
+      expect(await worker.runOnce()).toBe(true);
+      expect(await queue.get(job.id)).toMatchObject({
+        state: "completed",
+        attempt: 1,
+      });
+    } finally {
+      queue.close();
+    }
+  });
+
+  test("a long volume job renews its lease while another worker runs", async () => {
+    const queue = createSqliteJobQueue({ database: new Database(":memory:") });
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const renewed = Promise.withResolvers<void>();
+    const heartbeat = queue.heartbeat.bind(queue);
+    let heartbeats = 0;
+    queue.heartbeat = async (...args) => {
+      await heartbeat(...args);
+      heartbeats += 1;
+      if (heartbeats >= 4) renewed.resolve();
+    };
+    const organizer = createJobWorker({
+      queue,
+      leaseMs: 90,
+      handlers: {
+        "library.organize.v1": async () => {
+          entered.resolve();
+          await release.promise;
+        },
+      },
+    });
+    const ordinary = createJobWorker({
+      queue,
+      handlers: { "maintenance.cleanup.v1": async () => {} },
+    });
+    const moving = await queue.enqueue({
+      type: "library.organize.v1",
+      payload: {},
+    });
+    const maintenance = await queue.enqueue({
+      type: "maintenance.cleanup.v1",
+      payload: {},
+    });
+    const running = organizer.runOnce();
+    try {
+      await entered.promise;
+      await renewed.promise;
+      expect(await queue.requeueExpired()).toBe(0);
+      expect(await ordinary.runOnce()).toBe(true);
+      expect(await queue.get(maintenance.id)).toMatchObject({
+        state: "completed",
+      });
+      expect(await queue.get(moving.id)).toMatchObject({
+        state: "running",
+        attempt: 1,
+      });
+    } finally {
+      release.resolve();
+      await running;
+      queue.close();
+    }
+  });
+
   test("deduplicates active jobs and recovers expired leases", async () => {
     let currentTime = 1_000;
     let id = 0;

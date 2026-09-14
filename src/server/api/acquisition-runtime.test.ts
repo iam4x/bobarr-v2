@@ -1,13 +1,237 @@
+import type { StorageVolume } from "../../contracts";
 import type { Clock } from "../core";
+import type { IntegrationResolver } from "./integration-resolver";
 
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, mkdir, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
+  createAcquisitionRuntime,
   scanTargetsFromJobPayload,
   updateMediaTreeState,
 } from "./acquisition-runtime";
 import { CreateLibraryItemRequestSchema } from "../../contracts";
+import { createEncryptionKey, parseBackendConfig } from "../config";
 import { createRepositories, openBackendDatabase } from "../db";
+import { saveVolumeTransfer } from "../db/volume-transfers";
+import { createEventHub } from "../events";
+import { createTmdbClient } from "../integrations/tmdb";
+import { createJobWorker, createSqliteJobQueue } from "../jobs";
+
+test("a scan imports unrelated movies while excluding an active transfer and staging tree", async () => {
+  let searches = 0;
+  const fixture = await createScanFixture(async () => {
+    searches += 1;
+    return tmdbSearchResponse({ id: 2002, title: "Other", year: 2025 });
+  });
+  try {
+    const activeFolder = join(fixture.volumeA.moviesPath, "Active (2024)");
+    const activeFile = join(activeFolder, "Active.mkv");
+    const otherFolder = join(fixture.volumeA.moviesPath, "Other (2025)");
+    const otherFile = join(otherFolder, "Other.mkv");
+    const stagingRoot = join(
+      fixture.volumeA.moviesPath,
+      ".bobarr-volume-organize",
+      "transfer",
+    );
+    await mkdir(activeFolder, { recursive: true });
+    await mkdir(otherFolder, { recursive: true });
+    await mkdir(stagingRoot, { recursive: true });
+    await Bun.write(activeFile, "active");
+    await Bun.write(otherFile, "other");
+    await Bun.write(join(stagingRoot, "staged.mkv"), "staged");
+    startVolumeTransfer(fixture, [activeFolder, activeFile, stagingRoot]);
+
+    const job = await runMovieScan(fixture, fixture.volumeA.moviesPath);
+
+    expect(job).toMatchObject({ state: "completed" });
+    expect(searches).toBe(1);
+    expect(fixture.repositories.libraryFiles.listPaths()).toEqual([
+      await realpath(otherFile),
+    ]);
+    expect(
+      fixture.repositories.media
+        .list({ limit: 100, offset: 0 })
+        .items.map((item) => item.title),
+    ).toEqual(["Other"]);
+    expect(
+      fixture.repositories.scanReviews.list({
+        status: "pending",
+        kind: "movie",
+        limit: 50,
+        offset: 0,
+      }).total,
+    ).toBe(0);
+  } finally {
+    await fixture.close();
+  }
+});
+
+test("a scan skips a group whose transfer completes during metadata lookup", async () => {
+  let activeFolder = "";
+  let activeFile = "";
+  const fixture: Awaited<ReturnType<typeof createScanFixture>> =
+    await createScanFixture(async () => {
+      const transfer = startVolumeTransfer(fixture, [activeFolder, activeFile]);
+      saveVolumeTransfer(fixture.database, {
+        ...transfer,
+        stage: "complete",
+      });
+      return tmdbSearchResponse({ id: 1234, title: "Example", year: 2024 });
+    });
+  try {
+    activeFolder = join(fixture.volumeA.moviesPath, "Example (2024)");
+    activeFile = join(activeFolder, "Example.mkv");
+    await mkdir(activeFolder, { recursive: true });
+    await Bun.write(activeFile, "media");
+
+    const job = await runMovieScan(fixture, fixture.volumeA.moviesPath);
+
+    expect(job).toMatchObject({ state: "completed" });
+    expect(fixture.repositories.libraryFiles.listPaths()).toEqual([]);
+    expect(
+      fixture.repositories.media.list({ limit: 100, offset: 0 }).total,
+    ).toBe(0);
+  } finally {
+    await fixture.close();
+  }
+});
+
+async function createScanFixture(
+  fetcher: NonNullable<Parameters<typeof createTmdbClient>[0]["fetch"]>,
+) {
+  const root = await mkdtemp(join(tmpdir(), "bobarr-scan-moving-"));
+  const database = await openBackendDatabase(":memory:");
+  const repositories = createRepositories(database);
+  const queue = createSqliteJobQueue({ database: database.sqlite });
+  const events = createEventHub();
+  const volumeA: StorageVolume = {
+    id: "disk-a",
+    label: "A",
+    downloadsPath: join(root, "a/downloads"),
+    moviesPath: join(root, "a/movies"),
+    televisionPath: join(root, "a/tv"),
+  };
+  const volumeB: StorageVolume = {
+    id: "disk-b",
+    label: "B",
+    downloadsPath: join(root, "b/downloads"),
+    moviesPath: join(root, "b/movies"),
+    televisionPath: join(root, "b/tv"),
+  };
+  for (const volume of [volumeA, volumeB]) {
+    await mkdir(volume.downloadsPath, { recursive: true });
+    await mkdir(volume.moviesPath, { recursive: true });
+    await mkdir(volume.televisionPath, { recursive: true });
+  }
+  repositories.settings.update({
+    storage: { volumes: [volumeA, volumeB], organizationStrategy: "copy" },
+  });
+  const tmdb = createTmdbClient({ apiKey: "fixture", fetch: fetcher });
+  const unavailable = async (): Promise<never> => {
+    throw new Error("Unexpected integration call");
+  };
+  const integrations: IntegrationResolver = {
+    tmdb: async () => tmdb,
+    omdb: unavailable,
+    jackett: unavailable,
+    transmission: unavailable,
+    test: unavailable,
+    status: unavailable,
+    invalidate() {},
+  };
+  const runtime = createAcquisitionRuntime({
+    config: parseBackendConfig({
+      NODE_ENV: "test",
+      BOBARR_MASTER_KEY: createEncryptionKey(),
+    }),
+    database,
+    repositories,
+    queue,
+    events,
+    integrations,
+  });
+  return {
+    root,
+    database,
+    repositories,
+    queue,
+    events,
+    volumeA,
+    volumeB,
+    worker: createJobWorker({ queue, handlers: runtime.handlers }),
+    async close() {
+      events.close();
+      queue.close();
+      database.close();
+      await rm(root, { recursive: true, force: true });
+    },
+  };
+}
+
+function startVolumeTransfer(
+  fixture: Awaited<ReturnType<typeof createScanFixture>>,
+  paths: string[],
+) {
+  const groupKey = `movie:${crypto.randomUUID()}`;
+  const transfer = {
+    id: crypto.randomUUID(),
+    groupKey,
+    groupKeys: [groupKey],
+    jobId: crypto.randomUUID(),
+    title: "Active",
+    mediaIds: [],
+    destinationVolumeId: fixture.volumeB.id,
+    stagingRoot: join(
+      fixture.volumeB.moviesPath,
+      ".bobarr-volume-organize",
+      crypto.randomUUID(),
+    ),
+    paths,
+    files: [],
+    libraryFiles: [],
+    downloads: [],
+    stage: "copying" as const,
+  };
+  saveVolumeTransfer(fixture.database, transfer);
+  return transfer;
+}
+
+async function runMovieScan(
+  fixture: Awaited<ReturnType<typeof createScanFixture>>,
+  path: string,
+) {
+  const job = await fixture.queue.enqueue({
+    type: "library.scan.v1",
+    payload: { version: 1, targets: [{ path, kind: "movie" }] },
+  });
+  await fixture.worker.runOnce();
+  return fixture.queue.get(job.id);
+}
+
+function tmdbSearchResponse(input: {
+  id: number;
+  title: string;
+  year: number;
+}): Response {
+  return Response.json({
+    page: 1,
+    total_pages: 1,
+    total_results: 1,
+    results: [
+      {
+        id: input.id,
+        media_type: "movie",
+        title: input.title,
+        release_date: `${input.year}-01-01`,
+        overview: "",
+        poster_path: null,
+      },
+    ],
+  });
+}
 
 class FixedClock implements Clock {
   constructor(private readonly current: Date) {}

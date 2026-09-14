@@ -29,7 +29,11 @@ import {
   InvalidAcquisitionSourceError,
 } from "./acquisition-service";
 import { createAesCandidateCipher } from "./candidate-cipher";
-import { createJobWorker, createSqliteJobQueue } from "../jobs";
+import {
+  createJobWorker,
+  createSqliteJobQueue,
+  JobDeferredError,
+} from "../jobs";
 
 const CANDIDATE_ID = `rel_${"a".repeat(43)}`;
 const DOWNLOAD_ID = "22222222-2222-4222-8222-222222222222";
@@ -60,6 +64,72 @@ describe("candidate protection", () => {
 });
 
 describe("acquisition service", () => {
+  test("leaves transferring downloads untouched while Transmission adopts the new directory", async () => {
+    let transferring = false;
+    const fixture = serviceFixture({
+      ids: [DOWNLOAD_ID],
+      isDownloadTransferring: () => transferring,
+    });
+    try {
+      await fixture.service.startFromMagnet({
+        target: TARGET,
+        magnetUri: magnet(HASH),
+      });
+      await fixture.service.runAddJob(DOWNLOAD_ID);
+      transferring = true;
+      const original = requireValue(fixture.engine.torrents.get(HASH));
+      fixture.engine.torrents.set(HASH, {
+        ...original,
+        downloadDirectory: `/other/downloads/${DOWNLOAD_ID}`,
+      });
+      expect(await fixture.service.reconcile()).toMatchObject({
+        missing: [],
+        requeued: [],
+        orphanedTorrents: [],
+      });
+      expect(
+        await fixture.downloadRepository.findById(DOWNLOAD_ID),
+      ).toMatchObject({ state: "downloading", error: null });
+    } finally {
+      fixture.queue.close();
+    }
+  });
+
+  test("defers a conflicting volume move without failing the completed download", async () => {
+    let importing = true;
+    const fixture = serviceFixture({
+      ids: [DOWNLOAD_ID],
+      organizer: {
+        async organize() {
+          if (importing) throw new JobDeferredError("Season is moving");
+          return [];
+        },
+      },
+    });
+    try {
+      await fixture.service.startFromMagnet({
+        target: TARGET,
+        magnetUri: magnet(HASH),
+      });
+      await fixture.service.runAddJob(DOWNLOAD_ID);
+      fixture.engine.complete(HASH);
+      await fixture.service.reconcile();
+      await expect(
+        fixture.service.runOrganizeJob(DOWNLOAD_ID),
+      ).rejects.toBeInstanceOf(JobDeferredError);
+      expect(
+        await fixture.downloadRepository.findById(DOWNLOAD_ID),
+      ).toMatchObject({ state: "completed", error: null });
+      importing = false;
+      await fixture.service.runOrganizeJob(DOWNLOAD_ID);
+      expect(
+        await fixture.downloadRepository.findById(DOWNLOAD_ID),
+      ).toMatchObject({ state: "organized", error: null });
+    } finally {
+      fixture.queue.close();
+    }
+  });
+
   test("deduplicates, scores, encrypts, and expires Jackett candidates", async () => {
     const now = 100_000;
     const candidateRepository = new MemoryCandidateRepository();
@@ -468,6 +538,7 @@ function serviceFixture(
     ids?: readonly string[];
     maxMetainfoBytes?: number;
     prepareDownloadDirectory?: (path: string) => Promise<void>;
+    isDownloadTransferring?: (id: string) => boolean;
   } = {},
 ) {
   const events = options.events ?? [];
@@ -494,6 +565,7 @@ function serviceFixture(
       now: options.now,
       maxMetainfoBytes: options.maxMetainfoBytes,
       prepareDownloadDirectory: options.prepareDownloadDirectory,
+      isDownloadTransferring: options.isDownloadTransferring,
       id: () => ids.shift() ?? crypto.randomUUID(),
     },
   );

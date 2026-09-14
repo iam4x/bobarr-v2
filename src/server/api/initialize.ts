@@ -39,6 +39,7 @@ import {
   type BackendDatabase,
   type Repositories,
 } from "../db";
+import { hasActiveVolumeTransfer } from "../db/volume-transfers";
 import { aggregateChildAcquisitionState } from "../domain/media-state";
 import { createEventHub, type EventHub } from "../events";
 import {
@@ -47,7 +48,12 @@ import {
   nextCronOccurrence,
   type JobHandler,
   type JobQueue,
+  type JobWorker,
 } from "../jobs";
+import {
+  createVolumeOrganizer,
+  ORGANIZE_VOLUMES_JOB,
+} from "../library/volume-organizer";
 import { parseMediaRootsEnv, volumesForMediaRoots } from "../media-paths";
 import {
   createBackupRestoreService,
@@ -241,10 +247,26 @@ export async function initializeBackend(
       retryDelay: (job) =>
         Math.min(60 * 60_000, 5_000 * 2 ** Math.max(0, job.attempt - 1)),
     });
+    const volumeOrganizer = createVolumeOrganizer({
+      database,
+      repositories,
+      integrations,
+      events,
+    });
+    const volumeWorker = createJobWorker({
+      queue,
+      logger,
+      handlers: {
+        [ORGANIZE_VOLUMES_JOB]: (job, context) =>
+          volumeOrganizer.organize({ jobId: job.id, ...context }),
+      },
+      retryDelay: (job) =>
+        Math.min(60 * 60_000, 5_000 * 2 ** Math.max(0, job.attempt - 1)),
+    });
     const workerAbort = new AbortController();
     const backgroundWork = new Set<Promise<unknown>>();
     let shutdownStarted = false;
-    let activeWorkerDrain: Promise<void> | null = null;
+    const activeWorkerDrains = new Map<JobWorker, Promise<void>>();
     const timers: Partial<
       Record<"worker" | "reconcile" | "progress" | "maintenance", Timer>
     > = {};
@@ -260,13 +282,14 @@ export async function initializeBackend(
     const runInBackground = (work: Promise<unknown>): void => {
       void trackBackground(work).catch(() => undefined);
     };
-    const drainWorker = (): Promise<void> => {
-      if (activeWorkerDrain) return activeWorkerDrain;
+    const drainWorker = (currentWorker: JobWorker): Promise<void> => {
+      const activeDrain = activeWorkerDrains.get(currentWorker);
+      if (activeDrain) return activeDrain;
       if (shutdownStarted || workerAbort.signal.aborted) {
         return Promise.resolve();
       }
       const operation = (async (): Promise<void> => {
-        const processed = await worker.drain({
+        const processed = await currentWorker.drain({
           maxJobs: 10,
           signal: workerAbort.signal,
           shouldContinue: () => !shutdownStarted,
@@ -277,9 +300,11 @@ export async function initializeBackend(
           });
         }
       })();
-      activeWorkerDrain = trackBackground(operation);
+      activeWorkerDrains.set(currentWorker, trackBackground(operation));
       const clearActiveDrain = (): void => {
-        if (activeWorkerDrain === operation) activeWorkerDrain = null;
+        if (activeWorkerDrains.get(currentWorker) === operation) {
+          activeWorkerDrains.delete(currentWorker);
+        }
       };
       void operation.then(clearActiveDrain, clearActiveDrain);
       return operation;
@@ -296,6 +321,14 @@ export async function initializeBackend(
     };
 
     await queue.requeueExpired();
+    if (hasActiveVolumeTransfer(database)) {
+      await queue.enqueue({
+        type: ORGANIZE_VOLUMES_JOB,
+        payload: { version: 1 },
+        dedupeKey: "library-volumes",
+        maxAttempts: 10,
+      });
+    }
     await enqueueScheduledMaintenance(queue, repositories);
     try {
       await acquisition.reconcile(workerAbort.signal);
@@ -319,14 +352,17 @@ export async function initializeBackend(
       environment,
       clock,
       logger,
-      cancelJob: (id) => worker.cancel(id),
+      cancelJob: async (id) =>
+        (await queue.get(id))?.type === ORGANIZE_VOLUMES_JOB
+          ? volumeWorker.cancel(id)
+          : worker.cancel(id),
     });
     // Start background work only after repositories, integrations, handlers,
     // and the HTTP application have all been constructed.
-    timers.worker = setInterval(
-      () => void drainWorker().catch(() => undefined),
-      750,
-    );
+    timers.worker = setInterval(() => {
+      void drainWorker(worker).catch(() => undefined);
+      void drainWorker(volumeWorker).catch(() => undefined);
+    }, 750);
     timers.worker.unref?.();
     timers.reconcile = setInterval(
       () =>

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   type AnySQLiteColumn,
   index,
@@ -433,6 +434,25 @@ export const libraryScanReviews = sqliteTable(
   ],
 );
 
+export const volumeTransfers = sqliteTable(
+  "volume_transfers",
+  {
+    id: text("id").primaryKey(),
+    groupKey: text("group_key").notNull(),
+    stage: text("stage", {
+      enum: ["copying", "published", "committed", "complete"],
+    }).notNull(),
+    manifestJson: text("manifest_json").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("volume_transfers_active_group")
+      .on(table.groupKey)
+      .where(sql`${table.stage} <> 'complete'`),
+  ],
+);
+
 export const databaseSchema = {
   users,
   sessions,
@@ -448,6 +468,7 @@ export const databaseSchema = {
   activityEvents,
   metadataCache,
   libraryScanReviews,
+  volumeTransfers,
 };
 
 export type DatabaseSchema = typeof databaseSchema;

@@ -5,7 +5,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createRepositories, openBackendDatabase } from ".";
+import {
+  createRepositories,
+  LATEST_DATABASE_MIGRATION,
+  openBackendDatabase,
+} from ".";
 import { CreateLibraryItemRequestSchema } from "../../contracts";
 
 const candidate = {
@@ -130,7 +134,7 @@ describe("library scan review persistence", () => {
 
       const reopened = await openBackendDatabase(path);
       try {
-        expect(reopened.migrationVersion).toBe(7);
+        expect(reopened.migrationVersion).toBe(LATEST_DATABASE_MIGRATION);
         expect(
           createRepositories(reopened).scanReviews.get(created.id),
         ).toMatchObject({

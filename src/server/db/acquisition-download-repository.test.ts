@@ -2,7 +2,12 @@ import type { DownloadRecord } from "../application";
 
 import { describe, expect, test } from "bun:test";
 
-import { createRepositories, openBackendDatabase, runMigrations } from ".";
+import {
+  createRepositories,
+  LATEST_DATABASE_MIGRATION,
+  openBackendDatabase,
+  runMigrations,
+} from ".";
 import {
   CreateDownloadInputSchema,
   DownloadsQuerySchema,
@@ -155,7 +160,7 @@ describe("durable acquisition download repository", () => {
         .query("DELETE FROM schema_migrations WHERE version = 5")
         .run();
 
-      expect(runMigrations(database.sqlite)).toBe(7);
+      expect(runMigrations(database.sqlite)).toBe(8);
       expect(
         database.sqlite
           .query<
@@ -177,7 +182,7 @@ describe("durable acquisition download repository", () => {
   test("keeps legacy public rows readable and outside reconciliation", async () => {
     const database = await openBackendDatabase(":memory:");
     try {
-      expect(database.migrationVersion).toBe(7);
+      expect(database.migrationVersion).toBe(LATEST_DATABASE_MIGRATION);
       const publicRepository = createRepositories(database).downloads;
       const legacy = publicRepository.create(
         CreateDownloadInputSchema.parse({ title: "Legacy download" }),
@@ -223,6 +228,7 @@ function acquisitionDownload(): DownloadRecord {
     engineLabel: `bobarr:${id}`,
     downloadDirectory: `/media/downloads/${id}`,
     progress: 0,
+    totalBytes: 0,
     error: null,
     pausedRequested: false,
     peerLimit: 50,

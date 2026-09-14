@@ -2,12 +2,19 @@ import type { ScanReview } from "../../contracts";
 import type { Repositories } from "../db";
 import type { EventHub } from "../events";
 import type { TmdbClient } from "../integrations";
+import type { Stats } from "node:fs";
 
 import { lstat, realpath, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { importRecordedFiles } from "./importer";
 import { isPathContained } from "./paths";
+import {
+  expandStoragePathAliases,
+  isWithinStoragePaths,
+  storageRootAliases,
+  type StorageRootAlias,
+} from "./volume-paths";
 import { AppError, conflict, notFound } from "../core";
 import { libraryRoots } from "../storage";
 
@@ -15,6 +22,7 @@ export interface ScanReviewServiceOptions {
   repositories: Repositories;
   tmdb: () => Promise<TmdbClient>;
   events?: EventHub;
+  transferringPaths?: (changedSince?: number) => readonly string[];
 }
 
 export interface ScanReviewService {
@@ -41,11 +49,20 @@ export function createScanReviewService(
       if (review.status === "dismissed") {
         throw conflict("Dismissed scan reviews cannot be resolved");
       }
+      const startedAt = Date.now();
       signal?.throwIfAborted();
       const settings = options.repositories.settings.ensureDefaults().settings;
-      const root = await verifiedRoot(
-        libraryRoots(settings.storage, review.kind).map((item) => item.path),
-        review.rootPath,
+      const configuredRoots = libraryRoots(settings.storage, review.kind).map(
+        (item) => item.path,
+      );
+      const rootAliases = await storageRootAliases(configuredRoots);
+      const root = await verifiedRoot(configuredRoots, review.rootPath);
+      const reviewPaths = review.files.map((file) => resolve(file.path));
+      assertPathsAvailable(
+        reviewPaths,
+        options.transferringPaths,
+        rootAliases,
+        startedAt,
       );
       const files = await Promise.all(
         review.files.map(async (file) => {
@@ -56,7 +73,7 @@ export function createScanReviewService(
               "A recorded library file escapes its configured root",
             );
           }
-          let pathInfo: Awaited<ReturnType<typeof lstat>>;
+          let pathInfo: Stats;
           try {
             pathInfo = await lstat(recordedPath);
           } catch (error) {
@@ -72,8 +89,23 @@ export function createScanReviewService(
           if (!fileInfo.isFile()) {
             throw conflict("A recorded library path is no longer a file");
           }
-          return { path: recordedPath, sizeBytes: fileInfo.size };
+          if (fileInfo.size !== file.sizeBytes) {
+            throw conflict(
+              "A recorded library file changed after the scan review was created",
+            );
+          }
+          return {
+            path: recordedPath,
+            sizeBytes: fileInfo.size,
+            identity: fileIdentity(pathInfo, fileInfo),
+          };
         }),
+      );
+      assertPathsAvailable(
+        reviewPaths,
+        options.transferringPaths,
+        rootAliases,
+        startedAt,
       );
 
       const client = await options.tmdb();
@@ -84,6 +116,34 @@ export function createScanReviewService(
       );
       if (details.tmdbId !== tmdbId) {
         throw conflict("TMDB returned a different title than the selected one");
+      }
+      const unchanged = await Promise.all(
+        files.map(async (file) => {
+          signal?.throwIfAborted();
+          try {
+            const [pathInfo, fileInfo] = await Promise.all([
+              lstat(file.path),
+              stat(file.path),
+            ]);
+            return sameFileIdentity(
+              file.identity,
+              fileIdentity(pathInfo, fileInfo),
+            );
+          } catch {
+            return false;
+          }
+        }),
+      );
+      assertPathsAvailable(
+        reviewPaths,
+        options.transferringPaths,
+        rootAliases,
+        startedAt,
+      );
+      if (unchanged.some((value) => !value)) {
+        throw conflict(
+          "A recorded library file changed while the scan review was being resolved",
+        );
       }
 
       const importedMetadata = {
@@ -127,7 +187,10 @@ export function createScanReviewService(
       }
       importRecordedFiles({
         media,
-        files,
+        files: files.map((file) => ({
+          path: file.path,
+          sizeBytes: file.sizeBytes,
+        })),
         repositories: options.repositories,
       });
 
@@ -177,6 +240,64 @@ export function createScanReviewService(
       return dismissed;
     },
   };
+}
+
+interface FileIdentity {
+  entry: ComparableStats;
+  target: ComparableStats;
+}
+
+type ComparableStats = Pick<Stats, "dev" | "ino" | "size" | "mtimeMs">;
+
+function assertPathsAvailable(
+  paths: readonly string[],
+  transferring: ((changedSince?: number) => readonly string[]) | undefined,
+  roots: readonly StorageRootAlias[],
+  startedAt: number,
+): void {
+  const transferPaths = expandStoragePathAliases(
+    transferring?.(startedAt) ?? [],
+    roots,
+  );
+  if (paths.some((path) => isWithinStoragePaths(path, transferPaths, roots))) {
+    throw conflict(
+      "A recorded library file is being moved between storage volumes",
+    );
+  }
+}
+
+function fileIdentity(
+  pathInfo: ComparableStats,
+  targetInfo: ComparableStats,
+): FileIdentity {
+  return {
+    entry: comparableStats(pathInfo),
+    target: comparableStats(targetInfo),
+  };
+}
+
+function sameFileIdentity(left: FileIdentity, right: FileIdentity): boolean {
+  return (
+    sameStats(left.entry, right.entry) && sameStats(left.target, right.target)
+  );
+}
+
+function comparableStats(stats: ComparableStats): ComparableStats {
+  return {
+    dev: stats.dev,
+    ino: stats.ino,
+    size: stats.size,
+    mtimeMs: stats.mtimeMs,
+  };
+}
+
+function sameStats(left: ComparableStats, right: ComparableStats): boolean {
+  return (
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.size === right.size &&
+    left.mtimeMs === right.mtimeMs
+  );
 }
 
 async function verifiedRoot(

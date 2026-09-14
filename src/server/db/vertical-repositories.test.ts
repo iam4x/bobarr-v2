@@ -6,7 +6,11 @@ import { describe, expect, test } from "bun:test";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 
-import { createRepositories, openBackendDatabase } from ".";
+import {
+  createRepositories,
+  LATEST_DATABASE_MIGRATION,
+  openBackendDatabase,
+} from ".";
 import {
   ActivityQuerySchema,
   CreateDownloadInputSchema,
@@ -48,6 +52,7 @@ describe("core vertical-slice persistence", () => {
       expect(tables).toContain("activity_events");
       expect(tables).toContain("metadata_cache");
       expect(tables).toContain("library_scan_reviews");
+      expect(tables).toContain("volume_transfers");
     } finally {
       sqlite.close();
     }
@@ -58,7 +63,7 @@ describe("core vertical-slice persistence", () => {
     const database = await openBackendDatabase(":memory:");
     try {
       const repositories = createRepositories(database, clock);
-      expect(database.migrationVersion).toBe(7);
+      expect(database.migrationVersion).toBe(LATEST_DATABASE_MIGRATION);
 
       const series = repositories.media.create(
         CreateLibraryItemRequestSchema.parse({

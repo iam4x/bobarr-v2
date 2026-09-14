@@ -1,7 +1,7 @@
 import type { AppSettings, StorageVolume } from "../contracts";
 
 import { createHash } from "node:crypto";
-import { access, stat, statfs } from "node:fs/promises";
+import { access, realpath, stat, statfs } from "node:fs/promises";
 import { posix } from "node:path";
 
 import { isPathContained } from "./library/paths";
@@ -44,21 +44,6 @@ export function libraryPaths(storage: StorageLayout): string[] {
 
 export function readablePaths(storage: StorageLayout): string[] {
   return [...libraryPaths(storage), ...downloadRoots(storage)];
-}
-
-export function libraryRootFor(
-  storage: StorageLayout,
-  downloadDirectory: string,
-  kind: "movie" | "series",
-): string {
-  const parent = posix.normalize(posix.dirname(downloadDirectory));
-  const volume = storage.volumes.find(
-    (candidate) => posix.normalize(candidate.downloadsPath) === parent,
-  );
-  if (volume === undefined) {
-    throw new Error("Download directory is not under a configured volume");
-  }
-  return kind === "movie" ? volume.moviesPath : volume.televisionPath;
 }
 
 export function storageVolumesEqual(
@@ -166,7 +151,7 @@ export async function validateStorage(storage: StorageLayout): Promise<{
       validateVolume(volume, storage.organizationStrategy),
     ),
   );
-  const overlapping = storageRootsOverlap(storage);
+  const overlapping = await storageRootsOverlap(storage.volumes);
   const valid = !overlapping && volumes.every((volume) => volume.ok);
   let message = "Storage roots are accessible";
   if (overlapping) {
@@ -215,12 +200,23 @@ function volumeTieBreak(downloadId: string, volumeId: string): number {
   return digest.readUInt32BE(0);
 }
 
-function storageRootsOverlap(storage: StorageLayout): boolean {
-  const paths = storage.volumes.flatMap((volume) => [
+export async function storageRootsOverlap(
+  volumes: readonly StorageVolume[],
+): Promise<boolean> {
+  const configured = volumes.flatMap((volume) => [
     volume.downloadsPath,
     volume.moviesPath,
     volume.televisionPath,
   ]);
+  const paths = await Promise.all(
+    configured.map((path) => realpath(path).catch(() => posix.resolve(path))),
+  );
+  const identities = await Promise.all(
+    paths.map(async (path) => {
+      const info = await stat(path).catch(() => null);
+      return info ? `${info.dev}:${info.ino}` : null;
+    }),
+  );
   for (let i = 0; i < paths.length; i += 1) {
     const left = paths[i];
     if (left === undefined) continue;
@@ -228,7 +224,11 @@ function storageRootsOverlap(storage: StorageLayout): boolean {
       if (i === j) continue;
       const right = paths[j];
       if (right === undefined) continue;
-      if (isPathContained(left, right)) return true;
+      if (
+        isPathContained(left, right) ||
+        (identities[i] !== null && identities[i] === identities[j])
+      )
+        return true;
     }
   }
   return false;
