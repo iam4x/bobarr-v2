@@ -10,8 +10,6 @@ import type { ApiDependencies, ApiEnvironment } from "./app";
 import type { IntegrationKey } from "./integration-resolver";
 import type { Context } from "hono";
 
-import { access, stat } from "node:fs/promises";
-
 import { z, type OpenAPIHono } from "@hono/zod-openapi";
 
 import { withLiveDownloadProgress } from "./live-download-progress";
@@ -30,6 +28,7 @@ import {
   OpaqueReleaseIdSchema,
   PaginationQuerySchema,
   ReleaseCandidateSchema,
+  StorageSettingsSchema,
 } from "../../contracts";
 import {
   ADD_TORRENT_JOB,
@@ -52,6 +51,12 @@ import {
   resolveRecordedFileForRead,
   UnsafeLibraryDeletionError,
 } from "../library";
+import {
+  libraryPaths,
+  libraryRoots,
+  readablePaths,
+  validateStorage,
+} from "../storage";
 
 const CatalogKindSchema = z.enum(["movie", "series"]);
 const LibraryFileParamsSchema = z.object({
@@ -415,11 +420,18 @@ const DeleteDownloadSchema = z.object({
 const IntegrationParamsSchema = z.object({
   key: z.enum(["tmdb", "jackett", "transmission", "omdb"]),
 });
-const StorageValidationSchema = z.object({
-  downloadsPath: z.string().min(1).max(4096),
-  moviesPath: z.string().min(1).max(4096),
-  televisionPath: z.string().min(1).max(4096),
-  organizationStrategy: z.enum(["hardlink", "symlink", "copy", "move"]),
+const StorageValidationResultSchema = z.object({
+  valid: z.boolean(),
+  message: z.string(),
+  volumes: z.array(
+    z.object({
+      id: z.string(),
+      label: z.string(),
+      freeBytes: z.number().nullable(),
+      ok: z.boolean(),
+      message: z.string().optional(),
+    }),
+  ),
 });
 
 const json = (schema: z.ZodType, description: string) => ({
@@ -1173,8 +1185,8 @@ export function registerProductRoutes(
     if (!item) throw notFound("Library item not found");
     const settings =
       dependencies.repositories.settings.ensureDefaults().settings.storage;
-    const libraryRoots = [settings.moviesPath, settings.televisionPath];
-    const readableRoots = [...libraryRoots, settings.downloadsPath];
+    const configuredLibraryRoots = libraryPaths(settings);
+    const readableRoots = readablePaths(settings);
     const files = [];
     for (const member of mediaTree(item, dependencies)) {
       for (const file of dependencies.repositories.libraryFiles.listForMedia(
@@ -1182,7 +1194,7 @@ export function registerProductRoutes(
       )) {
         const readable = await resolveRecordedFileForRead(
           file.path,
-          libraryRoots,
+          configuredLibraryRoots,
           readableRoots,
         );
         if (!readable) continue;
@@ -1211,11 +1223,12 @@ export function registerProductRoutes(
     }
     const settings =
       dependencies.repositories.settings.ensureDefaults().settings.storage;
-    const libraryRoots = [settings.moviesPath, settings.televisionPath];
-    const readable = await resolveRecordedFileForRead(file.path, libraryRoots, [
-      ...libraryRoots,
-      settings.downloadsPath,
-    ]);
+    const configuredLibraryRoots = libraryPaths(settings);
+    const readable = await resolveRecordedFileForRead(
+      file.path,
+      configuredLibraryRoots,
+      readablePaths(settings),
+    );
     if (!readable) throw notFound("Library file not found on disk");
     return new Response(Bun.file(readable.path), {
       headers: {
@@ -1239,13 +1252,12 @@ export function registerProductRoutes(
     );
     const settings =
       dependencies.repositories.settings.ensureDefaults().settings;
-    const roots = libraryScanRoots(body.kind, settings.storage);
     const job = await requireQueue(dependencies).enqueue({
       type: "library.scan.v1",
       payload: {
         version: 1,
         kind: body.kind ?? null,
-        roots,
+        targets: libraryRoots(settings.storage, body.kind),
       },
       dedupeKey: `scan:${body.kind ?? "all"}`,
       maxAttempts: 3,
@@ -1680,7 +1692,7 @@ export function registerProductRoutes(
       context.get("auth").actor,
       "Administrator access is required to change settings",
     );
-    const input = parse(StorageValidationSchema, await context.req.json());
+    const input = parse(StorageSettingsSchema, await context.req.json());
     return context.json(await validateStorage(input));
   });
 }
@@ -2100,14 +2112,11 @@ function registerProductDocumentation(app: OpenAPIHono<ApiEnvironment>): void {
     request: {
       body: {
         required: true,
-        content: { "application/json": { schema: StorageValidationSchema } },
+        content: { "application/json": { schema: StorageSettingsSchema } },
       },
     },
     responses: {
-      200: json(
-        z.object({ valid: z.boolean(), message: z.string() }),
-        "Storage validation result",
-      ),
+      200: json(StorageValidationResultSchema, "Storage validation result"),
       ...productErrors,
     },
   });
@@ -3391,24 +3400,12 @@ async function controlDownload(
   return context.json(updated ?? download);
 }
 
-function libraryScanRoots(
-  kind: "movie" | "series" | undefined,
-  storage: {
-    moviesPath: string;
-    televisionPath: string;
-  },
-): string[] {
-  if (kind === "movie") return [storage.moviesPath];
-  if (kind === "series") return [storage.televisionPath];
-  return [storage.moviesPath, storage.televisionPath];
-}
-
 async function deleteRecordedLibraryFiles(
   mediaId: string,
   dependencies: ApiDependencies,
 ): Promise<void> {
   const settings = dependencies.repositories.settings.ensureDefaults().settings;
-  const roots = [settings.storage.moviesPath, settings.storage.televisionPath];
+  const roots = libraryPaths(settings.storage);
   for (const file of dependencies.repositories.libraryFiles.listForMedia(
     mediaId,
   )) {
@@ -3618,10 +3615,7 @@ async function requireOwnedTorrent(
   if (!torrent) {
     throw conflictError("Owned Transmission torrent is unavailable");
   }
-  const downloadRoot =
-    dependencies.repositories.settings.ensureDefaults().settings.storage
-      .downloadsPath;
-  if (!isOwnedTorrent(durable, torrent, downloadRoot, download.externalId)) {
+  if (!isOwnedTorrent(durable, torrent, download.externalId)) {
     throw conflictError("Transmission torrent ownership could not be verified");
   }
   return { durable, torrent, transmission };
@@ -3648,44 +3642,10 @@ async function findOwnedTorrentForRemoval(
   if (!durable) {
     throw conflictError("Download ownership record is unavailable");
   }
-  const downloadRoot =
-    dependencies.repositories.settings.ensureDefaults().settings.storage
-      .downloadsPath;
-  if (!isOwnedTorrent(durable, torrent, downloadRoot, download.externalId)) {
+  if (!isOwnedTorrent(durable, torrent, download.externalId)) {
     throw conflictError("Transmission torrent ownership could not be verified");
   }
   return { durable, torrent, transmission };
-}
-
-async function validateStorage(input: z.infer<typeof StorageValidationSchema>) {
-  const paths = [input.downloadsPath, input.moviesPath, input.televisionPath];
-  try {
-    await Promise.all(
-      paths.map(async (path) => {
-        await access(path);
-        if (!(await stat(path)).isDirectory())
-          throw new Error(`${path} is not a directory`);
-      }),
-    );
-    if (input.organizationStrategy === "hardlink") {
-      const devices = await Promise.all(
-        paths.map(async (path) => (await stat(path)).dev),
-      );
-      if (new Set(devices).size !== 1)
-        return {
-          valid: false,
-          message:
-            "Hardlinks require downloads and library roots on one filesystem",
-        };
-    }
-    return { valid: true, message: "Storage roots are accessible" };
-  } catch (error) {
-    return {
-      valid: false,
-      message:
-        error instanceof Error ? error.message : "Storage validation failed",
-    };
-  }
 }
 
 function recordActivity(

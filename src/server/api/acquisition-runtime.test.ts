@@ -2,7 +2,10 @@ import type { Clock } from "../core";
 
 import { describe, expect, test } from "bun:test";
 
-import { updateMediaTreeState } from "./acquisition-runtime";
+import {
+  scanTargetsFromJobPayload,
+  updateMediaTreeState,
+} from "./acquisition-runtime";
 import { CreateLibraryItemRequestSchema } from "../../contracts";
 import { createRepositories, openBackendDatabase } from "../db";
 
@@ -155,5 +158,58 @@ describe("acquisition media state reconciliation", () => {
     } finally {
       database.close();
     }
+  });
+});
+
+describe("library scan payload", () => {
+  const storage = {
+    organizationStrategy: "hardlink" as const,
+    volumes: [
+      {
+        id: "disk-a",
+        label: "Disk A",
+        downloadsPath: "/media/downloads",
+        moviesPath: "/media/movies",
+        televisionPath: "/media/tv",
+      },
+      {
+        id: "disk-b",
+        label: "Disk B",
+        downloadsPath: "/media-b/downloads",
+        moviesPath: "/media-b/movies",
+        televisionPath: "/media-b/tv",
+      },
+    ],
+  };
+
+  test("a job with two movie roots both import as movie", () => {
+    expect(
+      scanTargetsFromJobPayload(
+        {
+          version: 1,
+          targets: [
+            { path: "/media/movies", kind: "movie" },
+            { path: "/media-b/movies", kind: "movie" },
+          ],
+        },
+        storage,
+      ),
+    ).toEqual([
+      { path: "/media/movies", kind: "movie" },
+      { path: "/media-b/movies", kind: "movie" },
+    ]);
+  });
+
+  test("maps legacy roots through current volumes", () => {
+    expect(
+      scanTargetsFromJobPayload(
+        { version: 1, roots: ["/media/movies", "/media-b/tv", "/unknown"] },
+        storage,
+      ),
+    ).toEqual([
+      { path: "/media/movies", kind: "movie" },
+      { path: "/media-b/tv", kind: "series" },
+      { path: "/unknown", kind: "series" },
+    ]);
   });
 });

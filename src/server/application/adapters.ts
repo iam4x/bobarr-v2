@@ -1,3 +1,4 @@
+import type { AppSettings, StorageVolume } from "../../contracts";
 import type { JackettClient } from "../integrations/jackett";
 import type { TmdbClient } from "../integrations/tmdb";
 import type { TorrentEngine as TransmissionClient } from "../integrations/transmission";
@@ -12,7 +13,7 @@ import type {
   TorrentFile,
 } from "./ports";
 
-import { extname } from "node:path";
+import { extname, posix } from "node:path";
 
 import { inspectRelease } from "../domain/releases";
 import {
@@ -25,6 +26,7 @@ import {
   isPathContained,
   movieLibraryPath,
 } from "../library/paths";
+import { libraryRootFor } from "../storage";
 
 interface DatabaseReleaseCandidate {
   id: string;
@@ -162,9 +164,10 @@ function storedCandidate(
 }
 
 export interface FilesystemLibraryOrganizerOptions {
-  downloadsRoot: string;
-  movieLibraryRoot: string;
-  seriesLibraryRoot: string;
+  storage: {
+    volumes: readonly StorageVolume[];
+    organizationStrategy: AppSettings["storage"]["organizationStrategy"];
+  };
   mode?: OrganizationMode;
   collision?: CollisionPolicy;
   fallbackToCopy?: boolean;
@@ -173,11 +176,21 @@ export interface FilesystemLibraryOrganizerOptions {
 export function createFilesystemLibraryOrganizer(
   options: FilesystemLibraryOrganizerOptions,
 ): LibraryOrganizer {
-  const mode = options.mode ?? "hardlink";
+  const mode = options.mode ?? options.storage.organizationStrategy;
   return {
     async organize(request, signal) {
       signal?.throwIfAborted();
-      if (!isPathContained(options.downloadsRoot, request.downloadDirectory)) {
+      const volumeDownloadsRoot = posix.normalize(
+        posix.dirname(request.downloadDirectory),
+      );
+      const volume = options.storage.volumes.find(
+        (candidate) =>
+          posix.normalize(candidate.downloadsPath) === volumeDownloadsRoot,
+      );
+      if (
+        volume === undefined ||
+        !isPathContained(volume.downloadsPath, request.downloadDirectory)
+      ) {
         throw new Error(
           "Torrent download directory escapes the configured root",
         );
@@ -186,10 +199,11 @@ export function createFilesystemLibraryOrganizer(
       if (selected.length === 0) {
         throw new Error("Completed torrent contains no matching media files");
       }
-      const libraryRoot =
-        request.target.kind === "movie"
-          ? options.movieLibraryRoot
-          : options.seriesLibraryRoot;
+      const libraryRoot = libraryRootFor(
+        options.storage,
+        request.downloadDirectory,
+        request.target.kind === "movie" ? "movie" : "series",
+      );
       const organized: OrganizedFile[] = [];
       for (const file of selected) {
         signal?.throwIfAborted();

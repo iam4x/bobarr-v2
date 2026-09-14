@@ -439,7 +439,12 @@ export class SettingsRepository {
         ...current.settings.acquisition,
         ...patch.acquisition,
       },
-      storage: { ...current.settings.storage, ...patch.storage },
+      storage: {
+        organizationStrategy:
+          patch.storage?.organizationStrategy ??
+          current.settings.storage.organizationStrategy,
+        volumes: patch.storage?.volumes ?? current.settings.storage.volumes,
+      },
       schedules: { ...current.settings.schedules, ...patch.schedules },
       security: { ...current.settings.security, ...patch.security },
     });

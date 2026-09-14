@@ -9,6 +9,7 @@ import { resolve } from "node:path";
 import { importRecordedFiles } from "./importer";
 import { isPathContained } from "./paths";
 import { AppError, conflict, notFound } from "../core";
+import { libraryRoots } from "../storage";
 
 export interface ScanReviewServiceOptions {
   repositories: Repositories;
@@ -42,11 +43,10 @@ export function createScanReviewService(
       }
       signal?.throwIfAborted();
       const settings = options.repositories.settings.ensureDefaults().settings;
-      const configuredRoot =
-        review.kind === "movie"
-          ? settings.storage.moviesPath
-          : settings.storage.televisionPath;
-      const root = await verifiedRoot(configuredRoot, review.rootPath);
+      const root = await verifiedRoot(
+        libraryRoots(settings.storage, review.kind).map((item) => item.path),
+        review.rootPath,
+      );
       const files = await Promise.all(
         review.files.map(async (file) => {
           signal?.throwIfAborted();
@@ -180,22 +180,24 @@ export function createScanReviewService(
 }
 
 async function verifiedRoot(
-  configuredRoot: string,
+  configuredRoots: readonly string[],
   recordedRoot: string,
 ): Promise<string> {
+  let recorded: string;
   try {
-    const [configured, recorded] = await Promise.all([
-      realpath(configuredRoot),
-      realpath(recordedRoot),
-    ]);
-    if (configured !== recorded) {
-      throw conflict("The scan review belongs to a different library root");
-    }
-    return configured;
+    recorded = await realpath(recordedRoot);
   } catch (error) {
-    if (error instanceof AppError) throw error;
     throw reviewConflict("The configured library root is unavailable", error);
   }
+  for (const configuredRoot of configuredRoots) {
+    try {
+      const configured = await realpath(configuredRoot);
+      if (configured === recorded) return configured;
+    } catch {
+      continue;
+    }
+  }
+  throw conflict("The scan review belongs to a different library root");
 }
 
 function imageUrl(path: string | null): string | null {

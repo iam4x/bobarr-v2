@@ -280,7 +280,10 @@ describe("Bobarr backend API", () => {
     const job = JobSchema.parse(await acceptedJob.json());
     expect((await runtime.queue.get(job.id))?.payload).toEqual({
       version: 1,
-      roots: ["/media/movies", "/media/tv"],
+      targets: [
+        { path: "/media/movies", kind: "movie" },
+        { path: "/media/tv", kind: "series" },
+      ],
     });
     const jobDetailsResponse = await runtime.app.request(
       `/api/v1/jobs/${job.id}`,

@@ -78,6 +78,7 @@ import {
 import { requireAdmin } from "../auth/policy";
 import { AppError, notFound, systemClock } from "../core";
 import { durableJobToContract, validateCronExpression } from "../jobs";
+import { libraryRoots } from "../storage";
 
 interface ApiVariables {
   requestId: string;
@@ -1182,7 +1183,7 @@ function manualMaintenanceJob(
     kind: input.kind,
     payload: {
       version: 1,
-      roots: [settings.storage.moviesPath, settings.storage.televisionPath],
+      targets: libraryRoots(settings.storage),
     },
   };
 }

@@ -6,6 +6,42 @@ import { OrganizationStrategySchema } from "./media";
 const CronExpressionSchema = z.string().trim().min(5).max(100);
 const SecretInputSchema = z.string().max(16_384).optional();
 
+export const StorageVolumeSchema = z
+  .object({
+    id: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
+    label: z.string().trim().min(1).max(100),
+    downloadsPath: z.string().min(1).max(4096),
+    moviesPath: z.string().min(1).max(4096),
+    televisionPath: z.string().min(1).max(4096),
+  })
+  .strict()
+  .openapi("StorageVolume");
+
+const defaultStorageVolume: z.infer<typeof StorageVolumeSchema> = {
+  id: "default",
+  label: "Default",
+  downloadsPath: "/media/downloads",
+  moviesPath: "/media/movies",
+  televisionPath: "/media/tv",
+};
+
+const StorageSettingsObjectSchema = z
+  .object({
+    volumes: z.tuple([StorageVolumeSchema], StorageVolumeSchema),
+    organizationStrategy: OrganizationStrategySchema.default("hardlink"),
+  })
+  .strict();
+
+export const StorageSettingsSchema = z.preprocess(
+  wrapLegacyStorage,
+  StorageSettingsObjectSchema,
+);
+
+const defaultStorage: z.infer<typeof StorageSettingsObjectSchema> = {
+  volumes: [defaultStorageVolume],
+  organizationStrategy: "hardlink",
+};
+
 export const AppSettingsSchema = z
   .object({
     locale: z
@@ -52,19 +88,7 @@ export const AppSettingsSchema = z
         rejectedTerms: [],
         qualityOrder: ["2160p", "1080p", "720p"],
       }),
-    storage: z
-      .object({
-        downloadsPath: z.string().min(1).max(4096).default("/media/downloads"),
-        moviesPath: z.string().min(1).max(4096).default("/media/movies"),
-        televisionPath: z.string().min(1).max(4096).default("/media/tv"),
-        organizationStrategy: OrganizationStrategySchema.default("hardlink"),
-      })
-      .default({
-        downloadsPath: "/media/downloads",
-        moviesPath: "/media/movies",
-        televisionPath: "/media/tv",
-        organizationStrategy: "hardlink",
-      }),
+    storage: StorageSettingsSchema.default(defaultStorage),
     schedules: z
       .object({
         searchMissing: CronExpressionSchema.default("0 */6 * * *"),
@@ -92,6 +116,8 @@ export const AppSettingsSchema = z
   .openapi("AppSettings");
 
 export const UpdateSettingsRequestSchema = AppSettingsSchema.partial()
+  .omit({ storage: true })
+  .extend({ storage: StorageSettingsSchema.optional() })
   .strict()
   .refine(
     (value) => Object.keys(value).length > 0,
@@ -139,7 +165,53 @@ export const DeleteSecretResponseSchema = z
   .object({ deleted: z.boolean() })
   .openapi("DeleteSecretResponse");
 
+export type StorageVolume = z.infer<typeof StorageVolumeSchema>;
 export type AppSettings = z.infer<typeof AppSettingsSchema>;
 export type UpdateSettingsRequest = z.infer<typeof UpdateSettingsRequestSchema>;
+
+function wrapLegacyStorage(value: unknown): unknown {
+  if (!isPlainObject(value)) return value;
+  if (Array.isArray(value["volumes"])) {
+    const {
+      downloadsPath: _downloadsPath,
+      moviesPath: _moviesPath,
+      televisionPath: _televisionPath,
+      ...rest
+    } = value;
+    return rest;
+  }
+  const downloadsPath = value["downloadsPath"];
+  const moviesPath = value["moviesPath"];
+  const televisionPath = value["televisionPath"];
+  if (
+    typeof downloadsPath !== "string" ||
+    typeof moviesPath !== "string" ||
+    typeof televisionPath !== "string"
+  ) {
+    return value;
+  }
+  const {
+    downloadsPath: _downloadsPath,
+    moviesPath: _moviesPath,
+    televisionPath: _televisionPath,
+    ...rest
+  } = value;
+  return {
+    ...rest,
+    volumes: [
+      {
+        id: "default",
+        label: "Default",
+        downloadsPath,
+        moviesPath,
+        televisionPath,
+      },
+    ],
+  };
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 export type SettingsResponse = z.infer<typeof SettingsResponseSchema>;
 export type SecretMetadata = z.infer<typeof SecretMetadataSchema>;

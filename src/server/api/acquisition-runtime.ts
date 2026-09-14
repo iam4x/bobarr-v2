@@ -1,4 +1,8 @@
-import type { AcquisitionState, LibraryItem } from "../../contracts";
+import type {
+  AcquisitionState,
+  LibraryItem,
+  StorageVolume,
+} from "../../contracts";
 import type { AcquisitionService } from "../application";
 import type { BackendConfig } from "../config";
 import type { BackendDatabase, Repositories } from "../db";
@@ -26,6 +30,12 @@ import {
   organizedEpisodeNumbers,
 } from "../domain";
 import { importRecordedFiles, isPathContained, scanLibrary } from "../library";
+import {
+  downloadRoots,
+  measureFreeBytes,
+  placeDownload,
+  type LibraryRoot,
+} from "../storage";
 
 const MEDIA_ACQUIRE_JOB = "media.acquire.v1";
 const LIBRARY_SCAN_JOB = "library.scan.v1";
@@ -47,6 +57,7 @@ export interface AcquisitionRuntimeOptions {
   events: EventHub;
   integrations: IntegrationResolver;
   prepareDownloadDirectory?: (path: string) => Promise<void>;
+  placeDownloadDirectory?: (downloadId: string) => Promise<string>;
 }
 
 export function createAcquisitionRuntime(
@@ -61,9 +72,7 @@ export function createAcquisitionRuntime(
   async function service(): Promise<AcquisitionService> {
     const settings = options.repositories.settings.ensureDefaults().settings;
     const filesystemOptions = {
-      downloadsRoot: settings.storage.downloadsPath,
-      movieLibraryRoot: settings.storage.moviesPath,
-      seriesLibraryRoot: settings.storage.televisionPath,
+      storage: settings.storage,
       mode: settings.storage.organizationStrategy,
       fallbackToCopy: false,
     } as const;
@@ -196,11 +205,26 @@ export function createAcquisitionRuntime(
         },
       },
       {
-        downloadRoot: settings.storage.downloadsPath,
+        placeDownloadDirectory:
+          options.placeDownloadDirectory ??
+          (async (downloadId) => {
+            const freeBytesByVolumeId = new Map<string, bigint>();
+            for (const volume of settings.storage.volumes) {
+              const freeBytes = await measureFreeBytes(volume.downloadsPath);
+              if (freeBytes !== null) {
+                freeBytesByVolumeId.set(volume.id, freeBytes);
+              }
+            }
+            return placeDownload({
+              volumes: settings.storage.volumes,
+              freeBytesByVolumeId,
+              downloadId,
+            }).downloadDirectory;
+          }),
         prepareDownloadDirectory:
           options.prepareDownloadDirectory ??
           ((path) =>
-            prepareDownloadDirectory(settings.storage.downloadsPath, path)),
+            prepareDownloadDirectory(downloadRoots(settings.storage), path)),
       },
     );
   }
@@ -259,9 +283,6 @@ export function createAcquisitionRuntime(
       const durableById = new Map(
         durableDownloads.map((download) => [download.id, download]),
       );
-      const downloadRoot =
-        options.repositories.settings.ensureDefaults().settings.storage
-          .downloadsPath;
       const torrents = await (
         await options.integrations.transmission()
       ).list(signal);
@@ -272,7 +293,7 @@ export function createAcquisitionRuntime(
         if (!label) continue;
         const id = label.slice("bobarr:".length);
         const durable = durableById.get(id);
-        if (!durable || !isOwnedTorrent(durable, torrent, downloadRoot)) {
+        if (!durable || !isOwnedTorrent(durable, torrent)) {
           continue;
         }
         options.events.publish("download.changed", {
@@ -289,17 +310,22 @@ export function createAcquisitionRuntime(
 }
 
 async function prepareDownloadDirectory(
-  downloadsRoot: string,
+  downloadsRoots: readonly string[],
   requestedPath: string,
 ): Promise<void> {
-  const root = resolve(downloadsRoot);
   const path = resolve(requestedPath);
-  if (!isPathContained(root, path) || dirname(path) !== root) {
+  const parent = dirname(path);
+  const matchingRoot = downloadsRoots.find((root) => resolve(root) === parent);
+  if (
+    matchingRoot === undefined ||
+    !isPathContained(matchingRoot, path) ||
+    dirname(path) !== resolve(matchingRoot)
+  ) {
     throw new Error("Download directory escapes the configured root");
   }
   const [resolvedRoot, resolvedParent] = await Promise.all([
-    realpath(root),
-    realpath(dirname(path)),
+    realpath(matchingRoot),
+    realpath(parent),
   ]);
   if (resolvedRoot !== resolvedParent) {
     throw new Error("Download directory parent changed unexpectedly");
@@ -597,14 +623,15 @@ async function importLibrary(
   heartbeat: () => Promise<void>,
   options: AcquisitionRuntimeOptions,
 ): Promise<void> {
-  const roots = jobRoots(payload);
   const settings = options.repositories.settings.ensureDefaults().settings;
+  const targets = scanTargetsFromJobPayload(payload, settings.storage);
   const tmdb = await options.integrations.tmdb();
   let imported = 0;
   let reviews = 0;
-  for (const root of roots) {
+  for (const target of targets) {
     signal.throwIfAborted();
-    const kind = root === settings.storage.moviesPath ? "movie" : "series";
+    const kind = target.kind;
+    const root = target.path;
     const files = await scanLibrary({ root, followSymlinks: true });
     const groups = groupScanFiles(files.map((file) => ({ ...file, kind })));
     for (const group of groups.values()) {
@@ -851,17 +878,51 @@ function jobString(payload: unknown, key: string): string {
   return payload[key as keyof typeof payload] as string;
 }
 
-function jobRoots(payload: unknown): string[] {
+export function scanTargetsFromJobPayload(
+  payload: unknown,
+  storage: { volumes: readonly StorageVolume[] },
+): LibraryRoot[] {
+  if (typeof payload !== "object" || payload === null) {
+    throw new TypeError("Library scan job has invalid roots");
+  }
+  if ("targets" in payload) {
+    return parseScanTargets(payload.targets);
+  }
   if (
-    typeof payload !== "object" ||
-    payload === null ||
     !("roots" in payload) ||
     !Array.isArray(payload.roots) ||
     !payload.roots.every((root) => typeof root === "string")
   ) {
     throw new TypeError("Library scan job has invalid roots");
   }
-  return payload.roots;
+  return payload.roots.map((root) => {
+    if (storage.volumes.some((volume) => volume.moviesPath === root)) {
+      return { path: root, kind: "movie" as const };
+    }
+    if (storage.volumes.some((volume) => volume.televisionPath === root)) {
+      return { path: root, kind: "series" as const };
+    }
+    return { path: root, kind: "series" as const };
+  });
+}
+
+function parseScanTargets(value: unknown): LibraryRoot[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError("Library scan job has invalid targets");
+  }
+  return value.map((target) => {
+    if (
+      typeof target !== "object" ||
+      target === null ||
+      !("path" in target) ||
+      !("kind" in target) ||
+      typeof target.path !== "string" ||
+      (target.kind !== "movie" && target.kind !== "series")
+    ) {
+      throw new TypeError("Library scan job has invalid targets");
+    }
+    return { path: target.path, kind: target.kind };
+  });
 }
 
 function appendActivity(

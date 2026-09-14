@@ -53,6 +53,7 @@ import {
   createSqliteBackup,
   type BackupRestoreService,
 } from "../operations";
+import { libraryRoots } from "../storage";
 
 export interface InitializeBackendOptions {
   config?: BackendConfig;
@@ -61,6 +62,7 @@ export interface InitializeBackendOptions {
   logger?: Logger;
   passwordHasher?: PasswordHasher;
   prepareDownloadDirectory?: (path: string) => Promise<void>;
+  placeDownloadDirectory?: (downloadId: string) => Promise<string>;
 }
 
 export interface BackendRuntime {
@@ -196,6 +198,7 @@ export async function initializeBackend(
       events,
       integrations,
       prepareDownloadDirectory: options.prepareDownloadDirectory,
+      placeDownloadDirectory: options.placeDownloadDirectory,
     });
     const maintenanceHandlers: Record<string, JobHandler> = {
       "maintenance.reconcile.v1": async (_job, context) => {
@@ -538,7 +541,7 @@ async function enqueueScheduledMaintenance(
       expression: settings.schedules.scanLibrary,
       payload: {
         version: 1,
-        roots: [settings.storage.moviesPath, settings.storage.televisionPath],
+        targets: libraryRoots(settings.storage),
       },
     },
     {

@@ -474,7 +474,17 @@ export const apiRoutes = {
     "/settings/integrations/:key/test",
   ),
   validateStorage: route<
-    { valid: boolean; message?: string },
+    {
+      valid: boolean;
+      message: string;
+      volumes: Array<{
+        id: string;
+        label: string;
+        freeBytes: number | null;
+        ok: boolean;
+        message?: string;
+      }>;
+    },
     never,
     AppSettings["storage"]
   >()("POST", "/settings/storage/validate"),
