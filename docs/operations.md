@@ -39,18 +39,21 @@ Transmission mounts that same host `downloads` directory at both `/downloads`
 for LinuxServer ownership initialization and `/media/downloads` for Bobarr's
 durable paths. Do not mount each child from a different host filesystem.
 
-To add a second disk:
+To attach more than one disk, set a comma-separated list in `.env`:
 
-1. Set `BOBARR_MEDIA_PATH_2` in `.env` to the host path of the extra drive.
-2. Create `downloads`, `movies`, and `tv` on that host path.
-3. Start with the overlay. Run `docker compose -f compose.yml -f compose.extra-media.yml up`.
-4. In Settings, add a volume whose paths are `/media-b/downloads`,
-   `/media-b/movies`, and `/media-b/tv`.
+```sh
+BOBARR_MEDIA_PATHS=/Volumes/nvme_a,/Volumes/nvme_b
+```
+
+Then run `bun run stack up --build` or `./restart.sh`. The first folder is
+`/media`. The second is `/media-2`. Bobarr creates `downloads`, `movies`, and
+`tv` on each host path and records a Settings volume for each new root.
 
 Hardlink is per volume. Only the three paths in one volume need to share a
 device. Transmission must see every downloads path at the same container path.
-Do not mount movies or tv into Transmission. New downloads go to the volume
-with the most free space.
+Do not mount movies or television into Transmission. New downloads go to the
+volume with the most free space. `BOBARR_MEDIA_PATH` is still the fallback when
+`BOBARR_MEDIA_PATHS` is unset.
 
 ## Master key
 

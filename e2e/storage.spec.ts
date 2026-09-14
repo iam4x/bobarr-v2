@@ -17,13 +17,13 @@ test("adds a second storage volume from Settings", async ({ page }) => {
   await expect(page.getByLabel("Downloads path")).toHaveCount(2);
   await expect(page.getByLabel("Label").nth(1)).toHaveValue("Volume 1");
   await expect(page.getByLabel("Downloads path").nth(1)).toHaveValue(
-    "/media-b/downloads",
+    "/media-2/downloads",
   );
   await expect(page.getByLabel("Movies path").nth(1)).toHaveValue(
-    "/media-b/movies",
+    "/media-2/movies",
   );
   await expect(page.getByLabel("Television path").nth(1)).toHaveValue(
-    "/media-b/tv",
+    "/media-2/tv",
   );
   await expect(
     page.getByRole("button", { name: "Remove volume" }).nth(1),

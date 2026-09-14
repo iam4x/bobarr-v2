@@ -41,6 +41,44 @@ describe("Bobarr backend API", () => {
     expect(() => runtime.database.sqlite.query("SELECT 1").get()).toThrow();
   });
 
+  test("adds Settings volumes for extra BOBARR_MEDIA_ROOTS", async () => {
+    const runtime = await initializeBackend({
+      config: {
+        environment: "test",
+        version: "test",
+        databasePath: ":memory:",
+        encryptionKey: createEncryptionKey(),
+        sessionCookieName: "bobarr_session",
+        sessionTtlSeconds: 3_600,
+        sessionCookieSecure: false,
+        loginFailureLimit: 5,
+        loginLockSeconds: 60,
+      },
+      environment: {
+        BOBARR_MEDIA_ROOTS: "nvme_a:/media,nvme_b:/media-2",
+      },
+    });
+    runtimes.push(runtime);
+    expect(
+      runtime.repositories.settings.ensureDefaults().settings.storage.volumes,
+    ).toEqual([
+      {
+        id: "default",
+        label: "Default",
+        downloadsPath: "/media/downloads",
+        moviesPath: "/media/movies",
+        televisionPath: "/media/tv",
+      },
+      {
+        id: "nvme-b",
+        label: "nvme_b",
+        downloadsPath: "/media-2/downloads",
+        moviesPath: "/media-2/movies",
+        televisionPath: "/media-2/tv",
+      },
+    ]);
+  });
+
   test("initializes migrations and publishes an OpenAPI 3.1 contract", async () => {
     const runtime = await createTestRuntime();
     const statusResponse = await runtime.app.request("/api/v1/setup/status");
