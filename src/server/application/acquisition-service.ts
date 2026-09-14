@@ -34,7 +34,7 @@ const DEFAULT_MAX_METAINFO_BYTES = 10 * 1024 * 1024;
 const ORGANIZATION_ERROR_PREFIX = "Organization failed: ";
 
 export interface AcquisitionServiceOptions {
-  downloadRoot?: string;
+  placeDownloadDirectory?: (downloadId: string) => Promise<string>;
   prepareDownloadDirectory?: (path: string) => Promise<void>;
   maxMetainfoBytes?: number;
   defaultPeerLimit?: number;
@@ -91,9 +91,9 @@ export function createAcquisitionService(
 ): AcquisitionService {
   const now = options.now ?? Date.now;
   const createId = options.id ?? (() => crypto.randomUUID());
-  const downloadRoot = validateDownloadRoot(
-    options.downloadRoot ?? DEFAULT_DOWNLOAD_ROOT,
-  );
+  const placeDownloadDirectory =
+    options.placeDownloadDirectory ??
+    (async (downloadId) => posix.join(DEFAULT_DOWNLOAD_ROOT, downloadId));
   const prepareDownloadDirectory =
     options.prepareDownloadDirectory ?? (async () => {});
   const maxMetainfoBytes =
@@ -214,7 +214,9 @@ export function createAcquisitionService(
       engineInfoHash: null,
       engineName: null,
       engineLabel: `bobarr:${id}`,
-      downloadDirectory: posix.join(downloadRoot, id),
+      downloadDirectory: validateDownloadDirectory(
+        await placeDownloadDirectory(id),
+      ),
       progress: 0,
       error: null,
       pausedRequested: input.paused ?? false,
@@ -402,7 +404,7 @@ export function createAcquisitionService(
         );
         const ownedByCurrentDownload =
           existingTorrent !== null &&
-          isOwnedTorrent(record, existingTorrent, downloadRoot, added.hash);
+          isOwnedTorrent(record, existingTorrent, added.hash);
         if (!ownedByCurrentDownload) {
           throw new Error(
             "Torrent already exists in Transmission and is not owned by this download",
@@ -471,7 +473,7 @@ export function createAcquisitionService(
       if (!torrent) {
         throw new Error("Torrent is not complete");
       }
-      if (!isOwnedTorrent(record, torrent, downloadRoot)) {
+      if (!isOwnedTorrent(record, torrent)) {
         throw new Error("Transmission torrent ownership could not be verified");
       }
       if (!torrent.finished && torrent.progress < 1) {
@@ -530,7 +532,7 @@ export function createAcquisitionService(
       const expectedLabel = `bobarr:${record.id}`;
       const torrent = byLabel
         .get(expectedLabel)
-        ?.find((candidate) => isOwnedTorrent(record, candidate, downloadRoot));
+        ?.find((candidate) => isOwnedTorrent(record, candidate));
       if (torrent) {
         matched += 1;
         matchedTorrents.add(torrent);
@@ -851,9 +853,11 @@ function validateTarget(target: ReleaseTarget): void {
   }
 }
 
-function validateDownloadRoot(value: string): string {
+function validateDownloadDirectory(value: string): string {
   if (!value.startsWith("/") || value.includes("\0")) {
-    throw new TypeError("Transmission download root must be an absolute path");
+    throw new TypeError(
+      "Transmission download directory must be an absolute path",
+    );
   }
   return posix.normalize(value);
 }
@@ -885,16 +889,15 @@ function validatePositiveInteger(value: number, name: string): void {
 export function isOwnedTorrent(
   record: DownloadRecord,
   torrent: TorrentSnapshot,
-  downloadRoot: string,
   requiredInfoHash?: string,
 ): boolean {
   const expectedLabel = `bobarr:${record.id}`;
-  const expectedDirectory = posix.join(downloadRoot, record.id);
+  const recordDirectory = posix.normalize(record.downloadDirectory);
   if (
     record.engineLabel !== expectedLabel ||
-    posix.normalize(record.downloadDirectory) !== expectedDirectory ||
+    posix.basename(recordDirectory) !== record.id ||
     !torrent.labels.includes(expectedLabel) ||
-    posix.normalize(torrent.downloadDirectory) !== expectedDirectory
+    posix.normalize(torrent.downloadDirectory) !== recordDirectory
   ) {
     return false;
   }

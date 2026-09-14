@@ -18,6 +18,7 @@ import {
   CreateLibraryFileInputSchema,
   CreateLibraryItemRequestSchema,
   DownloadPatchSchema,
+  type AppSettings,
 } from "../../contracts";
 import {
   ADD_TORRENT_JOB,
@@ -669,6 +670,53 @@ describe("public product API", () => {
         (request) => request.pathname === "/3/movie/603",
       ),
     ).toBe(false);
+  });
+
+  test("validates storage volumes and reports free space", async () => {
+    const fixture = await createFixture();
+    const session = await setup(fixture.runtime);
+    const baseDirectory = await mkdtemp(join(tmpdir(), "bobarr-storage-"));
+    temporaryDirectories.push(baseDirectory);
+    const downloadsPath = join(baseDirectory, "downloads");
+    const moviesPath = join(baseDirectory, "movies");
+    const televisionPath = join(baseDirectory, "tv");
+    await mkdir(downloadsPath);
+    await mkdir(moviesPath);
+    await mkdir(televisionPath);
+    const storage = {
+      organizationStrategy: "hardlink" as const,
+      volumes: [
+        {
+          id: "default",
+          label: "Default",
+          downloadsPath,
+          moviesPath,
+          televisionPath,
+        },
+      ],
+    };
+
+    const response = await jsonRequest(
+      fixture.runtime,
+      "/api/v1/settings/storage/validate",
+      "POST",
+      storage,
+      session,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      valid: boolean;
+      message: string;
+      volumes: Array<{
+        id: string;
+        freeBytes: number | null;
+        ok: boolean;
+      }>;
+    };
+    expect(body.valid).toBe(true);
+    expect(body.volumes).toHaveLength(1);
+    expect(body.volumes[0]).toMatchObject({ id: "default", ok: true });
+    expect(body.volumes[0]?.freeBytes).toBeGreaterThanOrEqual(0);
   });
 
   test("applies required terms to manual and automatic acquisition", async () => {
@@ -2721,12 +2769,11 @@ describe("public product API", () => {
     await mkdir(movieDirectory, { recursive: true });
     await Bun.write(moviePath, "recorded movie");
     fixture.runtime.repositories.settings.update({
-      storage: {
-        ...fixture.runtime.repositories.settings.ensureDefaults().settings
-          .storage,
+      storage: withLibraryRoots(
+        fixture.runtime.repositories.settings.ensureDefaults().settings.storage,
         moviesPath,
         televisionPath,
-      },
+      ),
     });
     const imported = fixture.runtime.repositories.media.create(
       CreateLibraryItemRequestSchema.parse({
@@ -2787,12 +2834,11 @@ describe("public product API", () => {
     await mkdir(movieDirectory, { recursive: true });
     await Bun.write(moviePath, "recorded movie");
     fixture.runtime.repositories.settings.update({
-      storage: {
-        ...fixture.runtime.repositories.settings.ensureDefaults().settings
-          .storage,
+      storage: withLibraryRoots(
+        fixture.runtime.repositories.settings.ensureDefaults().settings.storage,
         moviesPath,
         televisionPath,
-      },
+      ),
     });
     const movie = fixture.runtime.repositories.media.create(
       CreateLibraryItemRequestSchema.parse({
@@ -2875,12 +2921,11 @@ describe("public product API", () => {
     await mkdir(televisionPath, { recursive: true });
     await Bun.write(outsidePath, "not library media");
     fixture.runtime.repositories.settings.update({
-      storage: {
-        ...fixture.runtime.repositories.settings.ensureDefaults().settings
-          .storage,
+      storage: withLibraryRoots(
+        fixture.runtime.repositories.settings.ensureDefaults().settings.storage,
         moviesPath,
         televisionPath,
-      },
+      ),
     });
     const movie = fixture.runtime.repositories.media.create(
       CreateLibraryItemRequestSchema.parse({
@@ -2935,12 +2980,11 @@ describe("public product API", () => {
     await mkdir(episodeDirectory, { recursive: true });
     await Bun.write(episodePath, "recorded episode");
     fixture.runtime.repositories.settings.update({
-      storage: {
-        ...fixture.runtime.repositories.settings.ensureDefaults().settings
-          .storage,
+      storage: withLibraryRoots(
+        fixture.runtime.repositories.settings.ensureDefaults().settings.storage,
         moviesPath,
         televisionPath,
-      },
+      ),
     });
     const series = fixture.runtime.repositories.media.create({
       kind: "series",
@@ -3576,6 +3620,8 @@ async function createFixture(): Promise<{
   const runtime = await initializeBackend({
     config,
     prepareDownloadDirectory: async () => {},
+    placeDownloadDirectory: async (downloadId) =>
+      `/media/downloads/${downloadId}`,
     environment: {
       NODE_ENV: "test",
       TMDB_API_KEY: "tmdb-test-key",
@@ -3674,4 +3720,17 @@ function escapeXml(value: string): string {
 
 function rpcResponse(id: number, result: Record<string, unknown>): Response {
   return Response.json({ jsonrpc: "2.0", id, result });
+}
+
+function withLibraryRoots(
+  storage: AppSettings["storage"],
+  moviesPath: string,
+  televisionPath: string,
+): AppSettings["storage"] {
+  const [volume, ...rest] = storage.volumes;
+  if (volume === undefined) throw new Error("storage has no volumes");
+  return {
+    organizationStrategy: storage.organizationStrategy,
+    volumes: [{ ...volume, moviesPath, televisionPath }, ...rest],
+  };
 }

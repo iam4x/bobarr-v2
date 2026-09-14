@@ -319,9 +319,18 @@ describe("season pack mapping", () => {
     const sourceName = "Example.Show.S01E01E02.1080p.mkv";
     await Bun.write(join(downloadDirectory, sourceName), "video");
     const organizer = createFilesystemLibraryOrganizer({
-      downloadsRoot: downloads,
-      movieLibraryRoot: join(root, "movies"),
-      seriesLibraryRoot: television,
+      storage: {
+        organizationStrategy: "copy",
+        volumes: [
+          {
+            id: "default",
+            label: "Default",
+            downloadsPath: downloads,
+            moviesPath: join(root, "movies"),
+            televisionPath: television,
+          },
+        ],
+      },
       mode: "copy",
     });
 
@@ -364,9 +373,18 @@ describe("season pack mapping", () => {
     await mkdir(downloadDirectory, { recursive: true });
     await Bun.write(join(downloadDirectory, sourceName), "unrelated video");
     const organizer = createFilesystemLibraryOrganizer({
-      downloadsRoot: downloads,
-      movieLibraryRoot: join(root, "movies"),
-      seriesLibraryRoot: join(root, "tv"),
+      storage: {
+        organizationStrategy: "copy",
+        volumes: [
+          {
+            id: "default",
+            label: "Default",
+            downloadsPath: downloads,
+            moviesPath: join(root, "movies"),
+            televisionPath: join(root, "tv"),
+          },
+        ],
+      },
       mode: "copy",
     });
 
@@ -394,6 +412,61 @@ describe("season pack mapping", () => {
       }),
     ).rejects.toThrow("contains no matching media files");
     await access(join(downloadDirectory, sourceName));
+  });
+
+  test("organizes a download under volume B into volume B's movies path", async () => {
+    const root = await temporaryRoot();
+    const volumeA = {
+      id: "disk-a",
+      label: "Disk A",
+      downloadsPath: join(root, "a", "downloads"),
+      moviesPath: join(root, "a", "movies"),
+      televisionPath: join(root, "a", "tv"),
+    };
+    const volumeB = {
+      id: "disk-b",
+      label: "Disk B",
+      downloadsPath: join(root, "b", "downloads"),
+      moviesPath: join(root, "b", "movies"),
+      televisionPath: join(root, "b", "tv"),
+    };
+    const downloadId = "22222222-2222-4222-8222-222222222222";
+    const downloadDirectory = join(volumeB.downloadsPath, downloadId);
+    await mkdir(downloadDirectory, { recursive: true });
+    await mkdir(volumeA.moviesPath, { recursive: true });
+    await mkdir(volumeB.moviesPath, { recursive: true });
+    const sourceName = "The.Matrix.1999.1080p.mkv";
+    await Bun.write(join(downloadDirectory, sourceName), "video");
+    const organizer = createFilesystemLibraryOrganizer({
+      storage: {
+        organizationStrategy: "copy",
+        volumes: [volumeA, volumeB],
+      },
+      mode: "copy",
+    });
+
+    const organized = await organizer.organize({
+      downloadId,
+      downloadDirectory,
+      target: { kind: "movie", title: "The Matrix", year: 1999 },
+      torrentName: "The Matrix",
+      files: [
+        {
+          index: 0,
+          name: sourceName,
+          length: 5,
+          bytesCompleted: 5,
+          wanted: true,
+          priority: "normal",
+        },
+      ],
+    });
+
+    expect(organized).toHaveLength(1);
+    expect(organized[0]?.destination.startsWith(volumeB.moviesPath)).toBe(true);
+    expect(organized[0]?.destination.startsWith(volumeA.moviesPath)).toBe(
+      false,
+    );
   });
 });
 

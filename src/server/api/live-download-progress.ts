@@ -1,4 +1,4 @@
-import type { BackendDatabase, Repositories } from "../db";
+import type { BackendDatabase } from "../db";
 import type { IntegrationResolver } from "./integration-resolver";
 
 import {
@@ -9,7 +9,6 @@ import {
 
 interface LiveDownloadDependencies {
   database: BackendDatabase;
-  repositories: Pick<Repositories, "settings">;
   integrations?: IntegrationResolver;
 }
 
@@ -48,9 +47,6 @@ export async function withLiveDownloadProgress<
     const durableById = new Map(
       durableDownloads.map((download) => [download.id, download]),
     );
-    const downloadRoot =
-      dependencies.repositories.settings.ensureDefaults().settings.storage
-        .downloadsPath;
     return downloads.map((download) => {
       const torrent = download.externalId
         ? byHash.get(download.externalId.toLowerCase())
@@ -58,12 +54,7 @@ export async function withLiveDownloadProgress<
       const durable = durableById.get(download.id);
       return torrent &&
         durable &&
-        isOwnedTorrent(
-          durable,
-          torrent,
-          downloadRoot,
-          download.externalId ?? undefined,
-        )
+        isOwnedTorrent(durable, torrent, download.externalId ?? undefined)
         ? ({ ...download, ...liveDownloadFields(download.state, torrent) } as T)
         : download;
     });

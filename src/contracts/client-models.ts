@@ -30,6 +30,14 @@ export type DownloadState =
   | "failed";
 export type OrganizationStrategy = "hardlink" | "symlink" | "copy" | "move";
 
+export interface StorageVolume {
+  id: string;
+  label: string;
+  downloadsPath: string;
+  moviesPath: string;
+  televisionPath: string;
+}
+
 export interface Session {
   authenticated?: boolean;
   user?: {
@@ -360,9 +368,7 @@ export interface AppSettings {
     qualityOrder: string[];
   };
   storage: {
-    downloadsPath: string;
-    moviesPath: string;
-    televisionPath: string;
+    volumes: [StorageVolume, ...StorageVolume[]];
     organizationStrategy: OrganizationStrategy;
   };
   schedules: {

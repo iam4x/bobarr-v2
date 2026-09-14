@@ -14,7 +14,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { initializeBackend } from "./initialize";
-import { ApiErrorEnvelopeSchema, AuthSessionSchema } from "../../contracts";
+import {
+  ApiErrorEnvelopeSchema,
+  AuthSessionSchema,
+  type AppSettings,
+} from "../../contracts";
 import { createEncryptionKey } from "../config";
 
 const nativeFetch = globalThis.fetch;
@@ -314,13 +318,26 @@ async function createFixture(): Promise<{
   });
   runtimes.push(runtime);
   runtime.repositories.settings.update({
-    storage: {
-      ...runtime.repositories.settings.ensureDefaults().settings.storage,
-      moviesPath: moviesRoot,
-      televisionPath: join(baseDirectory, "tv"),
-    },
+    storage: withLibraryRoots(
+      runtime.repositories.settings.ensureDefaults().settings.storage,
+      moviesRoot,
+      join(baseDirectory, "tv"),
+    ),
   });
   return { runtime, baseDirectory, moviesRoot, movieFile };
+}
+
+function withLibraryRoots(
+  storage: AppSettings["storage"],
+  moviesPath: string,
+  televisionPath: string,
+): AppSettings["storage"] {
+  const [volume, ...rest] = storage.volumes;
+  if (volume === undefined) throw new Error("storage has no volumes");
+  return {
+    organizationStrategy: storage.organizationStrategy,
+    volumes: [{ ...volume, moviesPath, televisionPath }, ...rest],
+  };
 }
 
 function tmdbSearchResult(id: number, title: string) {
