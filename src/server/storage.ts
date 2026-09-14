@@ -1,7 +1,7 @@
 import type { AppSettings, StorageVolume } from "../contracts";
 
 import { createHash } from "node:crypto";
-import { access, realpath, stat, statfs } from "node:fs/promises";
+import { access, lstat, realpath, stat, statfs } from "node:fs/promises";
 import { posix } from "node:path";
 
 import { isPathContained } from "./library/paths";
@@ -97,6 +97,87 @@ export function uncoveredStoragePaths(input: {
     }
   }
   return uncovered;
+}
+
+export async function uncoveredStoragePathsOnDisk(
+  input: Parameters<typeof uncoveredStoragePaths>[0],
+): Promise<string[]> {
+  const directories = new Map<string, Promise<string | null>>();
+  const resolveDirectory = (path: string): Promise<string | null> => {
+    const result =
+      directories.get(path) ?? resolveMissingPath(path, resolveDirectory);
+    directories.set(path, result);
+    return result;
+  };
+  const [volumes, library, downloads] = await Promise.all([
+    Promise.all(
+      input.volumes.map(async (volume) => ({
+        ...volume,
+        downloadsPath: await realpath(volume.downloadsPath),
+        moviesPath: await realpath(volume.moviesPath),
+        televisionPath: await realpath(volume.televisionPath),
+      })),
+    ),
+    Promise.all(
+      input.libraryFilePaths.map(async (path) => {
+        const directory = await resolveDirectory(posix.dirname(path));
+        return {
+          path,
+          resolved:
+            directory === null
+              ? null
+              : posix.join(directory, posix.basename(path)),
+        };
+      }),
+    ),
+    Promise.all(
+      input.downloadDirectories.map(async (path) => ({
+        path,
+        resolved: await resolveDirectory(path),
+      })),
+    ),
+  ]);
+  const uncovered = new Set(
+    uncoveredStoragePaths({
+      volumes,
+      libraryFilePaths: library.flatMap(({ resolved }) =>
+        resolved === null ? [] : [resolved],
+      ),
+      downloadDirectories: downloads.flatMap(({ resolved }) =>
+        resolved === null ? [] : [resolved],
+      ),
+    }),
+  );
+  return [...library, ...downloads]
+    .filter(({ resolved }) => resolved === null || uncovered.has(resolved))
+    .map(({ path }) => path);
+}
+
+async function resolveMissingPath(
+  path: string,
+  resolveParent: (path: string) => Promise<string | null>,
+): Promise<string | null> {
+  try {
+    return await realpath(path);
+  } catch (error) {
+    if (!isMissingPath(error)) return null;
+  }
+  try {
+    await lstat(path);
+    return null;
+  } catch (error) {
+    if (!isMissingPath(error)) return null;
+  }
+  const parent = posix.dirname(path);
+  if (parent === path) return null;
+  const resolvedParent = await resolveParent(parent);
+  return resolvedParent === null
+    ? null
+    : posix.join(resolvedParent, posix.basename(path));
+}
+
+function isMissingPath(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
 export function placeDownload(input: {

@@ -1,6 +1,9 @@
 import type { BackendRuntime } from "./initialize";
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { initializeBackend } from "./initialize";
 import {
@@ -10,6 +13,9 @@ import {
 import {
   ApiErrorEnvelopeSchema,
   AuthSessionSchema,
+  CreateDownloadInputSchema,
+  CreateLibraryFileInputSchema,
+  CreateLibraryItemRequestSchema,
   JobsListResponseSchema,
   JobDetailsSchema,
   JobSchema,
@@ -500,6 +506,122 @@ describe("Bobarr backend API", () => {
       runtime.repositories.settings.getRequired().settings.acquisition
         .requiredTerms,
     ).toEqual(["proper", "x265"]);
+  });
+
+  test("adds a volume after canonical paths were recorded under an aliased root", async () => {
+    const root = await realpath(
+      await mkdtemp(join(tmpdir(), "bobarr-storage-alias-")),
+    );
+    try {
+      const runtime = await createTestRuntime();
+      const setupResponse = await jsonRequest(
+        runtime,
+        "/api/v1/setup",
+        "POST",
+        {
+          username: "admin",
+          password: "a-correct-horse-battery-staple",
+        },
+      );
+      const session = AuthSessionSchema.parse(await setupResponse.json());
+      const headers = {
+        cookie: extractCookie(setupResponse),
+        "x-csrf-token": session.csrfToken,
+      };
+      const physical = join(root, "physical");
+      const alias = join(root, "alias");
+      await mkdir(physical);
+      await symlink(physical, alias);
+      const volume = (base: string, id: string) => ({
+        id,
+        label: id,
+        downloadsPath: join(base, id, "downloads"),
+        moviesPath: join(base, id, "movies"),
+        televisionPath: join(base, id, "tv"),
+      });
+      const first = volume(alias, "first");
+      const canonical = volume(physical, "first");
+      const second = volume(physical, "second");
+      for (const item of [canonical, second]) {
+        for (const path of [
+          item.downloadsPath,
+          item.moviesPath,
+          item.televisionPath,
+        ]) {
+          await mkdir(path, { recursive: true });
+        }
+      }
+      runtime.repositories.settings.update({
+        storage: { organizationStrategy: "hardlink", volumes: [first] },
+      });
+      const movie = runtime.repositories.media.create(
+        CreateLibraryItemRequestSchema.parse({
+          kind: "movie",
+          title: "Keep",
+          status: "available",
+        }),
+      );
+      const existing = join(canonical.moviesPath, "Keep.mkv");
+      await Bun.write(existing, "movie");
+      for (const path of [
+        existing,
+        join(first.moviesPath, "Missing", "Missing.mkv"),
+      ]) {
+        runtime.repositories.libraryFiles.upsert(
+          CreateLibraryFileInputSchema.parse({
+            mediaId: movie.id,
+            downloadId: null,
+            path,
+            sizeBytes: 5,
+            strategy: "copy",
+            quality: null,
+            videoCodec: null,
+            audioCodec: null,
+          }),
+        );
+      }
+      runtime.repositories.downloads.create(
+        CreateDownloadInputSchema.parse({
+          mediaId: movie.id,
+          title: "Keep",
+          downloadPath: join(canonical.downloadsPath, "missing-download"),
+        }),
+      );
+
+      for (const kept of [first, canonical]) {
+        const saved = await jsonRequest(
+          runtime,
+          "/api/v1/settings",
+          "PATCH",
+          {
+            storage: {
+              organizationStrategy: "hardlink",
+              volumes: [kept, second],
+            },
+          },
+          headers,
+        );
+        expect(saved.status).toBe(200);
+        expect(
+          runtime.repositories.settings.getRequired().settings.storage.volumes,
+        ).toEqual([kept, second]);
+      }
+      const removed = await jsonRequest(
+        runtime,
+        "/api/v1/settings",
+        "PATCH",
+        {
+          storage: { organizationStrategy: "hardlink", volumes: [second] },
+        },
+        headers,
+      );
+      expect(removed.status).toBe(409);
+      expect(
+        runtime.repositories.settings.getRequired().settings.storage.volumes,
+      ).toEqual([canonical, second]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("configures and resets the temporary sign-in lock", async () => {

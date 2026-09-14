@@ -82,7 +82,7 @@ import { durableJobToContract, validateCronExpression } from "../jobs";
 import {
   libraryRoots,
   storageLayoutEquals,
-  uncoveredStoragePaths,
+  uncoveredStoragePathsOnDisk,
   validateStorage,
 } from "../storage";
 
@@ -1164,7 +1164,7 @@ async function assertPersistableStoragePatch(
       status: 422,
     });
   }
-  const uncovered = uncoveredStoragePaths({
+  const uncovered = await uncoveredStoragePathsOnDisk({
     volumes: next.volumes,
     libraryFilePaths: repositories.libraryFiles.listPaths(),
     downloadDirectories: repositories.downloads.listDownloadDirectories(),
