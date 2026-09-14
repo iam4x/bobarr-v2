@@ -4145,6 +4145,43 @@ textarea:focus-visible {
   color: var(--text-muted);
   font-size: 10px;
 }
+.storage-volumes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.storage-volume {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--bg-raised);
+}
+.storage-volume__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+.storage-volume__header .field {
+  margin: 0;
+}
+.storage-volume .form-grid {
+  margin-bottom: 0;
+}
+.storage-volume__free {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.storage-volume-actions {
+  display: flex;
+  gap: var(--control-gap);
+  margin-bottom: 17px;
+}
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5311,7 +5348,8 @@ textarea:focus-visible {
   }
   .connection-grid,
   .form-grid,
-  .form-grid--three {
+  .form-grid--three,
+  .storage-volume__header {
     grid-template-columns: 1fr;
   }
   .connection-card__action .badge {

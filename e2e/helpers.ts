@@ -325,9 +325,15 @@ async function configureStorage(page: Page): Promise<void> {
     method: "PATCH",
     body: {
       storage: {
-        downloadsPath: `${mediaRoot}/downloads`,
-        moviesPath: `${mediaRoot}/movies`,
-        televisionPath: `${mediaRoot}/tv`,
+        volumes: [
+          {
+            id: "default",
+            label: "Default",
+            downloadsPath: `${mediaRoot}/downloads`,
+            moviesPath: `${mediaRoot}/movies`,
+            televisionPath: `${mediaRoot}/tv`,
+          },
+        ],
         organizationStrategy: "hardlink",
       },
     },

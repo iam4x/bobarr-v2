@@ -10,6 +10,7 @@ import {
   Database,
   FolderCheck,
   HardDrive,
+  Plus,
   KeyRound,
   LogOut,
   Network,
@@ -22,7 +23,7 @@ import {
   Users,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useFieldArray, useForm } from "react-hook-form";
 import { useNavigate } from "react-router";
 import { z } from "zod";
 
@@ -62,9 +63,23 @@ function settingsSchema(messages: Messages) {
     preferredTerms: z.string(),
     rejectedTerms: z.string(),
     qualityOrder: z.string().min(1, messages.settings.addQuality),
-    downloadsPath: z.string().startsWith("/", messages.settings.absolutePath),
-    moviesPath: z.string().startsWith("/", messages.settings.absolutePath),
-    televisionPath: z.string().startsWith("/", messages.settings.absolutePath),
+    volumes: z
+      .array(
+        z.object({
+          id: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
+          label: z.string().trim().min(1).max(100),
+          downloadsPath: z
+            .string()
+            .startsWith("/", messages.settings.absolutePath),
+          moviesPath: z
+            .string()
+            .startsWith("/", messages.settings.absolutePath),
+          televisionPath: z
+            .string()
+            .startsWith("/", messages.settings.absolutePath),
+        }),
+      )
+      .min(1),
     organizationStrategy: z.enum(["hardlink", "symlink", "copy", "move"]),
     searchMissing: z.string().min(1),
     refreshMetadata: z.string().min(1),
@@ -94,9 +109,15 @@ const emptySettings: AppSettings = {
     qualityOrder: ["2160p", "1080p", "720p"],
   },
   storage: {
-    downloadsPath: "/media/downloads",
-    moviesPath: "/media/movies",
-    televisionPath: "/media/tv",
+    volumes: [
+      {
+        id: "default",
+        label: "Default",
+        downloadsPath: "/media/downloads",
+        moviesPath: "/media/movies",
+        televisionPath: "/media/tv",
+      },
+    ],
     organizationStrategy: "hardlink",
   },
   schedules: {
@@ -129,9 +150,13 @@ function toForm(settings: AppSettings): SettingsForm {
     preferredTerms: settings.acquisition.preferredTerms.join(", "),
     rejectedTerms: settings.acquisition.rejectedTerms.join(", "),
     qualityOrder: settings.acquisition.qualityOrder.join(", "),
-    downloadsPath: settings.storage.downloadsPath,
-    moviesPath: settings.storage.moviesPath,
-    televisionPath: settings.storage.televisionPath,
+    volumes: settings.storage.volumes.map((volume) => ({
+      id: volume.id,
+      label: volume.label,
+      downloadsPath: volume.downloadsPath,
+      moviesPath: volume.moviesPath,
+      televisionPath: volume.televisionPath,
+    })),
     organizationStrategy: settings.storage.organizationStrategy,
     searchMissing: settings.schedules.searchMissing,
     refreshMetadata: settings.schedules.refreshMetadata,
@@ -147,6 +172,23 @@ function terms(value: string): string[] {
     .split(",")
     .map((term) => term.trim())
     .filter(Boolean);
+}
+
+function requireVolumes(
+  volumes: ParsedSettingsForm["volumes"],
+): AppSettings["storage"]["volumes"] {
+  const [first, ...rest] = volumes;
+  if (first === undefined) {
+    throw new Error("At least one storage volume is required");
+  }
+  return [first, ...rest];
+}
+
+function nextVolumeNumber(ids: readonly string[]): number {
+  let n = 1;
+  const used = new Set(ids);
+  while (used.has(`volume-${n}`)) n += 1;
+  return n;
 }
 
 function fromForm(value: ParsedSettingsForm): AppSettings {
@@ -171,9 +213,7 @@ function fromForm(value: ParsedSettingsForm): AppSettings {
       qualityOrder: terms(value.qualityOrder),
     },
     storage: {
-      downloadsPath: value.downloadsPath,
-      moviesPath: value.moviesPath,
-      televisionPath: value.televisionPath,
+      volumes: requireVolumes(value.volumes),
       organizationStrategy: value.organizationStrategy,
     },
     schedules: {
@@ -244,6 +284,15 @@ export function SettingsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [notice, setNotice] = useState<string>();
+  const [volumeStats, setVolumeStats] = useState<
+    Array<{
+      id: string;
+      label: string;
+      freeBytes: number | null;
+      ok: boolean;
+      message?: string;
+    }>
+  >();
   const [restoreFile, setRestoreFile] = useState<File>();
   const [restoreConfirmation, setRestoreConfirmation] = useState("");
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
@@ -262,6 +311,7 @@ export function SettingsPage() {
   });
   const {
     register,
+    control,
     handleSubmit,
     reset,
     getValues,
@@ -269,6 +319,31 @@ export function SettingsPage() {
     clearErrors,
     formState: { errors, isDirty },
   } = useForm<SettingsForm>({ defaultValues: toForm(emptySettings) });
+  const volumeFields = useFieldArray({
+    control,
+    name: "volumes",
+    keyName: "fieldKey",
+  });
+  const assignIssue = (issue: {
+    path: readonly PropertyKey[];
+    message: string;
+  }) => {
+    const [head, index, key] = issue.path;
+    if (
+      head === "volumes" &&
+      typeof index === "number" &&
+      (key === "label" ||
+        key === "downloadsPath" ||
+        key === "moviesPath" ||
+        key === "televisionPath")
+    ) {
+      setError(`volumes.${index}.${key}`, { message: issue.message });
+      return;
+    }
+    if (typeof head === "string") {
+      setError(head as keyof SettingsForm, { message: issue.message });
+    }
+  };
 
   useEffect(() => {
     if (settingsQuery.data) reset(toForm(settingsQuery.data));
@@ -299,18 +374,24 @@ export function SettingsPage() {
   });
   const validateStorageMutation = useMutation({
     mutationFn: () => {
-      const current = settingsSchema(messages).parse(getValues());
+      const parsed = settingsSchema(messages).safeParse(getValues());
+      if (!parsed.success) {
+        for (const issue of parsed.error.issues) assignIssue(issue);
+        throw new Error(messages.settings.storageValidationFailed);
+      }
       return api.post("validateStorage", {
-        body: fromForm(current).storage,
+        body: fromForm(parsed.data).storage,
       });
     },
-    onSuccess: (result) =>
+    onSuccess: (result) => {
+      setVolumeStats(result.volumes);
       setNotice(
-        result.message ??
+        result.message ||
           (result.valid
             ? messages.settings.storageAccessible
             : messages.settings.storageValidationFailed),
-      ),
+      );
+    },
   });
   const backupMutation = useMutation({
     mutationFn: () => api.post("createBackup"),
@@ -349,16 +430,15 @@ export function SettingsPage() {
     statusQuery.data?.integrations.find((item) => item.key === key);
   const fieldError = (key: keyof SettingsForm) =>
     errors[key]?.message?.toString();
+  const volumeFieldError = (
+    index: number,
+    key: "label" | "downloadsPath" | "moviesPath" | "televisionPath",
+  ) => errors.volumes?.[index]?.[key]?.message?.toString();
   const submitSettings = (value: SettingsForm) => {
     clearErrors();
     const parsed = settingsSchema(messages).safeParse(value);
     if (!parsed.success) {
-      for (const issue of parsed.error.issues) {
-        const field = issue.path[0];
-        if (typeof field === "string" && field in value) {
-          setError(field as keyof SettingsForm, { message: issue.message });
-        }
-      }
+      for (const issue of parsed.error.issues) assignIssue(issue);
       return;
     }
     saveMutation.mutate(parsed.data);
@@ -623,34 +703,117 @@ export function SettingsPage() {
                 <p>{messages.settings.storageBody}</p>
               </div>
             </header>
-            <div className="form-grid">
-              <Field
-                label={messages.settings.downloadsPath}
-                error={fieldError("downloadsPath")}
-                {...register("downloadsPath")}
-              />
-              <Field
-                label={messages.settings.moviesPath}
-                error={fieldError("moviesPath")}
-                {...register("moviesPath")}
-              />
-              <Field
-                label={messages.settings.televisionPath}
-                error={fieldError("televisionPath")}
-                {...register("televisionPath")}
-              />
-              <SelectField
-                label={messages.settings.organizationStrategy}
-                hint={messages.settings.organizationHint}
-                error={fieldError("organizationStrategy")}
-                {...register("organizationStrategy")}
-              >
-                <option value="hardlink">{messages.settings.hardlink}</option>
-                <option value="symlink">{messages.settings.symlink}</option>
-                <option value="copy">{messages.settings.copy}</option>
-                <option value="move">{messages.settings.move}</option>
-              </SelectField>
+            <div className="storage-volumes">
+              {volumeFields.fields.map((field, index) => {
+                const stats = volumeStats?.find(
+                  (volume) => volume.id === field.id,
+                );
+                let freeLabel: string | undefined;
+                if (stats) {
+                  freeLabel =
+                    stats.freeBytes === null
+                      ? messages.settings.volumeFreeUnknown
+                      : messages.settings.volumeFree({
+                          size: formatBytes(stats.freeBytes),
+                        });
+                }
+                return (
+                  <article className="storage-volume" key={field.fieldKey}>
+                    <div className="storage-volume__header">
+                      <Field
+                        label={messages.settings.volumeLabel}
+                        error={volumeFieldError(index, "label")}
+                        {...register(`volumes.${index}.label`)}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        disabled={volumeFields.fields.length === 1}
+                        onClick={() => volumeFields.remove(index)}
+                      >
+                        {messages.settings.removeVolume}
+                      </Button>
+                    </div>
+                    <input type="hidden" {...register(`volumes.${index}.id`)} />
+                    <div className="form-grid">
+                      <Field
+                        label={messages.settings.downloadsPath}
+                        error={volumeFieldError(index, "downloadsPath")}
+                        {...register(`volumes.${index}.downloadsPath`)}
+                      />
+                      <Field
+                        label={messages.settings.moviesPath}
+                        error={volumeFieldError(index, "moviesPath")}
+                        {...register(`volumes.${index}.moviesPath`)}
+                      />
+                      <Field
+                        label={messages.settings.televisionPath}
+                        error={volumeFieldError(index, "televisionPath")}
+                        {...register(`volumes.${index}.televisionPath`)}
+                      />
+                    </div>
+                    {freeLabel ? (
+                      <p className="storage-volume__free">{freeLabel}</p>
+                    ) : null}
+                    {stats?.message && !stats.ok ? (
+                      <p className="field__error">{stats.message}</p>
+                    ) : null}
+                  </article>
+                );
+              })}
             </div>
+            <div className="storage-volume-actions">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  const n = nextVolumeNumber(
+                    getValues("volumes").map((volume) => volume.id),
+                  );
+                  const used = new Set(
+                    getValues("volumes").flatMap((volume) => [
+                      volume.downloadsPath,
+                      volume.moviesPath,
+                      volume.televisionPath,
+                    ]),
+                  );
+                  const suggested = {
+                    downloadsPath: "/media-b/downloads",
+                    moviesPath: "/media-b/movies",
+                    televisionPath: "/media-b/tv",
+                  };
+                  const suggestOverlay =
+                    !used.has(suggested.downloadsPath) &&
+                    !used.has(suggested.moviesPath) &&
+                    !used.has(suggested.televisionPath);
+                  volumeFields.append({
+                    id: `volume-${n}`,
+                    label: messages.settings.volumeName({ n }),
+                    downloadsPath: suggestOverlay
+                      ? suggested.downloadsPath
+                      : "",
+                    moviesPath: suggestOverlay ? suggested.moviesPath : "",
+                    televisionPath: suggestOverlay
+                      ? suggested.televisionPath
+                      : "",
+                  });
+                }}
+              >
+                <Plus size={17} /> {messages.settings.addVolume}
+              </Button>
+            </div>
+            <SelectField
+              label={messages.settings.organizationStrategy}
+              hint={messages.settings.organizationHint}
+              error={fieldError("organizationStrategy")}
+              {...register("organizationStrategy")}
+            >
+              <option value="hardlink">{messages.settings.hardlink}</option>
+              <option value="symlink">{messages.settings.symlink}</option>
+              <option value="copy">{messages.settings.copy}</option>
+              <option value="move">{messages.settings.move}</option>
+            </SelectField>
             <Button
               type="button"
               variant="secondary"
