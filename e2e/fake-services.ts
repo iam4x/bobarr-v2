@@ -480,6 +480,26 @@ async function transmissionResponse(request: Request): Promise<Response> {
     input.method === "torrent_stop"
   ) {
     updateTorrentStatus(params, input.method === "torrent_start" ? 4 : 0);
+  } else if (input.method === "torrent_set_location") {
+    const location = params["location"];
+    if (
+      typeof location !== "string" ||
+      !isAbsolute(location) ||
+      params["move"] !== false
+    ) {
+      return Response.json({
+        jsonrpc: "2.0",
+        id: input.id,
+        error: {
+          code: -32602,
+          message: "The fixture requires an absolute location and move:false",
+        },
+      });
+    }
+    for (const hash of torrentIds(params)) {
+      const torrent = torrents.get(hash.toLowerCase());
+      if (torrent) torrent.downloadDirectory = resolve(location);
+    }
   } else if (input.method === "torrent_remove") {
     for (const hash of torrentIds(params)) torrents.delete(hash.toLowerCase());
   }
@@ -499,7 +519,7 @@ function transmissionTorrentPayload(torrent: FakeTorrent) {
     id: torrent.id,
     hash_string: torrent.hash,
     name: torrent.name,
-    status: torrent.completed ? 6 : torrent.status,
+    status: torrent.status,
     error: 0,
     error_string: "",
     eta: activelyDownloading ? 240 : -1,
@@ -573,7 +593,8 @@ function updateTorrentStatus(
 ): void {
   for (const hash of torrentIds(params)) {
     const torrent = torrents.get(hash.toLowerCase());
-    if (torrent) torrent.status = torrent.completed ? 6 : status;
+    if (torrent)
+      torrent.status = torrent.completed && status === 4 ? 6 : status;
   }
 }
 
