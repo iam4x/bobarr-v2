@@ -109,6 +109,12 @@ describe("volume organization", () => {
       const fixture = await setup();
       const seeded = await fixture.seeded(strategy);
       await fixture.addLargeMovie();
+      const start = fixture.engine.start;
+      fixture.engine.start = async (...args) => {
+        expect(await Bun.file(seeded.source).exists()).toBe(false);
+        expect(await Bun.file(seeded.file.path).exists()).toBe(false);
+        await start(...args);
+      };
 
       await fixture.organize();
 

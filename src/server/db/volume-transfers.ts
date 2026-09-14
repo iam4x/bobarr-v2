@@ -12,18 +12,24 @@ const FileIdentitySchema = z.object({
   link: z.string().nullable(),
 });
 
-const TransferFileSchema = z.object({
-  source: z.string(),
-  sourceRoot: z.string(),
-  destination: z.string(),
-  destinationRoot: z.string(),
-  identity: FileIdentitySchema,
-  kind: z.enum(["copy", "hardlink", "symlink"]),
-  target: z.string().nullable(),
-  checksum: z.string().nullable(),
-  stagingIdentity: z.object({ dev: z.number(), ino: z.number() }).nullable(),
-  stagingPath: z.string(),
-});
+const TransferFileModeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("copy"), target: z.null() }),
+  z.object({ kind: z.enum(["hardlink", "symlink"]), target: z.string() }),
+]);
+
+const TransferFileSchema = z
+  .object({
+    source: z.string(),
+    sourceRoot: z.string(),
+    destination: z.string(),
+    destinationRoot: z.string(),
+    identity: FileIdentitySchema,
+    checksum: z.string().nullable(),
+    stagingIdentity: z.object({ dev: z.number(), ino: z.number() }).nullable(),
+    stagingPath: z.string(),
+    retirementPath: z.string(),
+  })
+  .and(TransferFileModeSchema);
 
 const TransferDownloadSchema = z.object({
   id: z.string(),
@@ -68,6 +74,7 @@ export const VolumeTransferSchema = z.object({
 
 export type VolumeTransfer = z.infer<typeof VolumeTransferSchema>;
 export type TransferFile = z.infer<typeof TransferFileSchema>;
+export type TransferFileMode = z.infer<typeof TransferFileModeSchema>;
 export type TransferDownload = z.infer<typeof TransferDownloadSchema>;
 export type FileIdentity = z.infer<typeof FileIdentitySchema>;
 

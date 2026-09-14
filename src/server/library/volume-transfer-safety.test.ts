@@ -1,0 +1,211 @@
+import type { GroupInventory } from "./volume-inventory";
+
+import { afterEach, expect, test } from "bun:test";
+import { lstat, mkdir, mkdtemp, realpath, rm, utimes } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+
+import { buildVolumeTransfer, resumeVolumeTransfer } from "./volume-transfer";
+import { CreateLibraryItemRequestSchema } from "../../contracts";
+import { createRepositories, openBackendDatabase } from "../db";
+import {
+  activeVolumeTransfers,
+  saveVolumeTransfer,
+} from "../db/volume-transfers";
+
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+});
+
+test("published copies never authorize deletion of newer source contents", async () => {
+  const fixture = await createFixture();
+  let changed = false;
+  await expect(
+    fixture.resume(async () => {
+      if (!changed && fixture.transfer.stage === "published") {
+        changed = true;
+        await fixture.changeSource();
+      }
+    }),
+  ).rejects.toThrow("contents do not match");
+  expect(await Bun.file(fixture.source).text()).toBe("new-content");
+  expect(await Bun.file(fixture.destination).text()).toBe("old-content");
+  expect(activeVolumeTransfers(fixture.database)).toHaveLength(1);
+});
+
+test("resumed staged copies must still match current source contents", async () => {
+  const fixture = await createFixture();
+  await expect(
+    fixture.resume(async () => {
+      if (
+        fixture.transfer.stage === "copying" &&
+        fixture.transfer.files[0]?.checksum
+      )
+        throw new Error("Interrupted after copying");
+    }),
+  ).rejects.toThrow("Interrupted after copying");
+  await fixture.changeSource();
+  const recovered = activeVolumeTransfers(fixture.database)[0]!;
+  await expect(
+    resumeVolumeTransfer({ ...fixture.options, transfer: recovered }),
+  ).rejects.toThrow("contents do not match");
+  expect(await Bun.file(fixture.source).text()).toBe("new-content");
+  expect(fixture.repositories.libraryFiles.get(fixture.fileId)?.path).toBe(
+    fixture.source,
+  );
+});
+
+test("destination corruption after database commit retains the original", async () => {
+  const fixture = await createFixture();
+  let changed = false;
+  await expect(
+    fixture.resume(async () => {
+      if (!changed && fixture.transfer.stage === "committed") {
+        changed = true;
+        await Bun.write(fixture.destination, "bad-content");
+      }
+    }),
+  ).rejects.toThrow("verification failure");
+  expect(await Bun.file(fixture.source).text()).toBe("old-content");
+  expect(fixture.transfer.stage).toBe("committed");
+  await Bun.write(fixture.destination, "old-content");
+  await fixture.resume();
+  await expect(lstat(fixture.source)).rejects.toThrow();
+  expect(await Bun.file(fixture.destination).text()).toBe("old-content");
+});
+
+test("a failed journal commit cannot advance the live transfer to cleanup", async () => {
+  const fixture = await createFixture();
+  fixture.database.sqlite.exec(`
+    CREATE TRIGGER reject_committed_transfer BEFORE UPDATE OF stage ON volume_transfers
+    WHEN NEW.stage = 'committed' BEGIN SELECT RAISE(ABORT, 'Journal commit failed'); END;
+  `);
+  await expect(fixture.resume()).rejects.toThrow("Journal commit failed");
+  expect(fixture.transfer.stage).toBe("published");
+  expect(activeVolumeTransfers(fixture.database)[0]?.stage).toBe("published");
+  expect(fixture.repositories.libraryFiles.get(fixture.fileId)?.path).toBe(
+    fixture.source,
+  );
+  expect(await Bun.file(fixture.source).text()).toBe("old-content");
+  fixture.database.sqlite.exec("DROP TRIGGER reject_committed_transfer");
+  await fixture.resume();
+  expect(fixture.repositories.libraryFiles.get(fixture.fileId)?.path).toBe(
+    fixture.destination,
+  );
+  expect(await Bun.file(fixture.destination).text()).toBe("old-content");
+  await expect(lstat(fixture.source)).rejects.toThrow();
+});
+
+async function createFixture() {
+  const root = await realpath(
+    await mkdtemp(join(tmpdir(), "bobarr-transfer-safety-")),
+  );
+  const database = await openBackendDatabase(join(root, "bobarr.sqlite"));
+  cleanups.push(async () => {
+    database.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  const repositories = createRepositories(database);
+  const volumes = ["a", "b"].map((id) => ({
+    id,
+    label: id,
+    downloadsPath: join(root, id, "downloads"),
+    moviesPath: join(root, id, "movies"),
+    televisionPath: join(root, id, "tv"),
+  }));
+  for (const volume of volumes)
+    for (const path of [
+      volume.downloadsPath,
+      volume.moviesPath,
+      volume.televisionPath,
+    ])
+      await mkdir(path, { recursive: true });
+  const first = volumes[0]!;
+  const second = volumes[1]!;
+  const source = join(first.moviesPath, "Movie/video.mkv");
+  const destination = join(second.moviesPath, "Movie/video.mkv");
+  await mkdir(dirname(source));
+  await Bun.write(source, "old-content");
+  await utimes(source, 1_700_000_000, 1_700_000_000);
+  const identity = await lstat(source);
+  const movie = repositories.media.create(
+    CreateLibraryItemRequestSchema.parse({ kind: "movie", title: "Movie" }),
+  );
+  const file = repositories.libraryFiles.upsert({
+    mediaId: movie.id,
+    downloadId: null,
+    path: source,
+    sizeBytes: identity.size,
+    strategy: "copy",
+    quality: null,
+    videoCodec: null,
+    audioCodec: null,
+  });
+  const key = `movie:${movie.id}`;
+  const group: GroupInventory = {
+    key,
+    groups: [
+      {
+        key,
+        kind: "movie",
+        mediaIds: [movie.id],
+        seriesId: null,
+        seasonNumber: null,
+      },
+    ],
+    title: movie.title,
+    mediaIds: [movie.id],
+    files: [
+      {
+        path: source,
+        root: first.moviesPath,
+        volumeId: first.id,
+        identity: {
+          dev: identity.dev,
+          ino: identity.ino,
+          size: identity.size,
+          mtimeMs: identity.mtimeMs,
+          link: null,
+        },
+      },
+    ],
+    libraryFiles: [file],
+    downloads: [],
+    directories: [dirname(source)],
+    bytesByVolume: new Map([[first.id, BigInt(identity.size)]]),
+  };
+  const measureFreeBytes = async () => 1024n ** 4n;
+  const transfer = await buildVolumeTransfer({
+    group,
+    volumes,
+    destination: second,
+    jobId: "test",
+    measureFreeBytes,
+  });
+  saveVolumeTransfer(database, transfer);
+  const options = {
+    database,
+    signal: new AbortController().signal,
+    measureFreeBytes,
+    heartbeat: async () => undefined,
+    transmission: async (): Promise<never> => {
+      throw new Error("Unexpected Transmission call");
+    },
+  };
+  return {
+    database,
+    repositories,
+    transfer,
+    options,
+    source,
+    destination,
+    fileId: file.id,
+    resume: (heartbeat = options.heartbeat) =>
+      resumeVolumeTransfer({ ...options, transfer, heartbeat }),
+    changeSource: async () => {
+      await Bun.write(source, "new-content");
+      await utimes(source, 1_700_000_000, 1_700_000_000);
+    },
+  };
+}
