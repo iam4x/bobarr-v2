@@ -26,6 +26,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # generated extra media binds from BOBARR_MEDIA_PATHS
 /compose.media.yml
+/compose.media-primary
 
 # dotenv environment variable files
 .env

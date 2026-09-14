@@ -46,12 +46,15 @@ BOBARR_MEDIA_PATHS=/Volumes/nvme_a,/Volumes/nvme_b
 ```
 
 Then run `bun run stack up --build` or `./restart.sh`. The first folder is
-`/media`. The second is `/media-2`. Each host path must already exist as a
-directory. Bobarr will not create a missing disk mount. Empty `downloads`,
-`movies`, and `tv` children are added only when those names are absent. Files
-already in those folders stay. Put the current library disk first. If
-`BOBARR_MEDIA_PATH` is set, it must resolve to that same first folder. Settings
-gains a volume for each new root and does not rewrite existing volume paths.
+`/media`. The second is `/media-nvme-b` when the host folder is named `nvme_b`.
+Each host path must already exist as a directory. Bobarr will not create a
+missing disk mount. Empty `downloads`, `movies`, and `tv` children are added
+only when those names are absent. Files already in those folders stay. Put the
+current library disk first. If `BOBARR_MEDIA_PATH` is set, it must resolve to
+that same first folder. `bun run stack` writes the first folder to
+`compose.media-primary` so a later reorder cannot remount `/media` onto a
+different disk. Settings gains a volume for each new root and does not rewrite
+existing volume paths.
 
 Hardlink is per volume. Only the three paths in one volume need to share a
 device. Transmission must see every downloads path at the same container path.

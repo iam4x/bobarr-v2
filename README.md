@@ -41,9 +41,9 @@ Compose default permits its session cookie over direct HTTP access, including a
 private Tailscale address. Set `BOBARR_COOKIE_SECURE=true` when serving Bobarr
 over HTTPS.
 
-Media folders are `BOBARR_MEDIA_PATHS` in `.env`. One folder is `/media`. Extra
-folders are `/media-2`, `/media-3`, and so on. Hardlink organization still needs
-the three children of each folder on one filesystem.
+Media folders are `BOBARR_MEDIA_PATHS` in `.env`. The first folder is `/media`.
+Each extra folder is `/media-<disk-name>`, for example `/media-nvme-b`. Hardlink
+organization still needs the three children of each folder on one filesystem.
 
 ```sh
 # .env
@@ -58,7 +58,10 @@ Each host path must already exist. `bun run stack` will not create a missing
 disk. It only adds empty `downloads`, `movies`, and `tv` children inside that
 folder and leaves files that are already there. Put the disk that currently
 holds the library first so it stays mounted at `/media`. If `BOBARR_MEDIA_PATH`
-is set, it must be that same folder. `./restart.sh` uses the same command.
+is set, it must be that same folder. `bun run stack` writes that first folder to
+`compose.media-primary`. A later run that lists a different disk first stops
+before Docker starts. Delete that file only when you intend to remount `/media`
+onto another disk. `./restart.sh` uses the same command.
 
 ## Development
 

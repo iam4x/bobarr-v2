@@ -2,16 +2,19 @@ import { unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import {
+  assertPrimaryMediaRootUnchanged,
   ensureMediaLayout,
   extraComposeYaml,
   mediaPathPlan,
   mediaRootsEnv,
   parseHostMediaPaths,
-  sameMediaRoot,
+  readPrimaryMediaStamp,
+  writePrimaryMediaStamp,
 } from "../src/server/media-paths";
 
 const repoRoot = resolve(import.meta.dir, "..");
 const generatedCompose = join(repoRoot, "compose.media.yml");
+const primaryStamp = join(repoRoot, "compose.media-primary");
 
 const plan = mediaPathPlan(parseHostMediaPaths(process.env));
 const primary = plan[0];
@@ -19,15 +22,10 @@ if (primary === undefined) {
   throw new Error("BOBARR_MEDIA_PATHS must list at least one host folder");
 }
 const extra = extraComposeYaml(plan);
-const previousPrimary = process.env["BOBARR_MEDIA_PATH"]?.trim();
-if (
-  previousPrimary &&
-  !(await sameMediaRoot(previousPrimary, primary.hostPath))
-) {
-  throw new Error(
-    `BOBARR_MEDIA_PATHS first folder (${primary.hostPath}) is not the current BOBARR_MEDIA_PATH (${previousPrimary}). Put the existing library disk first so it stays mounted at /media.`,
-  );
-}
+const previousPrimary =
+  process.env["BOBARR_MEDIA_PATH"]?.trim() ||
+  (await readPrimaryMediaStamp(primaryStamp));
+await assertPrimaryMediaRootUnchanged(primary.hostPath, previousPrimary);
 process.env["BOBARR_MEDIA_PATH"] = primary.hostPath;
 process.env["BOBARR_MEDIA_ROOTS"] = mediaRootsEnv(plan);
 
@@ -40,6 +38,7 @@ if (extra === null) {
 } else {
   await Bun.write(generatedCompose, extra);
 }
+await writePrimaryMediaStamp(primaryStamp, primary.hostPath);
 
 const userArgs = process.argv.slice(2);
 const files = ["-f", join(repoRoot, "compose.yml")];

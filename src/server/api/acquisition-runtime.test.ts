@@ -203,13 +203,18 @@ describe("library scan payload", () => {
   test("maps legacy roots through current volumes", () => {
     expect(
       scanTargetsFromJobPayload(
-        { version: 1, roots: ["/media/movies", "/media-b/tv", "/unknown"] },
+        { version: 1, roots: ["/media/movies", "/media-b/tv"] },
         storage,
       ),
     ).toEqual([
       { path: "/media/movies", kind: "movie" },
       { path: "/media-b/tv", kind: "series" },
-      { path: "/unknown", kind: "series" },
     ]);
+  });
+
+  test("rejects a legacy root that is not a configured volume", () => {
+    expect(() =>
+      scanTargetsFromJobPayload({ version: 1, roots: ["/unknown"] }, storage),
+    ).toThrow("not a configured volume");
   });
 });

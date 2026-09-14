@@ -32,10 +32,6 @@ export function parseHostMediaPaths(
   return paths;
 }
 
-export function containerRootForIndex(index: number): string {
-  return index === 0 ? "/media" : `/media-${index + 1}`;
-}
-
 export function mediaPathPlan(hostPaths: readonly string[]): HostMediaMount[] {
   const usedNames = new Set<string>();
   return hostPaths.map((hostPath, index) => {
@@ -43,7 +39,7 @@ export function mediaPathPlan(hostPaths: readonly string[]): HostMediaMount[] {
     usedNames.add(name);
     return {
       hostPath,
-      containerRoot: containerRootForIndex(index),
+      containerRoot: index === 0 ? "/media" : `/media-${slugVolumeId(name)}`,
       name,
     };
   });
@@ -69,12 +65,14 @@ export function extraComposeYaml(
   if (extras.length === 0) return null;
   const roots = mediaRootsEnv(plan);
   const bobarrVolumes = extras
-    .map((item) => `      - ${yamlString(item.hostPath)}:${item.containerRoot}`)
+    .map((item) => composeBind(item.hostPath, item.containerRoot))
     .join("\n");
   const transmissionVolumes = extras
-    .map(
-      (item) =>
-        `      - ${yamlString(`${item.hostPath}/downloads`)}:${item.containerRoot}/downloads`,
+    .map((item) =>
+      composeBind(
+        `${item.hostPath}/downloads`,
+        `${item.containerRoot}/downloads`,
+      ),
     )
     .join("\n");
   return `services:
@@ -127,6 +125,34 @@ export async function sameMediaRoot(
     realpath(resolve(right)).catch(() => resolve(right)),
   ]);
   return resolvedLeft === resolvedRight;
+}
+
+export async function readPrimaryMediaStamp(
+  stampPath: string,
+): Promise<string | undefined> {
+  const text = await Bun.file(stampPath)
+    .text()
+    .catch(() => "");
+  const line = text.split("\n")[0]?.trim() ?? "";
+  return line.length > 0 ? line : undefined;
+}
+
+export async function writePrimaryMediaStamp(
+  stampPath: string,
+  hostPath: string,
+): Promise<void> {
+  await Bun.write(stampPath, `${resolve(hostPath)}\n`);
+}
+
+export async function assertPrimaryMediaRootUnchanged(
+  nextHostPath: string,
+  previousHostPath: string | undefined,
+): Promise<void> {
+  if (previousHostPath === undefined || previousHostPath.trim() === "") return;
+  if (await sameMediaRoot(previousHostPath, nextHostPath)) return;
+  throw new Error(
+    `BOBARR_MEDIA_PATHS first folder (${nextHostPath}) is not the current library disk (${previousHostPath}). Put the existing library disk first so it stays mounted at /media. Delete compose.media-primary only if you intend to remount /media onto a different disk.`,
+  );
 }
 
 export function volumesForMediaRoots(
@@ -205,6 +231,14 @@ function uniqueVolumeId(id: string, used: Set<string>): string {
   let n = 2;
   while (used.has(`${id}-${n}`)) n += 1;
   return `${id}-${n}`.slice(0, 64);
+}
+
+function composeBind(source: string, target: string): string {
+  return `      - type: bind
+        source: ${yamlString(source)}
+        target: ${target}
+        bind:
+          create_host_path: false`;
 }
 
 function yamlString(value: string): string {

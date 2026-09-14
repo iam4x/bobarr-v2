@@ -902,7 +902,9 @@ export function scanTargetsFromJobPayload(
     if (storage.volumes.some((volume) => volume.televisionPath === root)) {
       return { path: root, kind: "series" as const };
     }
-    return { path: root, kind: "series" as const };
+    throw new TypeError(
+      `Library scan job root is not a configured volume: ${root}`,
+    );
   });
 }
 

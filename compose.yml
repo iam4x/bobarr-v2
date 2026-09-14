@@ -28,7 +28,11 @@ services:
       TZ: ${TZ:-Etc/UTC}
     volumes:
       - ${BOBARR_CONFIG_PATH:-./config}:/config
-      - ${BOBARR_MEDIA_PATH:-./media}:/media
+      - type: bind
+        source: ${BOBARR_MEDIA_PATH:-./media}
+        target: /media
+        bind:
+          create_host_path: false
     ports:
       - ${BOBARR_BIND_ADDRESS:-0.0.0.0}:${BOBARR_PORT:-3000}:3000
     healthcheck:
@@ -112,8 +116,16 @@ services:
       - ${TRANSMISSION_CONFIG_PATH:-./config/transmission}:/config
       # LinuxServer initializes ownership through its conventional /downloads
       # mount. The second alias keeps Bobarr's single-/media hardlink paths.
-      - ${BOBARR_MEDIA_PATH:-./media}/downloads:/downloads
-      - ${BOBARR_MEDIA_PATH:-./media}/downloads:/media/downloads
+      - type: bind
+        source: ${BOBARR_MEDIA_PATH:-./media}/downloads
+        target: /downloads
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BOBARR_MEDIA_PATH:-./media}/downloads
+        target: /media/downloads
+        bind:
+          create_host_path: false
     ports:
       - ${TRANSMISSION_BIND_ADDRESS:-0.0.0.0}:${TRANSMISSION_WEB_PORT:-9091}:9091
       - ${TRANSMISSION_PEER_BIND_ADDRESS:-0.0.0.0}:${TRANSMISSION_PEER_PORT:-51413}:${TRANSMISSION_PEER_PORT:-51413}/tcp
