@@ -63,25 +63,76 @@ the volume with the most available space. Later files join the same movie or
 season. `BOBARR_MEDIA_PATH` is still the fallback when `BOBARR_MEDIA_PATHS` is unset.
 
 To redistribute an existing library after adding a disk, save the volumes in
-**Settings**, then click **Organize volumes**. Follow the job through **View job
-in Activity**. The job moves library folders and Transmission's completed seeding
-data together. A TV series can span disks, but each season stays together.
-Seasons sharing a torrent move together. Whole groups and the 10 GiB free-space
-reserve can prevent an exact equal split.
+**Settings**. The Compose deployment now runs volume organization from a CLI
+while the job API is paused. Stop only Bobarr before rebuilding the image, so
+the old server cannot run during organization. Leave Transmission running for
+linked torrents.
 
-The job copies files first, rereads and compares their SHA-256 checksums, and
+```sh
+bun run stack stop bobarr
+bun run stack build bobarr
+bun run stack run --rm --no-deps bobarr bun dist/organize-volumes.js --inspect
+bun run stack run --rm --no-deps bobarr bun dist/organize-volumes.js --resume-only
+```
+
+Review the inspection and resume logs before allowing new moves. Try one group:
+
+```sh
+bun run stack run --rm --no-deps bobarr bun dist/organize-volumes.js --run --max-groups 1
+```
+
+Review that move's log. Run without a limit when ready, and start Bobarr after
+the CLI stops:
+
+```sh
+bun run stack run --rm --no-deps bobarr bun dist/organize-volumes.js --run
+bun run stack up -d --no-deps --force-recreate bobarr
+```
+
+`--inspect` is the default and reads interrupted transfer manifests, source
+identities, and destination presence without writing. `--resume-only` finishes
+active transfers without selecting new groups. `--run --max-groups 1` tries at
+most one new move; omit the limit to continue until no useful move remains.
+Each command emits one JSON record per line, including
+the selected group, copy progress every five seconds, start and end of destination
+verification and staging cleanup, publication, database commit, source cleanup,
+skips, and the final counts. Mutating runs also emit a heartbeat every 15 seconds
+with the current action and file while a large SHA-256 check is running. Pipe each run through
+`tee` to keep a log; use `set -o pipefail` so a failed CLI command keeps a failed
+exit status. Do not run `--resume-only` or `--run` while the Bobarr server is up. Two CLI runs also
+cannot overlap because the script holds a lock in `/config`. If a crash leaves
+that lock behind, confirm no organizer CLI process is running before removing
+the lock file.
+
+The organizer moves library folders and Transmission's completed seeding data
+together. A TV series can span disks, but each season stays together. Seasons
+sharing a torrent move together. Whole groups and the 10 GiB free-space reserve
+can prevent an exact equal split.
+
+The organizer copies files first, rereads and compares their SHA-256 checksums, and
 syncs the destination files and directories before removing originals. It checks
 file contents again during cleanup and keeps the affected torrents paused until
 cleanup finishes. A failed verification, sync, or database commit preserves the
 original bytes.
 
-Interrupted transfers resume after a restart. If you cancel a transfer, click
-**Organize volumes** again to finish it. Activity lists data skipped because a
-download is incomplete or its ownership or files cannot be verified. A failed
-cleanup can retain original files under `.bobarr-volume-organize` on the source
-volume. Move-mode imports use `.bobarr-import-retired` beside the source instead.
-Keep these directories while resolving the error reported in Activity; they can
-contain the only current version of a file changed during a move.
+In CLI mode, interrupted transfers wait for the next CLI run. Restarting Bobarr
+does not start a volume job, and the Organize volumes API returns a conflict. If
+the CLI reports a failure, keep its log and run `--inspect` before trying again.
+Activity lists data skipped because a download is incomplete or its ownership
+or files cannot be verified. A failed cleanup can retain original files under
+`.bobarr-volume-organize` on the source volume. Move-mode imports use
+`.bobarr-import-retired` beside the source instead. Keep these directories while
+resolving an error; they can contain the only current version of a file changed
+during a move.
+
+If a source entry has a different inode, size, or modification time after the
+library database already points to a verified destination, cleanup rereads both
+files and compares their SHA-256 checksums with the recorded checksum. Matching
+contents can be removed after the removal path verifies them again and checks
+that the source entry stays stable. A changed symlink must also keep its expected
+target. If verification fails, the CLI keeps the source and reports
+`source-retained` plus an Activity warning. Inspect that retained file before
+deciding whether it is a duplicate; the organizer never removes it automatically.
 
 When an interrupted copy cannot be safely reused, a retry creates a new copy and
 preserves the earlier attempt. These retained files occupy destination space

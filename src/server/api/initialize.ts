@@ -107,6 +107,8 @@ export async function initializeBackend(
   options: InitializeBackendOptions = {},
 ): Promise<BackendRuntime> {
   const environment = options.environment ?? process.env;
+  const volumeJobsEnabled =
+    environment["BOBARR_VOLUME_ORGANIZER_MODE"] !== "cli";
   const config = options.config ?? (await loadBackendConfig(environment));
   const clock = options.clock ?? systemClock;
   const logger =
@@ -321,7 +323,7 @@ export async function initializeBackend(
     };
 
     await queue.requeueExpired();
-    if (hasActiveVolumeTransfer(database)) {
+    if (volumeJobsEnabled && hasActiveVolumeTransfer(database)) {
       await queue.enqueue({
         type: ORGANIZE_VOLUMES_JOB,
         payload: { version: 1 },
@@ -361,7 +363,8 @@ export async function initializeBackend(
     // and the HTTP application have all been constructed.
     timers.worker = setInterval(() => {
       void drainWorker(worker).catch(() => undefined);
-      void drainWorker(volumeWorker).catch(() => undefined);
+      if (volumeJobsEnabled)
+        void drainWorker(volumeWorker).catch(() => undefined);
     }, 750);
     timers.worker.unref?.();
     timers.reconcile = setInterval(

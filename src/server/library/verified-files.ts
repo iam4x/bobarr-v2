@@ -40,6 +40,7 @@ export async function copyVerifiedFile(
   input: {
     source: string;
     destination: string;
+    progress?: (bytesCopied: number) => void;
   } & OperationOptions,
 ): Promise<string> {
   const source = await openRegular(input.source);
@@ -80,6 +81,7 @@ export async function copyVerifiedFile(
         written += result.bytesWritten;
       }
       position += bytesRead;
+      input.progress?.(position);
     }
     await input.hooks?.afterCopy?.();
     const checksum = hash.digest("hex");

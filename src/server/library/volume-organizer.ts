@@ -10,7 +10,11 @@ import { resolve } from "node:path";
 
 import { inventoryLibrary, validateDirectory } from "./volume-inventory";
 import { listLibraryGroups } from "./volume-placement";
-import { buildVolumeTransfer, resumeVolumeTransfer } from "./volume-transfer";
+import {
+  buildVolumeTransfer,
+  resumeVolumeTransfer,
+  type TransferProgress,
+} from "./volume-transfer";
 import {
   activeVolumeTransfers,
   isMediaMutating,
@@ -40,7 +44,46 @@ export interface VolumeOrganizationContext {
   jobId: string;
   signal: AbortSignal;
   heartbeat: () => Promise<void>;
+  progress?: (event: VolumeOrganizationProgress) => void;
+  retainChangedCommittedSources?: boolean;
+  maxNewGroups?: number;
 }
+
+export type VolumeOrganizationProgress =
+  | {
+      kind: "resume";
+      transferId: string;
+      title: string;
+      stage: VolumeTransfer["stage"];
+    }
+  | {
+      kind: "inventory";
+      groups: number;
+      volumes: {
+        id: string;
+        label: string;
+        freeBytes: bigint;
+        usedBytes: bigint;
+      }[];
+    }
+  | {
+      kind: "plan";
+      title: string;
+      groupKey: string;
+      destination: string;
+      bytes: bigint;
+      files: number;
+    }
+  | { kind: "skip"; groupKey: string; reason: string }
+  | { kind: "transfer"; event: TransferProgress }
+  | {
+      kind: "complete";
+      movedGroups: number;
+      movedBytes: bigint;
+      skippedGroups: number;
+      retainedSources: number;
+      retainedStagingFiles: number;
+    };
 
 export function createVolumeOrganizer(options: VolumeOrganizerOptions) {
   let running = false;
@@ -50,12 +93,28 @@ export function createVolumeOrganizer(options: VolumeOrganizerOptions) {
       running = true;
       let movedGroups = 0;
       let movedBytes = 0n;
+      let newGroups = 0;
       const skipped = new Map<string, string>();
       const completedGroups = new Set<string>();
       const retainedStagingPaths = new Set<string>();
+      const retainedSources = new Set<string>();
       const transmission = () => options.integrations.transmission();
       const skippedGroup = (key: string, reason: string): void => {
         skipped.set(key, reason);
+        context.progress?.({ kind: "skip", groupKey: key, reason });
+      };
+      const transferProgress = (event: TransferProgress): void => {
+        context.progress?.({ kind: "transfer", event });
+        if (event.kind === "file" && event.action === "source-retained") {
+          retainedSources.add(event.source);
+          activity(
+            options,
+            "library.organize.source-retained",
+            "warning",
+            `A source entry changed after commit and was kept for review: ${event.source}`,
+            { path: event.source, reason: event.reason },
+          );
+        }
       };
       const reportRetainedCopies = (transfer: VolumeTransfer): void => {
         const paths = [
@@ -75,6 +134,12 @@ export function createVolumeOrganizer(options: VolumeOrganizerOptions) {
       };
       try {
         for (const transfer of activeVolumeTransfers(options.database)) {
+          context.progress?.({
+            kind: "resume",
+            transferId: transfer.id,
+            title: transfer.title,
+            stage: transfer.stage,
+          });
           await resumeVolumeTransfer({
             ...context,
             transfer,
@@ -82,6 +147,9 @@ export function createVolumeOrganizer(options: VolumeOrganizerOptions) {
             transmission,
             measureFreeBytes: options.measureFreeBytes,
             deviceForPath: options.deviceForPath,
+            progress: transferProgress,
+            retainChangedCommittedSources:
+              context.retainChangedCommittedSources,
           });
           completedGroups.add(transfer.groupKey);
           movedGroups += transfer.groupKeys.length;
@@ -89,6 +157,11 @@ export function createVolumeOrganizer(options: VolumeOrganizerOptions) {
           publishChanges(options);
         }
         while (true) {
+          if (
+            context.maxNewGroups !== undefined &&
+            newGroups >= context.maxNewGroups
+          )
+            break;
           context.signal.throwIfAborted();
           await context.heartbeat();
           if (isStorageMutating(options.database))
@@ -125,6 +198,16 @@ export function createVolumeOrganizer(options: VolumeOrganizerOptions) {
             skipped: skippedGroup,
           });
           const usedBytes = await measureVolumeBytes(volumes, context.signal);
+          context.progress?.({
+            kind: "inventory",
+            groups: groups.length,
+            volumes: volumes.map((volume) => ({
+              id: volume.id,
+              label: volume.label,
+              freeBytes: free.get(volume.id) ?? 0n,
+              usedBytes: usedBytes.get(volume.id) ?? 0n,
+            })),
+          });
           const move = chooseVolumeMove(
             groups,
             volumes,
@@ -133,6 +216,14 @@ export function createVolumeOrganizer(options: VolumeOrganizerOptions) {
             usedBytes,
           );
           if (!move) break;
+          context.progress?.({
+            kind: "plan",
+            title: move.group.title,
+            groupKey: move.group.key,
+            destination: move.destination.label,
+            bytes: move.bytes,
+            files: move.group.files.length,
+          });
           let transfer;
           try {
             transfer = await buildVolumeTransfer({
@@ -192,10 +283,14 @@ export function createVolumeOrganizer(options: VolumeOrganizerOptions) {
             transmission,
             measureFreeBytes: options.measureFreeBytes,
             deviceForPath: options.deviceForPath,
+            progress: transferProgress,
+            retainChangedCommittedSources:
+              context.retainChangedCommittedSources,
           });
           completedGroups.add(move.group.key);
           movedGroups += move.group.groups.length;
           movedBytes += move.bytes;
+          newGroups++;
           reportRetainedCopies(transfer);
           publishChanges(options);
         }
@@ -210,7 +305,9 @@ export function createVolumeOrganizer(options: VolumeOrganizerOptions) {
         activity(
           options,
           "library.organize.completed",
-          skipped.size > 0 || retainedStagingPaths.size > 0
+          skipped.size > 0 ||
+            retainedStagingPaths.size > 0 ||
+            retainedSources.size > 0
             ? "warning"
             : "success",
           `Volume organization moved ${movedGroups} movie or season groups${skipped.size > 0 ? ` and skipped ${skipped.size}` : ""}`,
@@ -219,8 +316,17 @@ export function createVolumeOrganizer(options: VolumeOrganizerOptions) {
             movedBytes: Number(movedBytes),
             skippedGroups: skipped.size,
             retainedStagingFiles: retainedStagingPaths.size,
+            retainedSources: retainedSources.size,
           },
         );
+        context.progress?.({
+          kind: "complete",
+          movedGroups,
+          movedBytes,
+          skippedGroups: skipped.size,
+          retainedSources: retainedSources.size,
+          retainedStagingFiles: retainedStagingPaths.size,
+        });
         publishChanges(options);
       } finally {
         running = false;

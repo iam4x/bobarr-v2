@@ -1729,6 +1729,13 @@ export function registerProductRoutes(
 
   app.post("/api/v1/settings/storage/organize", async (context) => {
     requireAdmin(context.get("auth").actor);
+    if (dependencies.environment?.["BOBARR_VOLUME_ORGANIZER_MODE"] === "cli")
+      throw new AppError({
+        code: "conflict",
+        status: 409,
+        message:
+          "Volume organization is in CLI mode. Run the organizer with Bobarr stopped.",
+      });
     const storage =
       dependencies.repositories.settings.ensureDefaults().settings.storage;
     if (storage.volumes.length < 2) {

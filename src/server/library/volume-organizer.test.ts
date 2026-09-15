@@ -44,6 +44,48 @@ afterEach(async () => {
 });
 
 describe("volume organization", () => {
+  test("limits a CLI pass to one new group", async () => {
+    const fixture = await setup();
+    const files = [];
+    for (let index = 1; index <= 4; index++) {
+      const movie = fixture.movie(`Movie ${index}`);
+      files.push(
+        await fixture.record(
+          movie,
+          fixture.a,
+          `Movie ${index}/video.mkv`,
+          "m".repeat(100),
+        ),
+      );
+    }
+    await createVolumeOrganizer({
+      database: fixture.database,
+      repositories: fixture.repositories,
+      integrations: { transmission: async () => fixture.engine },
+      measureFreeBytes: async () => STORAGE_RESERVE_BYTES + 1024n * 1024n,
+    }).organize({
+      jobId: "cli-limit",
+      signal: new AbortController().signal,
+      heartbeat: async () => undefined,
+      maxNewGroups: 1,
+    });
+    expect(
+      files.filter((file) =>
+        fixture.repositories.libraryFiles
+          .get(file.id)
+          ?.path.startsWith(fixture.b.moviesPath),
+      ),
+    ).toHaveLength(1);
+    await fixture.organize();
+    expect(
+      files.filter((file) =>
+        fixture.repositories.libraryFiles
+          .get(file.id)
+          ?.path.startsWith(fixture.b.moviesPath),
+      ),
+    ).toHaveLength(2);
+  });
+
   test("balances whole movies and seasons including sidecars", async () => {
     const fixture = await setup();
     const movie = fixture.movie("Movie");

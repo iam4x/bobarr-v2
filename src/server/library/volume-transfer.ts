@@ -45,6 +45,44 @@ export interface TransferStorageOptions {
   deviceForPath?: (path: string) => Promise<number>;
 }
 
+export type TransferProgress =
+  | { kind: "stage"; transferId: string; stage: VolumeTransfer["stage"] }
+  | ({
+      kind: "file";
+      transferId: string;
+      source: string;
+      destination: string;
+      bytes: number;
+    } & (
+      | {
+          action:
+            | "copy-start"
+            | "copy-verified"
+            | "published"
+            | "destination-verification-start"
+            | "destination-verified"
+            | "source-reverification-start"
+            | "source-removal-start"
+            | "source-removed"
+            | "staging-cleanup-start"
+            | "staging-removed";
+        }
+      | { action: "source-reverified"; checksum: string }
+      | { action: "source-retained"; reason: string }
+    ))
+  | {
+      kind: "copy-progress";
+      transferId: string;
+      source: string;
+      bytesCopied: number;
+      totalBytes: number;
+    };
+
+export interface TransferRuntimeOptions {
+  progress?: (event: TransferProgress) => void;
+  retainChangedCommittedSources?: boolean;
+}
+
 export async function buildVolumeTransfer(
   input: {
     group: GroupInventory;
@@ -278,10 +316,16 @@ export async function resumeVolumeTransfer(
     transmission: () => Promise<TorrentEngine>;
     signal: AbortSignal;
     heartbeat: () => Promise<void>;
-  } & TransferStorageOptions,
+  } & TransferStorageOptions &
+    TransferRuntimeOptions,
 ): Promise<void> {
   const { transfer, database, signal, heartbeat } = input;
   if (transfer.stage === "complete") return;
+  input.progress?.({
+    kind: "stage",
+    transferId: transfer.id,
+    stage: transfer.stage,
+  });
   await pauseTorrents(transfer, input);
   if (transfer.stage === "copying") {
     await verifyCapacity(transfer, input);
@@ -297,6 +341,14 @@ export async function resumeVolumeTransfer(
         if (!alreadyPublished) await assertSource(file);
       } else await assertSource(file);
       if (file.kind === "copy") {
+        input.progress?.({
+          kind: "file",
+          transferId: transfer.id,
+          action: "copy-start",
+          source: file.source,
+          destination: file.destination,
+          bytes: file.identity.size,
+        });
         if (file.source === file.destination) {
           file.checksum = await hashFile(file.source, signal);
         } else {
@@ -318,6 +370,14 @@ export async function resumeVolumeTransfer(
               source: file.source,
               destination: file.stagingPath,
               signal,
+              progress: (bytesCopied) =>
+                input.progress?.({
+                  kind: "copy-progress",
+                  transferId: transfer.id,
+                  source: file.source,
+                  bytesCopied,
+                  totalBytes: file.identity.size,
+                }),
             });
           }
           await assertMatchingContents({
@@ -329,6 +389,14 @@ export async function resumeVolumeTransfer(
         }
         await assertSource(file);
         saveVolumeTransfer(database, transfer);
+        input.progress?.({
+          kind: "file",
+          transferId: transfer.id,
+          action: "copy-verified",
+          source: file.source,
+          destination: file.destination,
+          bytes: file.identity.size,
+        });
       }
     }
     for (const file of transfer.files) {
@@ -347,9 +415,22 @@ export async function resumeVolumeTransfer(
       signal.throwIfAborted();
       await heartbeat();
       await publishFile(file, signal);
+      input.progress?.({
+        kind: "file",
+        transferId: transfer.id,
+        action: "published",
+        source: file.source,
+        destination: file.destination,
+        bytes: file.identity.size,
+      });
     }
     transfer.stage = "published";
     saveVolumeTransfer(database, transfer);
+    input.progress?.({
+      kind: "stage",
+      transferId: transfer.id,
+      stage: "published",
+    });
     await heartbeat();
   }
   if (transfer.stage === "published") {
@@ -414,6 +495,11 @@ export async function resumeVolumeTransfer(
       saveVolumeTransfer(database, { ...transfer, stage: "committed" });
     })();
     transfer.stage = "committed";
+    input.progress?.({
+      kind: "stage",
+      transferId: transfer.id,
+      stage: "committed",
+    });
     await heartbeat();
   }
   if (transfer.stage === "committed") {
@@ -426,11 +512,75 @@ export async function resumeVolumeTransfer(
       signal.throwIfAborted();
       await heartbeat();
       if (file.source === file.destination && file.kind === "copy") continue;
+      input.progress?.({
+        kind: "file",
+        transferId: transfer.id,
+        action: "destination-verification-start",
+        source: file.source,
+        destination: file.destination,
+        bytes: file.identity.size,
+      });
       await verifyDestination(file, signal);
+      input.progress?.({
+        kind: "file",
+        transferId: transfer.id,
+        action: "destination-verified",
+        source: file.source,
+        destination: file.destination,
+        bytes: file.identity.size,
+      });
       const retained = await lstatOrMissing(file.retirementPath);
       if (file.source === file.destination && !retained) continue;
       if (retained || (await lstatOrMissing(file.source))) {
-        await assertSource(file);
+        const verifiedChecksum = file.checksum;
+        if (verifiedChecksum === null)
+          throw new Error(
+            "An original cannot be removed without a verified copy",
+          );
+        const currentSource = retained ? file.retirementPath : file.source;
+        let sourceIdentityChanged = false;
+        try {
+          await assertSource(file);
+        } catch (error) {
+          if (!(error instanceof SourceChangedError)) throw error;
+          input.progress?.({
+            kind: "file",
+            transferId: transfer.id,
+            action: "source-reverification-start",
+            source: currentSource,
+            destination: file.destination,
+            bytes: file.identity.size,
+          });
+          try {
+            await assertMatchingChangedSource(file, currentSource, signal);
+          } catch (verificationError) {
+            await verifyDestination(file, signal);
+            if (!input.retainChangedCommittedSources) throw verificationError;
+            input.progress?.({
+              kind: "file",
+              transferId: transfer.id,
+              action: "source-retained",
+              source: currentSource,
+              destination: file.destination,
+              bytes: file.identity.size,
+              reason:
+                verificationError instanceof Error
+                  ? verificationError.message
+                  : String(verificationError),
+            });
+            continue;
+          }
+          sourceIdentityChanged = true;
+          input.progress?.({
+            kind: "file",
+            transferId: transfer.id,
+            action: "source-reverified",
+            source: currentSource,
+            destination: file.destination,
+            bytes: file.identity.size,
+            checksum: verifiedChecksum,
+          });
+        }
         if (
           file.source !== file.destination &&
           !retained &&
@@ -439,7 +589,38 @@ export async function resumeVolumeTransfer(
           throw new Error(
             "Source and destination resolve to the same directory entry",
           );
-        await removeVerifiedSource({ ...retainedSource(file), signal });
+        input.progress?.({
+          kind: "file",
+          transferId: transfer.id,
+          action: "source-removal-start",
+          source: currentSource,
+          destination: file.destination,
+          bytes: file.identity.size,
+        });
+        await removeVerifiedSource({
+          ...retainedSource(file),
+          expectedSource: sourceIdentityChanged ? undefined : file.identity,
+          signal,
+        });
+        input.progress?.({
+          kind: "file",
+          transferId: transfer.id,
+          action: "source-removed",
+          source: file.source,
+          destination: file.destination,
+          bytes: file.identity.size,
+        });
+        if (retained && (await lstatOrMissing(file.source)))
+          input.progress?.({
+            kind: "file",
+            transferId: transfer.id,
+            action: "source-retained",
+            source: file.source,
+            destination: file.destination,
+            bytes: file.identity.size,
+            reason:
+              "A new source entry appeared after the original was retired",
+          });
       }
     }
     for (const file of transfer.files) {
@@ -458,6 +639,14 @@ export async function resumeVolumeTransfer(
         throw new Error(
           "A staging file cannot be removed without a verified copy",
         );
+      input.progress?.({
+        kind: "file",
+        transferId: transfer.id,
+        action: "staging-cleanup-start",
+        source: file.stagingPath,
+        destination: file.destination,
+        bytes: file.identity.size,
+      });
       await removeVerifiedSource({
         kind: "file",
         source: file.stagingPath,
@@ -465,6 +654,14 @@ export async function resumeVolumeTransfer(
         destination: file.destination,
         checksum: file.checksum,
         signal,
+      });
+      input.progress?.({
+        kind: "file",
+        transferId: transfer.id,
+        action: "staging-removed",
+        source: file.stagingPath,
+        destination: file.destination,
+        bytes: file.identity.size,
       });
     }
     for (const root of new Set(
@@ -489,6 +686,11 @@ export async function resumeVolumeTransfer(
     }
     transfer.stage = "complete";
     saveVolumeTransfer(database, transfer);
+    input.progress?.({
+      kind: "stage",
+      transferId: transfer.id,
+      stage: "complete",
+    });
   }
 }
 
@@ -788,7 +990,45 @@ async function assertSource(file: TransferFile): Promise<void> {
     JSON.stringify(current) !== JSON.stringify(file.identity) ||
     (!info.isFile() && !info.isSymbolicLink())
   )
-    throw new Error(`Source changed while organizing volumes: ${file.source}`);
+    throw new SourceChangedError(file.source, file.identity, current);
+}
+
+class SourceChangedError extends Error {
+  constructor(source: string, expected: FileIdentity, actual: FileIdentity) {
+    super(
+      `Source changed while organizing volumes: ${source}; expected ${JSON.stringify(expected)}, found ${JSON.stringify(actual)}`,
+    );
+    this.name = "SourceChangedError";
+  }
+}
+
+async function assertMatchingChangedSource(
+  file: TransferFile,
+  source: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const retained = retainedSource(file);
+  if (retained.kind === "file") {
+    await assertMatchingContents({
+      source,
+      destination: retained.destination,
+      checksum: retained.checksum,
+      signal,
+    });
+    return;
+  }
+  const info = await lstat(source);
+  if (!info.isSymbolicLink() || (await readlink(source)) !== retained.linkText)
+    throw new Error(`Source symlink changed: ${source}`);
+  if (await lstatOrMissing(retained.payloadSource))
+    await assertMatchingContents({
+      source: retained.payloadSource,
+      destination: retained.destination,
+      checksum: retained.checksum,
+      signal,
+    });
+  else if (source !== file.retirementPath)
+    throw new Error(`Source symlink payload is unavailable: ${source}`);
 }
 
 function retainedSource(file: TransferFile): RetainedSource {

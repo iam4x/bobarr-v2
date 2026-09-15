@@ -12,6 +12,7 @@
     "stack": "bun scripts/stack.ts",
     "build": "bun scripts/build.ts",
     "admin:reset": "bun scripts/reset-admin.ts",
+    "storage:organize": "bun scripts/organize-volumes.ts",
     "test": "bun test",
     "test:e2e": "playwright test",
     "dev": "bun --hot src/index.ts",

@@ -51,6 +51,24 @@ afterEach(async () => {
 });
 
 describe("public product API", () => {
+  test("does not queue volume jobs while the deployment is in CLI mode", async () => {
+    const { runtime } = await createFixture({
+      BOBARR_VOLUME_ORGANIZER_MODE: "cli",
+    });
+    const session = await setup(runtime);
+    const response = await jsonRequest(
+      runtime,
+      "/api/v1/settings/storage/organize",
+      "POST",
+      {},
+      session,
+    );
+    expect(response.status).toBe(409);
+    expect(await runtime.queue.count({ types: ["library.organize.v1"] })).toBe(
+      0,
+    );
+  });
+
   test("queues and deduplicates volume organization using saved settings", async () => {
     const { runtime } = await createFixture();
     const session = await setup(runtime);
@@ -3904,7 +3922,9 @@ class FakeProductServices {
   }
 }
 
-async function createFixture(): Promise<{
+async function createFixture(
+  environmentOverrides: Record<string, string> = {},
+): Promise<{
   runtime: BackendRuntime;
   services: FakeProductServices;
 }> {
@@ -3933,6 +3953,7 @@ async function createFixture(): Promise<{
       BOBARR_JACKETT_API_KEY: "jackett-test-key",
       BOBARR_JACKETT_URL: "http://jackett.test",
       BOBARR_TRANSMISSION_URL: "http://transmission.test/rpc",
+      ...environmentOverrides,
     },
   });
   runtimes.push(runtime);

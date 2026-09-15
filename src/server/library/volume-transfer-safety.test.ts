@@ -17,6 +17,7 @@ import { dirname, join } from "node:path";
 import { createVolumeOrganizer } from "./volume-organizer";
 import { buildVolumeTransfer, resumeVolumeTransfer } from "./volume-transfer";
 import { CreateLibraryItemRequestSchema } from "../../contracts";
+import { createEncryptionKey } from "../config";
 import { createRepositories, openBackendDatabase } from "../db";
 import {
   activeVolumeTransfers,
@@ -84,6 +85,185 @@ test("destination corruption after database commit retains the original", async 
   await fixture.resume();
   await expect(lstat(fixture.source)).rejects.toThrow();
   expect(await Bun.file(fixture.destination).text()).toBe("old-content");
+});
+
+test.each([
+  { replacement: "old-content", modifiedAt: 1_700_000_000, matching: true },
+  { replacement: "old-content", modifiedAt: 1_800_000_000, matching: true },
+  { replacement: "new-content", modifiedAt: 1_700_000_000, matching: false },
+])(
+  "CLI cleanup uses SHA-256 for a replaced source with contents $replacement and mtime $modifiedAt",
+  async ({ replacement, modifiedAt, matching }) => {
+    const fixture = await createFixture();
+    const events: string[] = [];
+    let interrupted = false;
+    await expect(
+      fixture.resume(async () => {
+        if (!interrupted && fixture.transfer.stage === "committed") {
+          interrupted = true;
+          throw new Error("Interrupted after commit");
+        }
+      }),
+    ).rejects.toThrow("Interrupted after commit");
+    await rename(fixture.source, `${fixture.source}.external-original`);
+    await Bun.write(fixture.source, replacement);
+    await utimes(fixture.source, modifiedAt, modifiedAt);
+    await resumeVolumeTransfer({
+      ...fixture.options,
+      transfer: fixture.transfer,
+      retainChangedCommittedSources: true,
+      progress: (event) => {
+        if (event.kind === "file") events.push(event.action);
+      },
+    });
+    if (matching) {
+      expect(events).toContain("source-reverified");
+      expect(events).toContain("source-removed");
+      await expect(lstat(fixture.source)).rejects.toThrow();
+    } else {
+      expect(events).toContain("source-retained");
+      expect(events).not.toContain("source-removed");
+      expect(await Bun.file(fixture.source).text()).toBe(replacement);
+    }
+    expect(await Bun.file(`${fixture.source}.external-original`).text()).toBe(
+      "old-content",
+    );
+    expect(await Bun.file(fixture.destination).text()).toBe("old-content");
+    expect(fixture.repositories.libraryFiles.get(fixture.fileId)?.path).toBe(
+      fixture.destination,
+    );
+    expect(activeVolumeTransfers(fixture.database)).toHaveLength(0);
+  },
+);
+
+test("job cleanup also accepts a new inode when SHA-256 matches", async () => {
+  const fixture = await createFixture();
+  await expect(
+    fixture.resume(async () => {
+      if (fixture.transfer.stage === "committed")
+        throw new Error("Interrupted after commit");
+    }),
+  ).rejects.toThrow("Interrupted after commit");
+  await rename(fixture.source, `${fixture.source}.external-original`);
+  await Bun.write(fixture.source, "old-content");
+  await fixture.resume();
+  await expect(lstat(fixture.source)).rejects.toThrow();
+  expect(await Bun.file(fixture.destination).text()).toBe("old-content");
+  expect(activeVolumeTransfers(fixture.database)).toHaveLength(0);
+});
+
+test("job cleanup still blocks removal when replacement bytes differ", async () => {
+  const fixture = await createFixture();
+  await expect(
+    fixture.resume(async () => {
+      if (fixture.transfer.stage === "committed")
+        throw new Error("Interrupted after commit");
+    }),
+  ).rejects.toThrow("Interrupted after commit");
+  await rename(fixture.source, `${fixture.source}.external-original`);
+  await Bun.write(fixture.source, "new-content");
+  await expect(fixture.resume()).rejects.toThrow("contents do not match");
+  expect(await Bun.file(fixture.source).text()).toBe("new-content");
+  expect(await Bun.file(fixture.destination).text()).toBe("old-content");
+  expect(activeVolumeTransfers(fixture.database)).toHaveLength(1);
+});
+
+test("the CLI inspects a replaced source and cleans matching contents", async () => {
+  const fixture = await createFixture();
+  await expect(
+    fixture.resume(async () => {
+      if (fixture.transfer.stage === "committed")
+        throw new Error("Interrupted after commit");
+    }),
+  ).rejects.toThrow("Interrupted after commit");
+  await rename(fixture.source, `${fixture.source}.external-original`);
+  await Bun.write(fixture.source, "old-content");
+  await utimes(fixture.source, 1_700_000_000, 1_700_000_000);
+  fixture.repositories.settings.ensureDefaults();
+  fixture.repositories.settings.update({
+    storage: { volumes: fixture.volumes, organizationStrategy: "copy" },
+  });
+  const environment = {
+    ...process.env,
+    NODE_ENV: "test",
+    BOBARR_CONFIG_DIR: dirname(fixture.databasePath),
+    BOBARR_DATABASE_PATH: fixture.databasePath,
+    BOBARR_MASTER_KEY: createEncryptionKey(),
+    PORT: "29999",
+  };
+  const script = new URL(
+    "../../../scripts/organize-volumes.ts",
+    import.meta.url,
+  ).pathname;
+  const inspect = Bun.spawn(["bun", script, "--inspect"], {
+    env: environment,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [inspection, inspectError, inspectCode] = await Promise.all([
+    new Response(inspect.stdout).text(),
+    new Response(inspect.stderr).text(),
+    inspect.exited,
+  ]);
+  if (inspectCode !== 0) throw new Error(inspectError);
+  expect(inspection).toContain('"sourceState":"changed"');
+  expect(inspection).toContain('"destinationState":"present"');
+  const run = Bun.spawn(["bun", script, "--resume-only"], {
+    env: environment,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [output, runError, runCode] = await Promise.all([
+    new Response(run.stdout).text(),
+    new Response(run.stderr).text(),
+    run.exited,
+  ]);
+  if (runCode !== 0) throw new Error(`${output}\n${runError}`);
+  for (const action of [
+    "destination-verification-start",
+    "destination-verified",
+    "source-reverification-start",
+    "source-removal-start",
+    "staging-cleanup-start",
+    "staging-removed",
+  ])
+    expect(output).toContain(`"action":"${action}"`);
+  expect(output).toContain('"action":"source-reverified"');
+  expect(output).toContain('"action":"source-removed"');
+  expect(output).toContain('"event":"run.success"');
+  await expect(lstat(fixture.source)).rejects.toThrow();
+  expect(await Bun.file(`${fixture.source}.external-original`).text()).toBe(
+    "old-content",
+  );
+  expect(await Bun.file(fixture.destination).text()).toBe("old-content");
+  expect(activeVolumeTransfers(fixture.database)).toHaveLength(0);
+});
+
+test("cleanup preserves a new source created after the original was retired", async () => {
+  const fixture = await createFixture();
+  await expect(
+    fixture.resume(async () => {
+      if (fixture.transfer.stage === "committed")
+        throw new Error("Interrupted after commit");
+    }),
+  ).rejects.toThrow("Interrupted after commit");
+  const retirement = fixture.transfer.files[0]!.retirementPath;
+  await mkdir(dirname(retirement), { recursive: true });
+  await rename(fixture.source, retirement);
+  await Bun.write(fixture.source, "new-content");
+  const events: string[] = [];
+  await resumeVolumeTransfer({
+    ...fixture.options,
+    transfer: fixture.transfer,
+    retainChangedCommittedSources: true,
+    progress: (event) => {
+      if (event.kind === "file") events.push(event.action);
+    },
+  });
+  expect(events).toContain("source-retained");
+  expect(await Bun.file(fixture.source).text()).toBe("new-content");
+  expect(await Bun.file(fixture.destination).text()).toBe("old-content");
+  await expect(lstat(retirement)).rejects.toThrow();
 });
 
 test("a failed journal commit cannot advance the live transfer to cleanup", async () => {
@@ -293,6 +473,7 @@ async function createFixture() {
   };
   return {
     database,
+    databasePath: join(root, "bobarr.sqlite"),
     repositories,
     volumes: [first, second] satisfies [typeof first, typeof second],
     transfer,
