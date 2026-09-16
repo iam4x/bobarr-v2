@@ -118,6 +118,10 @@ original bytes.
 In CLI mode, interrupted transfers wait for the next CLI run. Restarting Bobarr
 does not start a volume job, and the Organize volumes API returns a conflict. If
 the CLI reports a failure, keep its log and run `--inspect` before trying again.
+Transmission may acknowledge a stop request before it reports the torrent as
+stopped. The organizer waits up to 60 seconds for that state and rechecks torrent
+ownership, files, and location before copying. If it still cannot confirm the
+stop, the transfer stays active; inspect it before using `--resume-only`.
 Activity lists data skipped because a download is incomplete or its ownership
 or files cannot be verified. A failed cleanup can retain original files under
 `.bobarr-volume-organize` on the source volume. Move-mode imports use

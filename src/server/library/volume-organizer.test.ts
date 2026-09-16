@@ -369,6 +369,57 @@ describe("volume organization", () => {
     expect(fixture.calls).not.toContain(`start:${seeded.hash}`);
   });
 
+  test("waits for Transmission to report stopped after accepting a stop request", async () => {
+    const fixture = await setup();
+    const seeded = await fixture.seeded("hardlink");
+    await fixture.addLargeMovie();
+    let pauseRequested = false;
+    let readsAfterPause = 0;
+    fixture.engine.pause = async (hash) => {
+      fixture.calls.push(`pause:${hash}`);
+      pauseRequested = true;
+    };
+    fixture.engine.get = async (hash) => {
+      const torrent = fixture.torrents.get(hash) ?? null;
+      if (pauseRequested && torrent && ++readsAfterPause === 2)
+        torrent.status = "stopped";
+      return torrent;
+    };
+
+    await fixture.organize();
+
+    expect(fixture.calls).toContain(`pause:${seeded.hash}`);
+    expect(readsAfterPause).toBeGreaterThan(1);
+    expect(hasActiveVolumeTransfer(fixture.database)).toBe(false);
+    expect(await Bun.file(seeded.source).exists()).toBe(false);
+    expect(await Bun.file(seeded.file.path).exists()).toBe(false);
+  });
+
+  test("does not copy if torrent ownership changes while waiting for stop", async () => {
+    const fixture = await setup();
+    const seeded = await fixture.seeded("hardlink");
+    await fixture.addLargeMovie();
+    let pauseRequested = false;
+    fixture.engine.pause = async () => {
+      pauseRequested = true;
+    };
+    fixture.engine.get = async (hash) => {
+      const torrent = fixture.torrents.get(hash) ?? null;
+      if (pauseRequested && torrent) torrent.labels = [];
+      return torrent;
+    };
+
+    await expect(fixture.organize()).rejects.toThrow(
+      "ownership could not be verified",
+    );
+
+    expect(await Bun.file(seeded.source).text()).toBe("seeded-content");
+    expect(fixture.repositories.libraryFiles.get(seeded.file.id)?.path).toBe(
+      seeded.file.path,
+    );
+    expect(activeVolumeTransfers(fixture.database)[0]?.stage).toBe("copying");
+  });
+
   test("rejects a different torrent returned during transfer recovery", async () => {
     const fixture = await setup();
     const seeded = await fixture.seeded("hardlink");

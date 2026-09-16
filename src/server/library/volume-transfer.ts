@@ -24,6 +24,7 @@ import {
   symlink,
 } from "node:fs/promises";
 import { basename, dirname, relative, resolve, sep } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { isPathContained } from "./paths";
 import {
@@ -446,15 +447,12 @@ export async function resumeVolumeTransfer(
       if (download.hash === null || download.source === download.destination)
         continue;
       const engine = await input.transmission();
-      const torrent = await verifyTorrent(
+      const torrent = await pauseOwnedTorrent(
         download,
         engine,
-        signal,
+        input,
         "source-or-destination",
       );
-      if (torrent.status !== "stopped")
-        await engine.pause(download.hash, signal);
-      await verifyTorrent(download, engine, signal, "source-or-destination");
       if ((await realpath(torrent.downloadDirectory)) !== download.destination)
         await engine.setLocation(download.hash, download.destination, signal);
       await verifyTorrent(download, engine, signal, "destination");
@@ -709,22 +707,37 @@ async function pauseTorrents(
     const engine = await input.transmission();
     const location =
       transfer.stage === "committed" ? "destination" : "source-or-destination";
-    const torrent = await verifyTorrent(
+    await pauseOwnedTorrent(download, engine, input, location);
+  }
+}
+
+async function pauseOwnedTorrent(
+  download: TransferDownload,
+  engine: TorrentEngine,
+  input: { signal: AbortSignal; heartbeat: () => Promise<void> },
+  location: "source-or-destination" | "destination",
+): Promise<TorrentSnapshot> {
+  const hash = download.hash;
+  if (hash === null) throw new Error("Torrent identity is missing");
+  const initial = await verifyTorrent(download, engine, input.signal, location);
+  if (initial.status === "stopped") return initial;
+  await engine.pause(hash, input.signal);
+  const deadline = Date.now() + 60_000;
+  while (true) {
+    input.signal.throwIfAborted();
+    await input.heartbeat();
+    const current = await verifyTorrent(
       download,
       engine,
       input.signal,
       location,
     );
-    if (torrent.status !== "stopped")
-      await engine.pause(download.hash, input.signal);
-    const stopped = await verifyTorrent(
-      download,
-      engine,
-      input.signal,
-      location,
-    );
-    if (stopped.status !== "stopped")
-      throw new Error("Torrent did not stop before volume organization");
+    if (current.status === "stopped") return current;
+    if (Date.now() >= deadline)
+      throw new Error(
+        `Torrent ${download.id} did not stop within 60 seconds (last status: ${current.status})`,
+      );
+    await delay(500, undefined, { signal: input.signal });
   }
 }
 
