@@ -261,6 +261,14 @@ function detailsPayload(item: FakeMedia): Record<string, unknown> {
                 order: 0,
               },
             ],
+            crew: [
+              {
+                id: 9339,
+                name: "E2E Director",
+                job: "Director",
+                profile_path: null,
+              },
+            ],
           }
         : undefined,
     videos: {

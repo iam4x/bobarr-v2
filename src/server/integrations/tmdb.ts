@@ -62,6 +62,13 @@ export interface CatalogActor {
   profilePath: string | null;
 }
 
+export interface CatalogDirector {
+  tmdbId: number;
+  name: string;
+  job: "Director";
+  profilePath: string | null;
+}
+
 export interface CatalogTrailer {
   site: "youtube";
   key: string;
@@ -71,6 +78,7 @@ export interface CatalogTrailer {
 export interface CatalogDetails extends CatalogItem {
   genres: readonly CatalogGenre[];
   actors: readonly CatalogActor[];
+  directors: readonly CatalogDirector[];
   trailer: CatalogTrailer | null;
   runtimeMinutes: number | null;
   status: string | null;
@@ -120,6 +128,7 @@ export interface DiscoverOptions extends CatalogQueryOptions {
   genres?: readonly number[];
   genreMode?: "all" | "any";
   castId?: number;
+  crewId?: number;
   originCountry?: string;
   originalLanguage?: string;
   dateFrom?: string;
@@ -317,6 +326,9 @@ export function createTmdbClient(options: TmdbClientOptions): TmdbClient {
       }
       if (queryOptions.castId !== undefined) {
         parameters.set("with_cast", String(positiveId(queryOptions.castId)));
+      }
+      if (queryOptions.crewId !== undefined) {
+        parameters.set("with_crew", String(positiveId(queryOptions.crewId)));
       }
       if (
         queryOptions.genreMode !== undefined &&
@@ -621,6 +633,7 @@ function parseCatalogDetails(
     ...base,
     genres,
     actors: parseCatalogActors(value),
+    directors: parseCatalogDirectors(value),
     trailer: parseCatalogTrailer(value, language),
     runtimeMinutes: nullableNumber(
       value[mediaType === "movie" ? "runtime" : "episode_run_time"],
@@ -680,6 +693,39 @@ function parseCatalogTrailer(
     }
   }
   return best?.trailer ?? null;
+}
+
+function parseCatalogDirectors(
+  value: Record<string, unknown>,
+): CatalogDirector[] {
+  const credits = isRecord(value["credits"]) ? value["credits"] : undefined;
+  if (!Array.isArray(credits?.["crew"])) return [];
+
+  const seen = new Set<number>();
+  return credits["crew"].flatMap((member) => {
+    if (!isRecord(member)) return [];
+    if (asString(member["job"]) !== "Director") return [];
+    const tmdbId = asFiniteNumber(member["id"]);
+    const name = asString(member["name"]);
+    if (
+      tmdbId === undefined ||
+      !Number.isSafeInteger(tmdbId) ||
+      tmdbId <= 0 ||
+      !name
+    ) {
+      return [];
+    }
+    if (seen.has(tmdbId)) return [];
+    seen.add(tmdbId);
+    return [
+      {
+        tmdbId,
+        name,
+        job: "Director" as const,
+        profilePath: nullableString(member["profile_path"]),
+      },
+    ];
+  });
 }
 
 function parseCatalogActors(value: Record<string, unknown>): CatalogActor[] {

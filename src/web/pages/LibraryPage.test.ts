@@ -128,6 +128,37 @@ describe("library manual release targets", () => {
     expect(markup).toContain("Neo");
   });
 
+  test("shows director discovery chips in movie management", () => {
+    const markup = renderWithUi(
+      createElement(MovieManagement, {
+        item: movie,
+        canMutate: true,
+        directors: [
+          {
+            tmdbId: 9339,
+            name: "Lana Wachowski",
+            job: "Director",
+            profilePath: null,
+          },
+        ],
+        policy: "all",
+        saveBusy: false,
+        retryBusy: false,
+        onPolicyChange: () => undefined,
+        onSave: () => undefined,
+        onRetry: () => undefined,
+        onManualSearch: () => undefined,
+        onRemove: () => undefined,
+      }),
+    );
+
+    expect(markup).toContain('aria-label="Directed by"');
+    expect(markup).toContain(
+      'aria-label="Discover movies directed by Lana Wachowski"',
+    );
+    expect(markup).toContain("Lana Wachowski");
+  });
+
   test("shows a watch trailer action in movie management", () => {
     const markup = renderWithUi(
       createElement(MovieManagement, {

@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import {
   actorDiscoverPath,
+  directorDiscoverPath,
   ExternalRatings,
   MovieCast,
+  MovieDirectors,
   seasonYearLabel,
 } from "./Catalog";
 import { en } from "../i18n/en";
@@ -71,6 +73,63 @@ describe("movie cast", () => {
     expect(markup).toContain('aria-busy="true"');
     expect(markup.match(/actor-card--skeleton/g)?.length).toBe(6);
     expect(markup).not.toContain("Discover movies with");
+  });
+});
+
+describe("movie directors", () => {
+  test("renders at most three accessible director chips with profile fallbacks", () => {
+    const directors = Array.from({ length: 4 }, (_, index) => ({
+      tmdbId: index + 1,
+      name: `Director ${index + 1}`,
+      job: "Director" as const,
+      profilePath: index === 1 ? "/director-2.jpg" : null,
+    }));
+    const markup = renderWithUi(
+      <MovieDirectors directors={directors} onSelect={() => undefined} />,
+    );
+
+    expect(markup).toContain('aria-label="Directed by"');
+    expect(markup).toContain(
+      'aria-label="Discover movies directed by Director 1"',
+    );
+    expect(markup).toContain("Director");
+    expect(markup).toContain("/w342/director-2.jpg");
+    expect(markup).toContain("Director 3");
+    expect(markup).not.toContain("Director 4");
+  });
+
+  test("builds a deep-linkable director Discover URL", () => {
+    expect(
+      directorDiscoverPath({ tmdbId: 525, name: "Christopher Nolan" }),
+    ).toBe("/discover?directorId=525&directorName=Christopher+Nolan");
+  });
+
+  test("reserves two skeleton director chips while credits are loading", () => {
+    const markup = renderWithUi(
+      <MovieDirectors
+        loading
+        directors={undefined}
+        onSelect={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Directed by"');
+    expect(markup).toContain('aria-busy="true"');
+    expect(markup.match(/director-chip--skeleton/g)?.length).toBe(2);
+    expect(markup).not.toContain("Discover movies directed by");
+  });
+
+  test("omits the region when no directors are present", () => {
+    expect(
+      renderWithUi(
+        <MovieDirectors directors={[]} onSelect={() => undefined} />,
+      ),
+    ).toBe("");
+    expect(
+      renderWithUi(
+        <MovieDirectors directors={undefined} onSelect={() => undefined} />,
+      ),
+    ).toBe("");
   });
 });
 

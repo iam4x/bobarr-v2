@@ -1165,6 +1165,109 @@ textarea:focus-visible {
   height: 100%;
   border: 0;
 }
+.movie-directors {
+  display: grid;
+  gap: 8px;
+}
+.movie-directors__heading {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+.movie-directors__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.director-chip {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 40px minmax(0, auto);
+  align-items: center;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  color: var(--text);
+  background: var(--bg-raised);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+.director-chip:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+.director-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.director-chip--skeleton {
+  pointer-events: none;
+  cursor: default;
+}
+.director-chip--skeleton:hover {
+  transform: none;
+  border-color: var(--border);
+  background: var(--bg-raised);
+}
+.director-chip--skeleton .director-chip__copy .skeleton--line,
+.director-chip--skeleton .director-chip__copy .skeleton--line-short {
+  margin-top: 0;
+}
+.director-chip--skeleton .director-chip__copy .skeleton--line {
+  width: 78%;
+  height: 12px;
+}
+.director-chip--skeleton .director-chip__copy .skeleton--line-short {
+  width: 55%;
+  height: 10px;
+  margin-top: 6px;
+}
+.director-chip__portrait {
+  width: 40px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--bg-sunken);
+}
+.director-chip__portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.director-chip__placeholder {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+.director-chip__copy {
+  display: grid;
+  gap: 2px;
+  padding: 6px 10px 6px 8px;
+}
+.director-chip__copy strong,
+.director-chip__copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.director-chip__copy strong {
+  font-size: 11px;
+}
+.director-chip__copy small {
+  color: var(--text-muted);
+  font-size: 10px;
+}
 .movie-cast {
   display: grid;
   gap: 11px;

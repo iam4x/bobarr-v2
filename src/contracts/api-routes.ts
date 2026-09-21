@@ -130,6 +130,7 @@ export interface CatalogDiscoverQuery {
   /** Comma-separated TMDB genre ids. Multiple ids match any selected genre. */
   genres?: string;
   actorId?: number;
+  directorId?: number;
   originCountry?: string;
   originalLanguage?: string;
   year?: number;

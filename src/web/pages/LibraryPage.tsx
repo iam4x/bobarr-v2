@@ -5,6 +5,7 @@ import type {
 import type {
   AcquisitionState,
   CatalogActor,
+  CatalogDirector,
   CatalogTrailer,
   LibraryItem,
   MonitorPolicy,
@@ -66,7 +67,9 @@ import { api } from "../api/client";
 import { collectionItems } from "../api/normalize";
 import {
   actorDiscoverPath,
+  directorDiscoverPath,
   MovieCast,
+  MovieDirectors,
   WatchTrailerButton,
 } from "../components/Catalog";
 import { Page } from "../components/Page";
@@ -1776,6 +1779,7 @@ export function TvSeriesManagement({
 export function MovieManagement({
   item,
   actors,
+  directors,
   actorsLoading = false,
   trailer,
   downloadFiles = [],
@@ -1790,11 +1794,13 @@ export function MovieManagement({
   onRetry,
   onManualSearch,
   onActorSelect,
+  onDirectorSelect,
   onBrowseSimilar,
   onRemove,
 }: {
   item: LibraryItem;
   actors?: CatalogActor[];
+  directors?: CatalogDirector[];
   actorsLoading?: boolean;
   trailer?: CatalogTrailer | null;
   downloadFiles?: LibraryDownloadFile[];
@@ -1809,6 +1815,7 @@ export function MovieManagement({
   onRetry: () => void;
   onManualSearch: () => void;
   onActorSelect?: (actor: CatalogActor) => void;
+  onDirectorSelect?: (director: CatalogDirector) => void;
   onBrowseSimilar?: () => void;
   onRemove: () => void;
 }) {
@@ -1923,6 +1930,11 @@ export function MovieManagement({
         </div>
       </section>
 
+      <MovieDirectors
+        directors={directors}
+        loading={actorsLoading}
+        onSelect={onDirectorSelect ?? (() => undefined)}
+      />
       <MovieCast
         actors={actors}
         loading={actorsLoading}
@@ -2512,6 +2524,7 @@ function ManageLibraryDialog({
           item={item}
           canMutate={canMutate}
           actors={movieDetailsQuery.data?.actors}
+          directors={movieDetailsQuery.data?.directors}
           actorsLoading={
             isPositiveSafeInteger(item.tmdbId) && movieDetailsQuery.isLoading
           }
@@ -2532,6 +2545,10 @@ function ManageLibraryDialog({
           onActorSelect={(actor) => {
             onClose();
             navigate(actorDiscoverPath(actor));
+          }}
+          onDirectorSelect={(director) => {
+            onClose();
+            navigate(directorDiscoverPath(director));
           }}
           onBrowseSimilar={() => {
             const genreId = item.genres?.[0]?.id;

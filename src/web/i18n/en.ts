@@ -294,6 +294,7 @@ export const en = {
     ratingAndAbove: ({ value }: { value: string }) => `${value} and above`,
     showingOwned: "Showing owned titles",
     actor: ({ name }: { name: string }) => `Actor: ${name}`,
+    director: ({ name }: { name: string }) => `Director: ${name}`,
     tmdbPerson: ({ id }: { id: number }) => `TMDB person ${id}`,
     genreFallback: ({ id }: { id: number }) => `Genre ${id}`,
     languagePrefix: ({ name }: { name: string }) => `Language: ${name}`,
@@ -1058,6 +1059,10 @@ export const en = {
       `Rotten Tomatoes rating ${value} percent`,
     topCast: "Top cast",
     actors: "Actors",
+    directedBy: "Directed by",
+    directorJob: "Director",
+    discoverDirectedBy: ({ name }: { name: string }) =>
+      `Discover movies directed by ${name}`,
     discoverWith: ({ name }: { name: string }) =>
       `Discover movies with ${name}`,
     noSynopsis: "No synopsis is available yet.",
