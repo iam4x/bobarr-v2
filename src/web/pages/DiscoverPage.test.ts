@@ -4,6 +4,7 @@ import {
   appliedDiscoverFilters,
   createDefaultDiscoverFilters,
   discoverActorFromSearchParams,
+  discoverDirectorFromSearchParams,
   discoverFilterError,
   discoverQueryFor,
   removeDiscoverFilter,
@@ -111,6 +112,40 @@ describe("Discover filters", () => {
     });
     expect(
       discoverActorFromSearchParams(new URLSearchParams("actorId=invalid")),
+    ).toBeUndefined();
+  });
+
+  test("builds and removes a deep-linked director filter", () => {
+    const director = discoverDirectorFromSearchParams(
+      new URLSearchParams("directorId=525&directorName=Christopher+Nolan"),
+    );
+    expect(director).toEqual({ tmdbId: 525, name: "Christopher Nolan" });
+
+    const filters = {
+      ...createDefaultDiscoverFilters(),
+      directorId: director!.tmdbId,
+      directorName: director!.name,
+      genreIds: [878],
+    };
+    expect(discoverQueryFor("movie", filters, 3)).toMatchObject({
+      kind: "movie",
+      page: 3,
+      directorId: 525,
+      genres: "878",
+    });
+    expect(appliedDiscoverFilters(filters, labels)[0]).toEqual({
+      key: "director",
+      label: "Director: Christopher Nolan",
+    });
+    expect(removeDiscoverFilter(filters, "director")).toMatchObject({
+      directorId: null,
+      directorName: "",
+      genreIds: [878],
+    });
+    expect(
+      discoverDirectorFromSearchParams(
+        new URLSearchParams("directorId=invalid"),
+      ),
     ).toBeUndefined();
   });
 

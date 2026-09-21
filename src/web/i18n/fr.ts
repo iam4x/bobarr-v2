@@ -306,6 +306,7 @@ export const fr = {
     ratingAndAbove: ({ value }: { value: string }) => `${value} et plus`,
     showingOwned: "Affiche les titres déjà possédés",
     actor: ({ name }: { name: string }) => `Acteur : ${name}`,
+    director: ({ name }: { name: string }) => `Réalisateur : ${name}`,
     tmdbPerson: ({ id }: { id: number }) => `Personne TMDB ${id}`,
     genreFallback: ({ id }: { id: number }) => `Genre ${id}`,
     languagePrefix: ({ name }: { name: string }) => `Langue : ${name}`,
@@ -1095,6 +1096,10 @@ export const fr = {
       `Note Rotten Tomatoes ${value} pour cent`,
     topCast: "Distribution principale",
     actors: "Acteurs",
+    directedBy: "Réalisé par",
+    directorJob: "Réalisateur",
+    discoverDirectedBy: ({ name }: { name: string }) =>
+      `Découvrir des films réalisés par ${name}`,
     discoverWith: ({ name }: { name: string }) =>
       `Découvrir des films avec ${name}`,
     noSynopsis: "Aucun synopsis n’est encore disponible.",

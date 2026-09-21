@@ -44,6 +44,8 @@ export interface DiscoverFilters {
   genreIds: number[];
   actorId: number | null;
   actorName: string;
+  directorId: number | null;
+  directorName: string;
   originCountry: string;
   originalLanguage: string;
   year: string;
@@ -122,6 +124,8 @@ export function createDefaultDiscoverFilters(): DiscoverFilters {
     genreIds: [],
     actorId: null,
     actorName: "",
+    directorId: null,
+    directorName: "",
     originCountry: "",
     originalLanguage: "",
     year: "",
@@ -150,6 +154,7 @@ export function discoverQueryFor(
     page,
     genres: genreIds.length ? genreIds.join(",") : undefined,
     actorId: filters.actorId ?? undefined,
+    directorId: filters.directorId ?? undefined,
     originCountry: filters.originCountry || undefined,
     originalLanguage: filters.originalLanguage || undefined,
     year: optionalNumber(filters.year),
@@ -235,6 +240,14 @@ export function appliedDiscoverFilters(
       label: filters.actorName
         ? messages.discover.actor({ name: filters.actorName })
         : messages.discover.tmdbPerson({ id: filters.actorId }),
+    });
+  }
+  if (filters.directorId !== null) {
+    applied.push({
+      key: "director",
+      label: filters.directorName
+        ? messages.discover.director({ name: filters.directorName })
+        : messages.discover.tmdbPerson({ id: filters.directorId }),
     });
   }
   for (const genreId of filters.genreIds) {
@@ -333,6 +346,9 @@ export function removeDiscoverFilter(
   if (key === "actor") {
     return { ...filters, actorId: null, actorName: "" };
   }
+  if (key === "director") {
+    return { ...filters, directorId: null, directorName: "" };
+  }
   if (key === "dateRange") {
     return { ...filters, dateFrom: "", dateTo: "" };
   }
@@ -374,12 +390,16 @@ export function discoverFiltersFromSearchParams(
     : undefined;
   const hideOwned = searchParams.get("hideOwned");
   const actor = discoverActorFromSearchParams(searchParams);
+  const director = discoverDirectorFromSearchParams(searchParams);
   return {
     ...(kind === "movie" || kind === "series" ? { kind } : {}),
     ...(Number.isSafeInteger(page) && page > 0 ? { page } : {}),
     ...(sort ? { sort } : {}),
     ...(genreIds && genreIds.length > 0 ? { genreIds } : {}),
     ...(actor ? { actorId: actor.tmdbId, actorName: actor.name } : {}),
+    ...(director
+      ? { directorId: director.tmdbId, directorName: director.name }
+      : {}),
     ...(searchParams.get("originCountry")
       ? { originCountry: searchParams.get("originCountry")! }
       : {}),
@@ -440,6 +460,10 @@ export function writeDiscoverSearchParams(
     next.set("actorId", String(filters.actorId));
     if (filters.actorName) next.set("actorName", filters.actorName);
   }
+  if (filters.directorId !== null) {
+    next.set("directorId", String(filters.directorId));
+    if (filters.directorName) next.set("directorName", filters.directorName);
+  }
   if (filters.originCountry) next.set("originCountry", filters.originCountry);
   if (filters.originalLanguage)
     next.set("originalLanguage", filters.originalLanguage);
@@ -464,6 +488,7 @@ export function DiscoverPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const routeState = discoverFiltersFromSearchParams(searchParams);
   const routeActor = discoverActorFromSearchParams(searchParams);
+  const routeDirector = discoverDirectorFromSearchParams(searchParams);
   const [kind, setKind] = useState<DiscoverKind>(routeState.kind ?? "movie");
   const [page, setPage] = useState(routeState.page ?? 1);
   const [selected, setSelected] = useState<CatalogItem | null>(null);
@@ -474,6 +499,8 @@ export function DiscoverPage() {
     ...routeState,
     actorId: routeActor?.tmdbId ?? routeState.actorId ?? null,
     actorName: routeActor?.name ?? routeState.actorName ?? "",
+    directorId: routeDirector?.tmdbId ?? routeState.directorId ?? null,
+    directorName: routeDirector?.name ?? routeState.directorName ?? "",
   }));
   const [draft, setDraft] = useState<DiscoverFilters>(filters);
   const filterAnchorRef = useRef<HTMLDivElement>(null);
@@ -483,6 +510,7 @@ export function DiscoverPage() {
     filters.sort === "popularity.desc" &&
     filters.genreIds.length === 0 &&
     filters.actorId === null &&
+    filters.directorId === null &&
     !filters.year &&
     !filters.dateFrom &&
     !filters.dateTo &&
@@ -552,19 +580,29 @@ export function DiscoverPage() {
   useEffect(() => {
     const actorId = routeActor?.tmdbId ?? null;
     const actorName = routeActor?.name ?? "";
-    const applyRouteActor = (current: DiscoverFilters): DiscoverFilters =>
-      current.actorId === actorId && current.actorName === actorName
+    const directorId = routeDirector?.tmdbId ?? null;
+    const directorName = routeDirector?.name ?? "";
+    const applyRoutePeople = (current: DiscoverFilters): DiscoverFilters =>
+      current.actorId === actorId &&
+      current.actorName === actorName &&
+      current.directorId === directorId &&
+      current.directorName === directorName
         ? current
-        : { ...current, actorId, actorName };
-    setFilters(applyRouteActor);
-    setDraft(applyRouteActor);
-    if (routeActor) setKind("movie");
+        : { ...current, actorId, actorName, directorId, directorName };
+    setFilters(applyRoutePeople);
+    setDraft(applyRoutePeople);
+    if (routeActor || routeDirector) setKind("movie");
     setPage(1);
-  }, [routeActor?.name, routeActor?.tmdbId]);
+  }, [
+    routeActor?.name,
+    routeActor?.tmdbId,
+    routeDirector?.name,
+    routeDirector?.tmdbId,
+  ]);
 
   useEffect(() => {
     const genres = searchParams.get("genres");
-    if (!genres || routeActor) return;
+    if (!genres || routeActor || routeDirector) return;
     const genreIds = genres
       .split(",")
       .map((value) => Number(value))
@@ -580,7 +618,7 @@ export function DiscoverPage() {
         ? current
         : { ...current, genreIds },
     );
-  }, [routeActor, searchParams]);
+  }, [routeActor, routeDirector, searchParams]);
 
   useEffect(() => {
     setSearchParams(
@@ -665,6 +703,7 @@ export function DiscoverPage() {
     setFilters(next);
     setPage(1);
     clearActorSearchParams(setSearchParams);
+    clearDirectorSearchParams(setSearchParams);
   }
 
   function removeFilter(key: string): void {
@@ -673,6 +712,7 @@ export function DiscoverPage() {
     setDraft(next);
     setPage(1);
     if (key === "actor") clearActorSearchParams(setSearchParams);
+    if (key === "director") clearDirectorSearchParams(setSearchParams);
   }
 
   function changeKind(nextKind: DiscoverKind): void {
@@ -680,14 +720,24 @@ export function DiscoverPage() {
       ...filters,
       sort: sortForKind(nextKind, filters.sort),
       genreIds: [],
-      ...(nextKind === "series" ? { actorId: null, actorName: "" } : {}),
+      ...(nextKind === "series"
+        ? {
+            actorId: null,
+            actorName: "",
+            directorId: null,
+            directorName: "",
+          }
+        : {}),
     };
     setKind(nextKind);
     setFilters(nextFilters);
     setDraft(nextFilters);
     setSelected(null);
     setPage(1);
-    if (nextKind === "series") clearActorSearchParams(setSearchParams);
+    if (nextKind === "series") {
+      clearActorSearchParams(setSearchParams);
+      clearDirectorSearchParams(setSearchParams);
+    }
   }
 
   return (
@@ -1231,6 +1281,18 @@ export function discoverActorFromSearchParams(
   };
 }
 
+export function discoverDirectorFromSearchParams(
+  searchParams: URLSearchParams,
+): { tmdbId: number; name: string } | undefined {
+  const tmdbId = Number(searchParams.get("directorId"));
+  if (!Number.isSafeInteger(tmdbId) || tmdbId <= 0) return undefined;
+  const suppliedName = (searchParams.get("directorName") ?? "").trim();
+  return {
+    tmdbId,
+    name: suppliedName.slice(0, 200) || `TMDB person ${tmdbId}`,
+  };
+}
+
 function clearActorSearchParams(
   setSearchParams: ReturnType<typeof useSearchParams>[1],
 ): void {
@@ -1239,6 +1301,20 @@ function clearActorSearchParams(
       const next = new URLSearchParams(previous);
       next.delete("actorId");
       next.delete("actorName");
+      return next;
+    },
+    { replace: true },
+  );
+}
+
+function clearDirectorSearchParams(
+  setSearchParams: ReturnType<typeof useSearchParams>[1],
+): void {
+  setSearchParams(
+    (previous) => {
+      const next = new URLSearchParams(previous);
+      next.delete("directorId");
+      next.delete("directorName");
       return next;
     },
     { replace: true },

@@ -101,6 +101,12 @@ const CatalogActorSchema = z.object({
   character: z.string().nullable(),
   profilePath: z.string().nullable(),
 });
+const CatalogDirectorSchema = z.object({
+  tmdbId: z.number().int().positive(),
+  name: z.string().min(1),
+  job: z.literal("Director"),
+  profilePath: z.string().nullable(),
+});
 const CatalogItemSchema = z.object({
   id: z.string(),
   tmdbId: z.number().int().positive(),
@@ -117,6 +123,7 @@ const CatalogItemSchema = z.object({
     .array(z.object({ id: z.number().int(), name: z.string() }))
     .optional(),
   actors: z.array(CatalogActorSchema).max(6).optional(),
+  directors: z.array(CatalogDirectorSchema).max(3).optional(),
   numberOfSeasons: z.number().int().nonnegative().nullable().optional(),
   monitoredSeasonNumbers: z.array(z.number().int().positive()).optional(),
   ratings: CatalogRatingsSchema.optional(),
@@ -217,6 +224,7 @@ const CatalogDiscoverQuerySchema = z
     page: z.coerce.number().int().min(1).max(500).default(1),
     genres: CatalogDiscoverGenresSchema.optional(),
     actorId: z.coerce.number().int().positive().optional(),
+    directorId: z.coerce.number().int().positive().optional(),
     originCountry: z
       .string()
       .trim()
@@ -294,6 +302,13 @@ const CatalogDiscoverQuerySchema = z
         code: "custom",
         path: ["actorId"],
         message: "Actor discovery is available only for movies",
+      });
+    }
+    if (value.kind === "series" && value.directorId !== undefined) {
+      context.addIssue({
+        code: "custom",
+        path: ["directorId"],
+        message: "Director discovery is available only for movies",
       });
     }
   });
@@ -515,6 +530,9 @@ export function registerProductRoutes(
                   genreMode: "any",
                 }),
             ...(query.actorId === undefined ? {} : { castId: query.actorId }),
+            ...(query.directorId === undefined
+              ? {}
+              : { crewId: query.directorId }),
             ...(query.originCountry === undefined
               ? {}
               : { originCountry: query.originCountry }),
@@ -2315,7 +2333,7 @@ function cacheId(namespace: string, value: unknown): string {
 }
 
 function catalogDetailsCacheId(tmdbId: number): string {
-  return `details:v3:${tmdbId}`;
+  return `details:v4:${tmdbId}`;
 }
 
 function localeKey(settings: {
@@ -2382,7 +2400,10 @@ function catalogDetails(
     ...catalogItem(details, dependencies),
     genres: [...details.genres],
     ...(details.mediaType === "movie"
-      ? { actors: details.actors.slice(0, 6) }
+      ? {
+          actors: details.actors.slice(0, 6),
+          directors: details.directors.slice(0, 3),
+        }
       : {}),
     ...(details.trailer ? { trailer: details.trailer } : {}),
     numberOfSeasons: details.numberOfSeasons,

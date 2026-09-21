@@ -68,6 +68,13 @@ export interface CatalogActor {
   profilePath: string | null;
 }
 
+export interface CatalogDirector {
+  tmdbId: number;
+  name: string;
+  job: "Director";
+  profilePath: string | null;
+}
+
 export interface CatalogTrailer {
   site: "youtube";
   key: string;
@@ -88,6 +95,7 @@ export interface CatalogItem {
   voteAverage?: number | null;
   genres?: Array<{ id: number; name: string }>;
   actors?: CatalogActor[];
+  directors?: CatalogDirector[];
   trailer?: CatalogTrailer;
   numberOfSeasons?: number | null;
   monitoredSeasonNumbers?: number[];

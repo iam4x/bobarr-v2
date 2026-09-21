@@ -125,6 +125,7 @@ describe("TMDB adapter", () => {
       genres: [18, 878, 18],
       genreMode: "any",
       castId: 6384,
+      crewId: 9339,
       originCountry: "ca",
       originalLanguage: "fr",
       year: 2024,
@@ -150,6 +151,7 @@ describe("TMDB adapter", () => {
     expect(movie.get("region")).toBe("FR");
     expect(movie.get("with_genres")).toBe("18|878");
     expect(movie.get("with_cast")).toBe("6384");
+    expect(movie.get("with_crew")).toBe("9339");
     expect(movie.get("with_origin_country")).toBe("CA");
     expect(movie.get("with_original_language")).toBe("fr");
     expect(movie.get("primary_release_year")).toBe("2024");
@@ -302,7 +304,7 @@ describe("TMDB adapter", () => {
     );
   });
 
-  test("loads ordered, unique movie actors through appended credits", async () => {
+  test("loads ordered, unique movie actors and directors through appended credits", async () => {
     let requestedUrl: URL | undefined;
     const client = createTmdbClient({
       apiKey: "key",
@@ -338,6 +340,39 @@ describe("TMDB adapter", () => {
                 order: 3,
               },
               { id: "invalid", name: "Invalid Actor", order: 1 },
+            ],
+            crew: [
+              {
+                id: 9339,
+                name: "Lana Wachowski",
+                job: "Director",
+                profile_path: "/lana.jpg",
+              },
+              {
+                id: 9339,
+                name: "Lana Wachowski",
+                job: "Director",
+                profile_path: "/duplicate-director.jpg",
+              },
+              {
+                id: 9340,
+                name: "Lilly Wachowski",
+                job: "Director",
+                profile_path: null,
+              },
+              {
+                id: 1,
+                name: "Lead Actor",
+                job: "Writer",
+                profile_path: "/lead.jpg",
+              },
+              {
+                id: 2,
+                name: "Second Actor",
+                job: "Co-Director",
+                profile_path: null,
+              },
+              { id: "invalid", name: "Invalid Director", job: "Director" },
             ],
           },
           videos: {
@@ -391,6 +426,20 @@ describe("TMDB adapter", () => {
         tmdbId: 2,
         name: "Second Actor",
         character: null,
+        profilePath: null,
+      },
+    ]);
+    expect(details.directors).toEqual([
+      {
+        tmdbId: 9339,
+        name: "Lana Wachowski",
+        job: "Director",
+        profilePath: "/lana.jpg",
+      },
+      {
+        tmdbId: 9340,
+        name: "Lilly Wachowski",
+        job: "Director",
         profilePath: null,
       },
     ]);

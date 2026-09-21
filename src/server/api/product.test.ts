@@ -293,6 +293,7 @@ describe("public product API", () => {
         "page",
         "genres",
         "actorId",
+        "directorId",
         "originCountry",
         "originalLanguage",
         "year",
@@ -381,6 +382,10 @@ describe("public product API", () => {
       "/api/v1/catalog/discover?kind=movie&actorId=6384",
       { headers: { cookie: session.cookie } },
     );
+    const directorResponse = await fixture.runtime.app.request(
+      "/api/v1/catalog/discover?kind=movie&directorId=9339",
+      { headers: { cookie: session.cookie } },
+    );
     const discoverRequests = fixture.services.tmdbRequests.filter((request) =>
       request.pathname.startsWith("/3/discover/"),
     );
@@ -407,6 +412,9 @@ describe("public product API", () => {
     expect(movie.get("vote_count.gte")).toBe("0");
     expect(actorResponse.status).toBe(200);
     expect(discoverRequests[2]?.searchParams.get("with_cast")).toBe("6384");
+    expect(directorResponse.status).toBe(200);
+    expect(discoverRequests[3]?.searchParams.get("with_crew")).toBe("9339");
+    expect(discoverRequests[3]?.searchParams.has("with_cast")).toBe(false);
   });
 
   test("rejects contradictory Discover filters before calling TMDB", async () => {
@@ -430,6 +438,10 @@ describe("public product API", () => {
       "/api/v1/catalog/discover?kind=series&actorId=6384",
       { headers: { cookie: session.cookie } },
     );
+    const seriesDirectorResponse = await fixture.runtime.app.request(
+      "/api/v1/catalog/discover?kind=series&directorId=9339",
+      { headers: { cookie: session.cookie } },
+    );
     const emptyVoteCountResponse = await fixture.runtime.app.request(
       "/api/v1/catalog/discover?sort=vote_average.desc&voteCountMin=",
       { headers: { cookie: session.cookie } },
@@ -439,6 +451,7 @@ describe("public product API", () => {
     expect(dateResponse.status).toBe(422);
     expect(sortResponse.status).toBe(422);
     expect(seriesActorResponse.status).toBe(422);
+    expect(seriesDirectorResponse.status).toBe(422);
     expect(emptyVoteCountResponse.status).toBe(422);
     expect(fixture.services.tmdbRequests).toHaveLength(before);
   });
@@ -492,6 +505,14 @@ describe("public product API", () => {
           name: "Keanu Reeves",
           character: "Neo",
           profilePath: "/keanu.jpg",
+        },
+      ],
+      directors: [
+        {
+          tmdbId: 9339,
+          name: "Lana Wachowski",
+          job: "Director",
+          profilePath: "/lana.jpg",
         },
       ],
       trailer: {
@@ -3679,6 +3700,14 @@ class FakeProductServices {
               character: "Neo",
               profile_path: "/keanu.jpg",
               order: 0,
+            },
+          ],
+          crew: [
+            {
+              id: 9339,
+              name: "Lana Wachowski",
+              job: "Director",
+              profile_path: "/lana.jpg",
             },
           ],
         },

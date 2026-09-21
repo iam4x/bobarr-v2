@@ -1,6 +1,7 @@
 import type { Messages } from "../i18n/en";
 import type {
   CatalogActor,
+  CatalogDirector,
   CatalogItem,
   CatalogSeason,
   CatalogTrailer,
@@ -185,6 +186,94 @@ export function actorDiscoverPath(
     actorName: actor.name,
   });
   return `/discover?${parameters.toString()}`;
+}
+
+export function directorDiscoverPath(
+  director: Pick<CatalogDirector, "tmdbId" | "name">,
+) {
+  const parameters = new URLSearchParams({
+    directorId: String(director.tmdbId),
+    directorName: director.name,
+  });
+  return `/discover?${parameters.toString()}`;
+}
+
+const MOVIE_DIRECTORS_SKELETON_COUNT = 2;
+
+export function MovieDirectors({
+  directors,
+  loading = false,
+  onSelect,
+}: {
+  directors: readonly CatalogDirector[] | undefined;
+  loading?: boolean;
+  onSelect: (director: CatalogDirector) => void;
+}) {
+  const { messages } = useUi();
+  const visible = directors?.slice(0, 3) ?? [];
+  if (!loading && visible.length === 0) return null;
+
+  return (
+    <section
+      className="movie-directors"
+      aria-label={messages.catalog.directedBy}
+      aria-busy={loading || undefined}
+    >
+      <div className="movie-directors__heading">
+        <span className="eyebrow">{messages.catalog.directedBy}</span>
+      </div>
+      <div className="movie-directors__row">
+        {loading
+          ? Array.from(
+              { length: MOVIE_DIRECTORS_SKELETON_COUNT },
+              (_, index) => (
+                <div
+                  className="director-chip director-chip--skeleton"
+                  key={`director-skeleton-${index}`}
+                  aria-hidden="true"
+                >
+                  <span className="skeleton director-chip__portrait" />
+                  <span className="director-chip__copy">
+                    <span className="skeleton skeleton--line" />
+                    <span className="skeleton skeleton--line-short" />
+                  </span>
+                </div>
+              ),
+            )
+          : visible.map((director) => {
+              const profile = imageUrl(director.profilePath, "w342");
+              return (
+                <button
+                  type="button"
+                  className="director-chip"
+                  key={director.tmdbId}
+                  aria-label={messages.catalog.discoverDirectedBy({
+                    name: director.name,
+                  })}
+                  onClick={() => onSelect(director)}
+                >
+                  <span className="director-chip__portrait">
+                    {profile ? (
+                      <img src={profile} alt="" loading="lazy" />
+                    ) : (
+                      <span
+                        className="director-chip__placeholder"
+                        aria-hidden="true"
+                      >
+                        {initials(director.name)}
+                      </span>
+                    )}
+                  </span>
+                  <span className="director-chip__copy">
+                    <strong>{director.name}</strong>
+                    <small>{messages.catalog.directorJob}</small>
+                  </span>
+                </button>
+              );
+            })}
+      </div>
+    </section>
+  );
 }
 
 const MOVIE_CAST_SKELETON_COUNT = 6;
@@ -580,17 +669,30 @@ export function MediaDetailDialog({
           </div>
 
           {item.kind === "movie" ? (
-            <MovieCast
-              actors={item.actors}
-              loading={
-                detailQuery.isFetching &&
-                !Array.isArray(detailQuery.data?.actors)
-              }
-              onSelect={(actor) => {
-                onClose();
-                navigate(actorDiscoverPath(actor));
-              }}
-            />
+            <>
+              <MovieDirectors
+                directors={item.directors}
+                loading={
+                  detailQuery.isFetching &&
+                  !Array.isArray(detailQuery.data?.directors)
+                }
+                onSelect={(director) => {
+                  onClose();
+                  navigate(directorDiscoverPath(director));
+                }}
+              />
+              <MovieCast
+                actors={item.actors}
+                loading={
+                  detailQuery.isFetching &&
+                  !Array.isArray(detailQuery.data?.actors)
+                }
+                onSelect={(actor) => {
+                  onClose();
+                  navigate(actorDiscoverPath(actor));
+                }}
+              />
+            </>
           ) : null}
 
           {message ? (

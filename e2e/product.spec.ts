@@ -251,6 +251,52 @@ test("discovers movies from actors in catalog and library details", async ({
   });
 });
 
+test("discovers movies from directors in catalog and library details", async ({
+  page,
+}, testInfo) => {
+  await authenticate(page);
+  const title = e2eTitle(testInfo, "E2E Director Discovery");
+
+  await searchAndOpen(page, title);
+  const directorRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url());
+    return (
+      url.pathname === "/api/v1/catalog/discover" &&
+      url.searchParams.get("directorId") === "9339"
+    );
+  });
+  await page
+    .getByRole("button", { name: "Discover movies directed by E2E Director" })
+    .click();
+  await directorRequest;
+  await expect(page).toHaveURL(
+    /\/discover\?directorId=9339&directorName=E2E\+Director$/,
+  );
+  await expect(page.getByLabel("Applied filters")).toContainText(
+    "Director: E2E Director",
+  );
+
+  await searchAndOpen(page, title);
+  await page.getByRole("button", { name: "Add & search manually" }).click();
+  await page.goto("/library/movies");
+  await openLibraryCard(page, title);
+  await page
+    .getByRole("button", { name: "Discover movies directed by E2E Director" })
+    .click();
+  await expect(page).toHaveURL(
+    /\/discover\?directorId=9339&directorName=E2E\+Director$/,
+  );
+  const library = await apiJson<{
+    items: Array<{ id: string; title: string }>;
+  }>(page, "/api/v1/library?limit=100");
+  const addedMovie = library.items.find((item) => item.title === title);
+  expect(addedMovie).toBeDefined();
+  await apiJson(page, `/api/v1/library/${addedMovie!.id}`, {
+    method: "DELETE",
+    body: { deleteLibraryRecord: true },
+  });
+});
+
 test("builds, applies, and removes responsive Discover filters", async ({
   page,
 }) => {
