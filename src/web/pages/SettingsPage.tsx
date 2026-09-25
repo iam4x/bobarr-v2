@@ -175,6 +175,7 @@ export function SettingsPage() {
     mutationFn: (value: ParsedSettingsForm) =>
       api.patch("updateSettings", { body: fromForm(value) }),
     onSuccess: (settings) => {
+      queryClient.setQueryData(["settings"], settings);
       reset(toForm(settings));
       setNotice(messages.settings.savedSecurely);
       void queryClient.invalidateQueries({ queryKey: ["system"] });
