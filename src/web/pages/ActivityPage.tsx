@@ -345,6 +345,11 @@ function AddDownloadDialog({
     },
   });
 
+  function close() {
+    setValidationError(undefined);
+    onClose();
+  }
+
   function submit(event: FormEvent) {
     event.preventDefault();
     setValidationError(undefined);
@@ -356,7 +361,7 @@ function AddDownloadDialog({
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={close}
       title={messages.activity.addDownload}
       description={messages.activity.addDownloadDescription}
       size="sm"
@@ -400,7 +405,7 @@ function AddDownloadDialog({
           </div>
         ) : null}
         <div className="dialog-actions">
-          <Button type="button" variant="secondary" onClick={onClose}>
+          <Button type="button" variant="secondary" onClick={close}>
             {messages.common.cancel}
           </Button>
           <Button type="submit" busy={addMutation.isPending}>
@@ -856,13 +861,18 @@ export function ActivityPage() {
       });
     },
     onSuccess: () => {
-      setCancelTarget(null);
-      setDeleteData(false);
+      closeRemoveDialog();
       void queryClient.invalidateQueries({ queryKey: ["downloads"] });
       void queryClient.invalidateQueries({ queryKey: ["library"] });
       void queryClient.invalidateQueries({ queryKey: ["calendar"] });
     },
   });
+  // Never carry "also delete data" over to the next download.
+  function closeRemoveDialog() {
+    setCancelTarget(null);
+    setDeleteData(false);
+    cancelMutation.reset();
+  }
   const fileMutation = useMutation({
     mutationFn: ({
       id,
@@ -1140,7 +1150,9 @@ export function ActivityPage() {
         open={Boolean(cancelTarget)}
         title={messages.activity.removeDownload}
         description={messages.activity.removeDownloadDescription}
-        onClose={() => setCancelTarget(null)}
+        onClose={() => {
+          if (!cancelMutation.isPending) closeRemoveDialog();
+        }}
         size="sm"
       >
         <div className="stack">
@@ -1167,7 +1179,8 @@ export function ActivityPage() {
             <Button
               type="button"
               variant="secondary"
-              onClick={() => setCancelTarget(null)}
+              disabled={cancelMutation.isPending}
+              onClick={closeRemoveDialog}
             >
               {messages.activity.keepDownload}
             </Button>
