@@ -66,7 +66,22 @@ function ProtectedApp() {
   if (setupQuery.isLoading || sessionQuery.isLoading) return <RootLoading />;
   if (isSetupRequired(setupQuery.data))
     return <Navigate to="/setup" replace state={{ from: location }} />;
-  if (sessionQuery.isError || !isAuthenticated(sessionQuery.data))
+  const signedOut =
+    sessionQuery.error instanceof ApiError && sessionQuery.error.status === 401;
+  // A restarting server or dropped connection is not a sign-out: keep the
+  // session we already have, or offer a retry instead of the login form.
+  if (!signedOut && sessionQuery.isError && sessionQuery.data === undefined) {
+    return (
+      <SessionUnavailable
+        error={sessionQuery.error}
+        onRetry={() => {
+          void setupQuery.refetch();
+          void sessionQuery.refetch();
+        }}
+      />
+    );
+  }
+  if (signedOut || !isAuthenticated(sessionQuery.data))
     return <Navigate to="/login" replace state={{ from: location }} />;
   if (
     location.pathname.startsWith("/settings") &&
@@ -75,6 +90,29 @@ function ProtectedApp() {
     return <Navigate to="/discover" replace />;
   }
   return <AppShell />;
+}
+
+function SessionUnavailable({
+  error,
+  onRetry,
+}: {
+  error: Error;
+  onRetry: () => void;
+}) {
+  const { messages } = useUi();
+  return (
+    <main className="route-error">
+      <Brand />
+      <span className="route-error__icon">
+        <AlertTriangle size={28} />
+      </span>
+      <h1>{messages.routeError.errorTitle}</h1>
+      <p>{error.message}</p>
+      <Button type="button" onClick={onRetry}>
+        <RotateCcw size={17} /> {messages.common.tryAgain}
+      </Button>
+    </main>
+  );
 }
 
 function RouteError() {
