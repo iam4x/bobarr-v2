@@ -264,7 +264,7 @@ describe("library manual release targets", () => {
     );
   });
 
-  test("shows downloaded and total library counts", () => {
+  test("shows available and total library counts", () => {
     const markup = renderWithUi(
       createElement(LibrarySummary, {
         summary: {
@@ -277,7 +277,7 @@ describe("library manual release targets", () => {
       }),
     );
 
-    expect(markup).toContain("Downloaded</dt><dd>9");
+    expect(markup).toContain("Available</dt><dd>9");
     expect(markup).toContain("Total</dt><dd>367");
   });
 
