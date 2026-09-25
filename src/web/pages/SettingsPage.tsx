@@ -259,12 +259,17 @@ export function SettingsPage() {
       }),
     onSuccess: () => {
       showSuccess(messages.settings.restoreStaged);
-      setRestoreDialogOpen(false);
-      setRestoreConfirmation("");
-      setRestoreFile(undefined);
+      closeRestoreDialog();
       void backupsQuery.refetch();
     },
   });
+  // Each restore attempt starts clean: no old file, confirmation or error.
+  function closeRestoreDialog() {
+    setRestoreDialogOpen(false);
+    setRestoreConfirmation("");
+    setRestoreFile(undefined);
+    restoreMutation.reset();
+  }
   const logoutMutation = useMutation({
     mutationFn: () => api.post("logout"),
     onSuccess: () => {
@@ -763,10 +768,7 @@ export function SettingsPage() {
       <Dialog
         open={restoreDialogOpen}
         onClose={() => {
-          if (restoreMutation.isPending) return;
-          setRestoreDialogOpen(false);
-          setRestoreConfirmation("");
-          setRestoreFile(undefined);
+          if (!restoreMutation.isPending) closeRestoreDialog();
         }}
         title={messages.settings.stageRestoreTitle}
         description={messages.settings.stageRestoreDescription}
@@ -799,10 +801,7 @@ export function SettingsPage() {
               type="button"
               variant="ghost"
               disabled={restoreMutation.isPending}
-              onClick={() => {
-                setRestoreDialogOpen(false);
-                setRestoreFile(undefined);
-              }}
+              onClick={closeRestoreDialog}
             >
               {messages.common.cancel}
             </Button>
