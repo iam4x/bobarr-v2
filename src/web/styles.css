@@ -3043,21 +3043,8 @@ textarea:focus-visible {
   margin-top: 10px;
 }
 .movie-overview__actions .button,
-.media-detail__actions .button,
-.media-detail__added-actions .button {
+.media-detail__actions .button {
   white-space: nowrap;
-}
-.media-detail__added {
-  display: grid;
-  gap: 10px;
-}
-.media-detail__added p {
-  margin: 0;
-}
-.media-detail__added-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
 }
 .discover-entry {
   display: grid;

@@ -1107,7 +1107,6 @@ export const fr = {
     trailerFor: ({ title }: { title: string }) => `Bande-annonce de ${title}`,
     addToLibrary: "Ajouter à la bibliothèque",
     openInLibrary: "Ouvrir dans la bibliothèque",
-    keepBrowsing: "Continuer à parcourir",
     chooseSeasons: "Choisir les saisons",
     chooseSeasonsHint:
       "Seules les saisons sélectionnées sont recherchées automatiquement.",
