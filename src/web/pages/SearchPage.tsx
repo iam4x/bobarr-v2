@@ -155,7 +155,7 @@ export function SearchPage() {
           label={messages.search.mediaType}
           value={kind}
           options={[
-            { value: "all", label: messages.kind.everything },
+            { value: "all", label: messages.kind.all },
             { value: "movie", label: messages.nav.movies },
             { value: "series", label: messages.nav.shows },
           ]}

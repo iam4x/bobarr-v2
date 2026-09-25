@@ -199,10 +199,9 @@ export const fr = {
     movie: "Film",
     series: "Série",
     all: "Tout",
-    everything: "Tout",
     shows: "Séries",
-    tvShow: "Série TV",
-    tvShows: "Séries TV",
+    tvShow: "Série",
+    tvShows: "séries",
   },
   search: {
     eyebrow: "Catalogue TMDB",

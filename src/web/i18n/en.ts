@@ -190,12 +190,11 @@ export const en = {
   },
   kind: {
     movie: "Movie",
-    series: "Series",
+    series: "Show",
     all: "All",
-    everything: "Everything",
     shows: "Shows",
-    tvShow: "TV show",
-    tvShows: "TV Shows",
+    tvShow: "Show",
+    tvShows: "shows",
   },
   search: {
     eyebrow: "TMDB catalog",
