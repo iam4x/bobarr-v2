@@ -10,7 +10,13 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
-import { Link, Navigate, useNavigate, useSearchParams } from "react-router";
+import {
+  Link,
+  Navigate,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from "react-router";
 import { z } from "zod";
 
 import { ApiError, api } from "../api/client";
@@ -108,9 +114,36 @@ function applyApiFieldErrors<T extends Record<string, string>>(
   }
 }
 
+/** Where to go after signing in: the page that sent the user to /login. */
+export function postLoginPath(state: unknown): string {
+  const from =
+    typeof state === "object" && state !== null && "from" in state
+      ? (state as { from?: unknown }).from
+      : undefined;
+  if (typeof from !== "object" || from === null) return "/discover";
+  const { pathname, search, hash } = from as {
+    pathname?: unknown;
+    search?: unknown;
+    hash?: unknown;
+  };
+  if (
+    typeof pathname !== "string" ||
+    !pathname.startsWith("/") ||
+    pathname.startsWith("//") ||
+    ["/login", "/setup", "/invite"].includes(pathname)
+  ) {
+    return "/discover";
+  }
+  return `${pathname}${typeof search === "string" ? search : ""}${
+    typeof hash === "string" ? hash : ""
+  }`;
+}
+
 export function LoginPage() {
   const { messages } = useUi();
   const navigate = useNavigate();
+  const location = useLocation();
+  const redirectTo = postLoginPath(location.state);
   const queryClient = useQueryClient();
   const sessionQuery = useQuery({
     queryKey: ["auth", "session"],
@@ -127,14 +160,16 @@ export function LoginPage() {
   const loginMutation = useMutation({
     mutationFn: (value: LoginForm) => api.post("login", { body: value }),
     onSuccess: (session) => {
+      // Drop anything cached for a previous account before showing this one.
+      queryClient.clear();
       queryClient.setQueryData(["auth", "session"], session);
-      navigate("/discover", { replace: true });
+      navigate(redirectTo, { replace: true });
     },
     onError: (error) => applyApiFieldErrors<LoginForm>(error, setError),
   });
 
   if (isAuthenticated(sessionQuery.data))
-    return <Navigate to="/discover" replace />;
+    return <Navigate to={redirectTo} replace />;
 
   const submit = (value: LoginForm) => {
     clearErrors();
@@ -218,6 +253,7 @@ export function SetupPage() {
       // Marking setup done below would otherwise trip the "already set up"
       // redirect and send the new administrator to Discover via /login.
       setupCompletedRef.current = true;
+      queryClient.clear();
       queryClient.setQueryData(["auth", "session"], session);
       queryClient.setQueryData(["setup"], { setupRequired: false });
       navigate("/settings#connections", { replace: true });
@@ -335,6 +371,7 @@ export function InvitePage() {
         },
       }),
     onSuccess: (session) => {
+      queryClient.clear();
       queryClient.setQueryData(["auth", "session"], session);
       queryClient.setQueryData(["setup"], { setupRequired: false });
       navigate("/discover", { replace: true });
