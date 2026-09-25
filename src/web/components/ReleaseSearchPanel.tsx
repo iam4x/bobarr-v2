@@ -21,11 +21,14 @@ export function ReleaseCard({
   release,
   onGrab,
   isGrabbing,
+  locked = false,
   replacement = false,
 }: {
   release: ReleaseCandidate;
   onGrab: (release: ReleaseCandidate) => void;
   isGrabbing: boolean;
+  /** Another grab is running or already queued for this target. */
+  locked?: boolean;
   replacement?: boolean;
 }) {
   const { messages, locale } = useUi();
@@ -74,7 +77,7 @@ export function ReleaseCard({
         type="button"
         size="sm"
         variant={release.eligible ? "primary" : "secondary"}
-        disabled={!release.eligible}
+        disabled={!release.eligible || (locked && !isGrabbing)}
         busy={isGrabbing}
         onClick={() => onGrab(release)}
       >
@@ -251,6 +254,7 @@ export function ReleaseSearchPanel({
                 grabMutation.isPending &&
                 grabMutation.variables?.id === release.id
               }
+              locked={grabMutation.isPending || queuedTitle !== undefined}
               onGrab={(candidate) => grabMutation.mutate(candidate)}
             />
           ))}
