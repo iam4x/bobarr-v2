@@ -54,6 +54,11 @@ import {
 } from "../lib/format";
 
 type ActivityTab = "downloads" | "jobs" | "history";
+
+function activityTabFromSearchParams(params: URLSearchParams): ActivityTab {
+  const tab = params.get("tab");
+  return tab === "jobs" || tab === "history" ? tab : "downloads";
+}
 type DownloadAction = "pause" | "resume" | "retry";
 type DownloadFilter = "active" | "completed" | "all";
 const DOWNLOAD_PAGE_SIZE = 50;
@@ -777,10 +782,28 @@ export function ActivityPage() {
   });
   const canManageSettings =
     sessionQuery.data?.capabilities?.canManageSettings === true;
-  const [searchParams] = useSearchParams();
-  const [tab, setTab] = useState<ActivityTab>(() =>
-    searchParams.get("tab") === "jobs" ? "jobs" : "downloads",
-  );
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = activityTabFromSearchParams(searchParams);
+  const selectedJobId = searchParams.get("job") ?? undefined;
+  const updateSearchParams = (update: (next: URLSearchParams) => void) =>
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        update(next);
+        return next;
+      },
+      { replace: true },
+    );
+  const setTab = (next: ActivityTab) =>
+    updateSearchParams((params) => {
+      if (next === "downloads") params.delete("tab");
+      else params.set("tab", next);
+    });
+  const setSelectedJobId = (id: string | undefined) =>
+    updateSearchParams((params) => {
+      if (id === undefined) params.delete("job");
+      else params.set("job", id);
+    });
   const [addOpen, setAddOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<Download | null>(null);
   const [deleteData, setDeleteData] = useState(false);
@@ -789,9 +812,6 @@ export function ActivityPage() {
   const [jobKind, setJobKind] = useState("");
   const [jobOffset, setJobOffset] = useState(0);
   const [manualJobKind, setManualJobKind] = useState("library.scan.v1");
-  const [selectedJobId, setSelectedJobId] = useState<string | undefined>(
-    () => searchParams.get("job") ?? undefined,
-  );
   const downloadsQuery = useInfiniteQuery({
     queryKey: ["downloads", { completion: downloadFilter }],
     queryFn: ({ pageParam, signal }) =>
