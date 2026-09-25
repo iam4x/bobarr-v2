@@ -117,8 +117,14 @@ const router = createBrowserRouter([
       { path: "discover", element: <DiscoverPage /> },
       { path: "suggestions", element: <SuggestionsPage /> },
       { path: "library", element: <Navigate to="/library/movies" replace /> },
-      { path: "library/movies", element: <LibraryPage kind="movie" /> },
-      { path: "library/shows", element: <LibraryPage kind="series" /> },
+      {
+        path: "library/movies",
+        element: <LibraryPage key="movie" kind="movie" />,
+      },
+      {
+        path: "library/shows",
+        element: <LibraryPage key="series" kind="series" />,
+      },
       { path: "calendar", element: <CalendarPage /> },
       { path: "activity", element: <ActivityPage /> },
       { path: "account", element: <AccountPage /> },
