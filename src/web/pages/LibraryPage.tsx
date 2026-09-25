@@ -2309,6 +2309,9 @@ function ManageLibraryDialog({
       api.post("retryLibraryItem", { params: { id: itemId() } }),
     onSuccess: refresh,
   });
+  // The server refuses to drop a library record that still has linked
+  // torrents, so removing the title always removes its torrents too.
+  const removesTorrent = deleteTorrent || deleteLibraryRecord;
   const removeMutation = useMutation({
     mutationFn: () =>
       api.delete("removeLibraryItem", {
@@ -2316,8 +2319,8 @@ function ManageLibraryDialog({
         body: {
           deleteLibraryRecord,
           deleteLibraryFiles,
-          deleteTorrent,
-          deleteDownloadData,
+          deleteTorrent: removesTorrent,
+          deleteDownloadData: removesTorrent && deleteDownloadData,
         },
       }),
     onSuccess: refresh,
@@ -2405,7 +2408,8 @@ function ManageLibraryDialog({
           <label className="check-row">
             <input
               type="checkbox"
-              checked={deleteTorrent}
+              checked={removesTorrent}
+              disabled={deleteLibraryRecord}
               onChange={(event) => {
                 setDeleteTorrent(event.target.checked);
                 if (!event.target.checked) setDeleteDownloadData(false);
@@ -2413,14 +2417,18 @@ function ManageLibraryDialog({
             />
             <span>
               <strong>{messages.library.removeTorrent}</strong>
-              <small>{messages.library.removeTorrentHint}</small>
+              <small>
+                {deleteLibraryRecord
+                  ? messages.library.removeTorrentRequired
+                  : messages.library.removeTorrentHint}
+              </small>
             </span>
           </label>
           <label className="check-row">
             <input
               type="checkbox"
-              checked={deleteDownloadData}
-              disabled={!deleteTorrent}
+              checked={removesTorrent && deleteDownloadData}
+              disabled={!removesTorrent}
               onChange={(event) => setDeleteDownloadData(event.target.checked)}
             />
             <span>
