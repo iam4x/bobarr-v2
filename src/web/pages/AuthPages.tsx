@@ -104,6 +104,10 @@ function AuthLayout({
   );
 }
 
+function isClientError(error: unknown): boolean {
+  return error instanceof ApiError && error.status >= 400 && error.status < 500;
+}
+
 function applyApiFieldErrors<T extends Record<string, string>>(
   error: unknown,
   setError: (name: keyof T, error: { message: string }) => void,
@@ -292,6 +296,7 @@ export function SetupPage() {
         <InlineSpinner label={messages.auth.checkingServer} />
       </main>
     );
+  if (statusQuery.isError) return <SetupUnavailable />;
 
   return (
     <AuthLayout
@@ -398,6 +403,10 @@ export function InvitePage() {
     acceptMutation.mutate(parsed.data);
   };
 
+  // Only a rejected token is "invalid"; a server or network failure is not.
+  if (previewQuery.isError && !isClientError(previewQuery.error)) {
+    return <SetupUnavailable />;
+  }
   if (token.length === 0 || previewQuery.isError) {
     return (
       <AuthLayout

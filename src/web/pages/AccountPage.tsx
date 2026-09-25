@@ -130,10 +130,14 @@ export function AccountPage() {
           />
         </div>
         {mutation.isError ? (
-          <p className="field__error">{mutation.error.message}</p>
+          <p className="field__error" role="alert">
+            {mutation.error.message}
+          </p>
         ) : null}
-        {mutation.isSuccess ? (
-          <p className="notice">{messages.account.updated}</p>
+        {mutation.isSuccess && !form.formState.isDirty ? (
+          <p className="notice notice--success" role="status">
+            {messages.account.updated}
+          </p>
         ) : null}
         <Button
           type="submit"
