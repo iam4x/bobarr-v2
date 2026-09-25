@@ -1,16 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, UserPlus, Users } from "lucide-react";
+import { Copy, Trash2, UserPlus, Users } from "lucide-react";
 import { useState } from "react";
 
 import { api } from "../api/client";
-import { Badge, Button } from "../components/ui";
+import { Badge, Button, Dialog, Field } from "../components/ui";
 import { useUi } from "../i18n/ui";
 import { formatDate } from "../lib/format";
 
+const INVITE_LINK_INPUT_ID = "created-invite-link";
+
 export function PeopleSection({
-  setNotice,
+  onNotice,
+  onError,
 }: {
-  setNotice: (notice: string) => void;
+  onNotice: (notice: string) => void;
+  onError: (error: Error) => void;
 }) {
   const { messages, locale } = useUi();
   const queryClient = useQueryClient();
@@ -27,6 +31,10 @@ export function PeopleSection({
     url: string;
     expiresAt: string;
   }>();
+  const [pendingDelete, setPendingDelete] = useState<{
+    id: number;
+    username: string;
+  }>();
   const createInvite = useMutation({
     mutationFn: () => api.post("createInvite", { body: {} }),
     onSuccess: (invite) => {
@@ -35,25 +43,29 @@ export function PeopleSection({
         url: `${window.location.origin}/invite?token=${invite.token}`,
         expiresAt: invite.expiresAt,
       });
-      setNotice(messages.people.inviteCreated);
+      onNotice(messages.people.inviteCreated);
       void queryClient.invalidateQueries({ queryKey: ["users"] });
     },
+    onError,
   });
   const revokeInvite = useMutation({
     mutationFn: (id: string) => api.delete("revokeInvite", { params: { id } }),
     onSuccess: (_, id) => {
-      setNotice(messages.people.inviteRevoked);
+      onNotice(messages.people.inviteRevoked);
       setCreatedInvite((current) => (current?.id === id ? undefined : current));
       void queryClient.invalidateQueries({ queryKey: ["users"] });
     },
+    onError,
   });
   const deleteUser = useMutation({
     mutationFn: (id: number) =>
       api.delete("deleteUser", { params: { id: String(id) } }),
     onSuccess: () => {
-      setNotice(messages.people.accountDeleted);
+      setPendingDelete(undefined);
+      onNotice(messages.people.accountDeleted);
       void queryClient.invalidateQueries({ queryKey: ["users"] });
     },
+    onError,
   });
   const updateRank = useMutation({
     mutationFn: (input: { id: number; rank: "admin" | "user" }) =>
@@ -62,14 +74,27 @@ export function PeopleSection({
         body: { rank: input.rank },
       }),
     onSuccess: (user) => {
-      setNotice(
+      onNotice(
         user.rank === "admin"
           ? messages.people.nowAdmin({ username: user.username })
           : messages.people.nowUser({ username: user.username }),
       );
       void queryClient.invalidateQueries({ queryKey: ["users"] });
     },
+    onError,
   });
+  const copyInvite = async (url: string) => {
+    try {
+      // navigator.clipboard is missing on plain-HTTP LAN installs.
+      if (!navigator.clipboard) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(url);
+      onNotice(messages.people.inviteCopied);
+    } catch {
+      const input = document.getElementById(INVITE_LINK_INPUT_ID);
+      if (input instanceof HTMLInputElement) input.select();
+      onNotice(messages.people.copyInviteManually);
+    }
+  };
   const currentId = sessionQuery.data?.user?.id;
   const listedOpenInvites =
     peopleQuery.data?.invites.filter((invite) => invite.status === "open") ??
@@ -121,7 +146,10 @@ export function PeopleSection({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    busy={updateRank.isPending}
+                    busy={
+                      updateRank.isPending &&
+                      updateRank.variables.id === user.id
+                    }
                     onClick={() =>
                       updateRank.mutate({ id: user.id, rank: "admin" })
                     }
@@ -133,7 +161,10 @@ export function PeopleSection({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    busy={updateRank.isPending}
+                    busy={
+                      updateRank.isPending &&
+                      updateRank.variables.id === user.id
+                    }
                     onClick={() =>
                       updateRank.mutate({ id: user.id, rank: "user" })
                     }
@@ -146,8 +177,9 @@ export function PeopleSection({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    busy={deleteUser.isPending}
-                    onClick={() => deleteUser.mutate(user.id)}
+                    onClick={() =>
+                      setPendingDelete({ id: user.id, username: user.username })
+                    }
                   >
                     {messages.common.delete}
                   </Button>
@@ -167,6 +199,25 @@ export function PeopleSection({
           <UserPlus size={16} /> {messages.people.inviteSomeone}
         </Button>
       </div>
+      {createdInvite ? (
+        <div className="invite-link">
+          <Field
+            id={INVITE_LINK_INPUT_ID}
+            label={messages.people.inviteLink}
+            hint={messages.people.inviteLinkHint}
+            readOnly
+            value={createdInvite.url}
+            onFocus={(event) => event.currentTarget.select()}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => void copyInvite(createdInvite.url)}
+          >
+            <Copy size={16} /> {messages.people.copyInvite}
+          </Button>
+        </div>
+      ) : null}
       {openInvites.length > 0 ? (
         <ul className="backup-list">
           {openInvites.map((invite) => (
@@ -182,23 +233,14 @@ export function PeopleSection({
                 </small>
               </span>
               <div className="backup-list__actions">
-                {createdInvite?.id === invite.id ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      void navigator.clipboard.writeText(createdInvite.url)
-                    }
-                  >
-                    <Copy size={16} /> {messages.people.copyInvite}
-                  </Button>
-                ) : null}
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  busy={revokeInvite.isPending}
+                  busy={
+                    revokeInvite.isPending &&
+                    revokeInvite.variables === invite.id
+                  }
                   onClick={() => revokeInvite.mutate(invite.id)}
                 >
                   {messages.common.revoke}
@@ -208,6 +250,38 @@ export function PeopleSection({
           ))}
         </ul>
       ) : null}
+      <Dialog
+        open={pendingDelete !== undefined}
+        title={messages.people.deleteTitle({
+          username: pendingDelete?.username ?? "",
+        })}
+        description={messages.people.deleteDescription}
+        onClose={() => {
+          if (!deleteUser.isPending) setPendingDelete(undefined);
+        }}
+        size="sm"
+      >
+        <div className="dialog-actions">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={deleteUser.isPending}
+            onClick={() => setPendingDelete(undefined)}
+          >
+            {messages.common.cancel}
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            busy={deleteUser.isPending}
+            onClick={() => {
+              if (pendingDelete) deleteUser.mutate(pendingDelete.id);
+            }}
+          >
+            <Trash2 size={16} /> {messages.common.delete}
+          </Button>
+        </div>
+      </Dialog>
     </section>
   );
 }

@@ -1123,7 +1123,7 @@ test("surfaces a degraded connector result without losing navigation", async ({
     .filter({ hasText: "Transmission" });
   await transmission.getByRole("button", { name: "Test" }).click();
   await expect(
-    page.getByRole("status").filter({
+    page.getByRole("alert").filter({
       hasText: "Transmission connection needs attention",
     }),
   ).toContainText("Transmission connection needs attention");

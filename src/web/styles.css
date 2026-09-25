@@ -4427,6 +4427,22 @@ textarea:focus-visible {
 .backup-actions + .backup-list {
   margin-top: 12px;
 }
+.invite-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--control-gap);
+  margin-top: 12px;
+}
+.invite-link .field {
+  flex: 1 1 280px;
+}
+.invite-link .button {
+  margin-top: 23px;
+}
+.invite-link + .backup-list {
+  margin-top: 12px;
+}
 .backup-list small,
 .settings-muted {
   color: var(--text-muted);
@@ -4451,6 +4467,21 @@ textarea:focus-visible {
 .settings-savebar span {
   color: var(--text-muted);
   font-size: 12px;
+}
+.settings-savebar .settings-savebar__notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.settings-savebar__notice svg {
+  flex: none;
+}
+.settings-savebar .settings-savebar__notice--success {
+  color: #9de9c7;
+}
+.settings-savebar .settings-savebar__notice--error {
+  color: #ffadb2;
 }
 
 .auth-layout {
@@ -5476,8 +5507,11 @@ textarea:focus-visible {
   .settings-savebar {
     bottom: calc(var(--mobile-nav) + env(safe-area-inset-bottom) + 10px);
   }
-  .settings-savebar span {
+  .settings-savebar span:not(.settings-savebar__notice) {
     display: none;
+  }
+  .settings-savebar {
+    flex-wrap: wrap;
   }
   .settings-savebar .button {
     width: 100%;
