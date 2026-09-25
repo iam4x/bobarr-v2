@@ -151,7 +151,7 @@ export function LibrarySummary({
   return (
     <dl className="library-summary" aria-label={messages.library.summary}>
       <div>
-        <dt>{messages.library.downloaded}</dt>
+        <dt>{messages.library.available}</dt>
         <dd>{renderValue("available", summary.downloaded)}</dd>
       </div>
       <div>
@@ -936,9 +936,9 @@ function LibraryManualReleaseSearch({
             <option value="season">{messages.library.entireSeasonPack}</option>
             {actionableEpisodes.map((episode) => (
               <option value={episode.episodeNumber ?? ""} key={episode.id}>
-                S{String(selectedSeason).padStart(2, "0")}E
-                {String(episode.episodeNumber).padStart(2, "0")} ·
-                {episode.title}
+                {`S${String(selectedSeason).padStart(2, "0")}E${String(
+                  episode.episodeNumber,
+                ).padStart(2, "0")} · ${episode.title}`}
               </option>
             ))}
           </SelectField>
@@ -1818,6 +1818,9 @@ export function MovieManagement({
   const retryable =
     monitoringOn && ["missing", "failed"].includes(item.acquisitionState);
   const activeDownload = item.activeDownload ?? null;
+  let fileHeading = messages.library.findThisMovie;
+  if (hasLibraryFile) fileHeading = messages.library.movieFile;
+  else if (activeDownload) fileHeading = messages.library.downloadInProgress;
   const storage = item.storage;
   const locationPath = hasLibraryFile
     ? storage?.libraryPath
@@ -1944,11 +1947,7 @@ export function MovieManagement({
                   ? messages.library.currentCopy
                   : messages.library.acquisition}
               </span>
-              <h3 id="movie-file-title">
-                {hasLibraryFile
-                  ? messages.library.movieFile
-                  : messages.library.findThisMovie}
-              </h3>
+              <h3 id="movie-file-title">{fileHeading}</h3>
             </div>
           </header>
 
@@ -2105,7 +2104,8 @@ export function MovieManagement({
               </summary>
               <div className="tv-settings__content">
                 <label className="field">
-                  <span className="field__label">
+                  {/* The summary above already titles this setting. */}
+                  <span className="sr-only">
                     {messages.library.automaticMonitoring}
                   </span>
                   <SelectControl
