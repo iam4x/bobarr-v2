@@ -2283,6 +2283,7 @@ function ManageLibraryDialog({
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["library"] });
     void queryClient.invalidateQueries({ queryKey: ["calendar"] });
+    void queryClient.invalidateQueries({ queryKey: ["catalog"] });
     onClose();
   };
   const monitoringPatch = (): MonitorMediaPatch => {
