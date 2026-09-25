@@ -2640,6 +2640,11 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
       libraryQuery.data?.pages.flatMap((page) => collectionItems(page)) ?? [],
     [libraryQuery.data],
   );
+  // Server events refresh the grid; show the refreshed copy in the dialog too.
+  const liveSelected =
+    selected === null
+      ? null
+      : (items.find((item) => item.id === selected.id) ?? selected);
   const summary = libraryQuery.data?.pages[0]?.summary;
   const isMovies = kind === "movie";
   const browsingDefault = libraryBrowseIsDefault(browse, search);
@@ -2958,7 +2963,7 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
       ) : null}
       <ManageLibraryDialog
         key={selected?.id}
-        item={selected}
+        item={liveSelected}
         onClose={closeLibraryItem}
       />
     </Page>
