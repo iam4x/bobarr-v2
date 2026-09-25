@@ -4129,7 +4129,6 @@ textarea:focus-visible {
 .timeline li > div span {
   color: var(--text-muted);
   font-size: 11px;
-  text-transform: capitalize;
 }
 
 .settings-layout {

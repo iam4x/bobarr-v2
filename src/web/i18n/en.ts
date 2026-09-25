@@ -832,6 +832,13 @@ export const en = {
     resume: "Resume",
     retry: "Retry",
     cancelJob: "Cancel job",
+    historyCategory: {
+      library: "Library",
+      acquisition: "Acquisition",
+      download: "Download",
+      backup: "Backup",
+      restore: "Restore",
+    },
     remove: "Remove",
     chooseFiles: "Choose files",
     priority: ({ value }: { value: string }) => `${value} priority`,
