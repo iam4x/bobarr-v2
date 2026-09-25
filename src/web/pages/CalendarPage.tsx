@@ -12,8 +12,11 @@ import { statusLabel } from "../i18n/status";
 import { useUi } from "../i18n/ui";
 import { formatDate, imageUrl, initials } from "../lib/format";
 
-function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
+/** The viewer's calendar day, e.g. still "today" at 00:30 in Paris. */
+export function localIsoDate(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
 }
 
 function groupCalendar(items: CalendarItem[]): Array<[string, CalendarItem[]]> {
@@ -51,7 +54,7 @@ export function CalendarPage() {
     queryFn: ({ signal }) => api.get("calendar", { query: range, signal }),
   });
   const groups = groupCalendar(collectionItems(calendarQuery.data));
-  const today = isoDate(new Date());
+  const today = localIsoDate(new Date());
 
   return (
     <Page
@@ -84,13 +87,19 @@ export function CalendarPage() {
                   <strong>
                     {day === today
                       ? messages.calendar.today
-                      : (formatDate(day, locale, { weekday: "long" }) ??
-                        messages.dates.unknown)}
+                      : (formatDate(day, locale, {
+                          weekday: "long",
+                          timeZone: "UTC",
+                        }) ?? messages.dates.unknown)}
                   </strong>
                   <small>
+                    {/* Day keys are plain dates; format them without a
+                        timezone shift so they never slide to the day
+                        before for viewers west of UTC. */}
                     {formatDate(day, locale, {
                       month: "short",
                       day: "numeric",
+                      timeZone: "UTC",
                     }) ?? messages.dates.unknown}
                   </small>
                 </span>
