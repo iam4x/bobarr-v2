@@ -104,7 +104,7 @@ describe("suggestion media tabs", () => {
     expect(markup).toContain('aria-selected="false"');
     expect(markup).toContain("All");
     expect(markup).toContain("Movies");
-    expect(markup).toContain("TV Shows");
+    expect(markup).toContain(">Shows<");
     expect(markup).toContain(">20<");
     expect(markup).toContain(">12<");
     expect(markup).toContain(">8<");

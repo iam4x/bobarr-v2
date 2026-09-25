@@ -79,7 +79,7 @@ export function SuggestionKindTabs({
   const kinds: Array<{ value: SuggestionKind; label: string }> = [
     { value: "all", label: messages.kind.all },
     { value: "movie", label: messages.nav.movies },
-    { value: "series", label: messages.kind.tvShows },
+    { value: "series", label: messages.kind.shows },
   ];
   function moveFocus(event: KeyboardEvent<HTMLButtonElement>): void {
     const currentIndex = kinds.findIndex((option) => option.value === value);
