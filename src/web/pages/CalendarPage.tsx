@@ -8,6 +8,7 @@ import { api } from "../api/client";
 import { collectionItems } from "../api/normalize";
 import { Page } from "../components/Page";
 import { Badge, EmptyState, ErrorState, InlineSpinner } from "../components/ui";
+import { statusLabel } from "../i18n/status";
 import { useUi } from "../i18n/ui";
 import { formatDate, imageUrl, initials } from "../lib/format";
 
@@ -113,7 +114,7 @@ export function CalendarPage() {
                         <h3>{item.title}</h3>
                         {item.subtitle ? <p>{item.subtitle}</p> : null}
                         <Badge tone={calendarTone(item.acquisitionState)}>
-                          {item.acquisitionState}
+                          {statusLabel(item.acquisitionState, messages)}
                         </Badge>
                       </div>
                       <CalendarDays size={18} aria-hidden="true" />

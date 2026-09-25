@@ -28,6 +28,7 @@ import { Link, useNavigate } from "react-router";
 import { ReleaseSearchPanel } from "./ReleaseSearchPanel";
 import { Badge, Button, Dialog, InlineSpinner, SelectField } from "./ui";
 import { api } from "../api/client";
+import { statusLabel } from "../i18n/status";
 import { useUi } from "../i18n/ui";
 import { formatDate, imageUrl, initials, mediaYear } from "../lib/format";
 
@@ -661,7 +662,7 @@ export function MediaDetailDialog({
                 ) : null}
                 {item.acquisitionState ? (
                   <Badge tone={stateTone(item.acquisitionState)}>
-                    {item.acquisitionState}
+                    {statusLabel(item.acquisitionState, messages)}
                   </Badge>
                 ) : null}
               </div>
