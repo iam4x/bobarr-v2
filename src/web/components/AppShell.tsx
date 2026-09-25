@@ -20,7 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router";
 
 import { Brand } from "./Brand";
 import { ModalLayer } from "./ModalLayer";
@@ -165,12 +165,39 @@ export function AppShell() {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, [location.pathname]);
 
-  const mobileItems: NavigationItem[] = [
-    { label: messages.nav.discover, to: "/discover", icon: Compass },
-    { label: messages.nav.search, to: "/search", icon: Search },
-    { label: messages.nav.library, to: "/library/movies", icon: Library },
-    { label: messages.nav.activity, to: "/activity", icon: Activity },
+  const mobileItems: Array<NavigationItem & { section: string }> = [
+    {
+      label: messages.nav.discover,
+      to: "/discover",
+      section: "/discover",
+      icon: Compass,
+    },
+    {
+      label: messages.nav.search,
+      to: "/search",
+      section: "/search",
+      icon: Search,
+    },
+    {
+      label: messages.nav.library,
+      to: "/library/movies",
+      section: "/library",
+      icon: Library,
+    },
+    {
+      label: messages.nav.activity,
+      to: "/activity",
+      section: "/activity",
+      icon: Activity,
+    },
   ];
+  const inSection = (section: string) =>
+    location.pathname === section ||
+    location.pathname.startsWith(`${section}/`);
+  // Pages without a bottom tab live in the More sheet, so light that up.
+  const moreSectionActive = !mobileItems.some((item) =>
+    inSection(item.section),
+  );
   const statusLabels = {
     ready: messages.nav.statusReady,
     degraded: messages.nav.statusDegraded,
@@ -255,22 +282,27 @@ export function AppShell() {
         {mobileItems.map((item) => {
           const Icon = item.icon;
           return (
-            <NavLink
+            <Link
               key={item.to}
               to={item.to}
-              className={({ isActive }) =>
-                classNames("mobile-nav__link", isActive && "is-active")
-              }
+              aria-current={inSection(item.section) ? "page" : undefined}
+              className={classNames(
+                "mobile-nav__link",
+                inSection(item.section) && "is-active",
+              )}
             >
               <Icon size={21} aria-hidden="true" />
               <span>{item.label}</span>
-            </NavLink>
+            </Link>
           );
         })}
         <button
           ref={moreButtonRef}
           type="button"
-          className={classNames("mobile-nav__link", moreOpen && "is-active")}
+          className={classNames(
+            "mobile-nav__link",
+            (moreOpen || moreSectionActive) && "is-active",
+          )}
           aria-haspopup="dialog"
           aria-expanded={moreOpen}
           aria-controls="mobile-more-menu"
