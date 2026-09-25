@@ -92,6 +92,7 @@ import {
   SkeletonGrid,
 } from "../components/ui";
 import { en, type Messages } from "../i18n/en";
+import { statusLabel as downloadStateLabel } from "../i18n/status";
 import { useUi } from "../i18n/ui";
 import {
   formatBytes,
@@ -202,28 +203,6 @@ function compactVoteCount(votes: number): string {
     return `${(votes / 1_000).toFixed(votes >= 10_000 ? 0 : 1)}k`;
   }
   return String(votes);
-}
-
-function downloadStateLabel(state: string, messages: Messages = en): string {
-  const labels: Record<string, string> = {
-    searching: messages.status.searching,
-    queued: messages.status.queued,
-    downloading: messages.status.downloading,
-    organizing: messages.status.organizing,
-    available: messages.status.available,
-    missing: messages.status.missing,
-    failed: messages.status.failed,
-    unmonitored: messages.status.unmonitored,
-    paused: messages.status.paused,
-    seeding: messages.status.seeding,
-    checking: messages.status.checking,
-    completed: messages.status.completed,
-    pending: messages.status.pending,
-    running: messages.status.running,
-    retrying: messages.status.retrying,
-    cancelled: messages.status.cancelled,
-  };
-  return labels[state] ?? `${state.slice(0, 1).toUpperCase()}${state.slice(1)}`;
 }
 
 export type EpisodeDisplayState =

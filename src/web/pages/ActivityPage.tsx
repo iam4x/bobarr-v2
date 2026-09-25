@@ -44,6 +44,7 @@ import {
   SelectControl,
 } from "../components/ui";
 import { en, type Messages } from "../i18n/en";
+import { statusLabel } from "../i18n/status";
 import { useUi } from "../i18n/ui";
 import {
   formatBytes,
@@ -483,7 +484,7 @@ function JobsList({
               ) : null}
             </button>
             <div className="job-card__actions">
-              <Badge tone={tone}>{job.state}</Badge>
+              <Badge tone={tone}>{statusLabel(job.state, messages)}</Badge>
               {job.state === "failed" || job.state === "cancelled" ? (
                 <Button
                   type="button"
@@ -545,7 +546,7 @@ function JobDetailsDialog({
           <dl className="job-details__facts">
             <div>
               <dt>{messages.activity.jobStatus}</dt>
-              <dd>{job.state}</dd>
+              <dd>{statusLabel(job.state, messages)}</dd>
             </div>
             <div>
               <dt>{messages.activity.attempts}</dt>
