@@ -1,6 +1,6 @@
-import type { CatalogItem } from "../types";
+import type { CatalogItem, CatalogPage } from "../types";
 
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { Search, X } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
@@ -10,6 +10,7 @@ import { catalogPage } from "../api/normalize";
 import { MediaDetailDialog, MediaGrid } from "../components/Catalog";
 import { Page } from "../components/Page";
 import {
+  Button,
   EmptyState,
   ErrorState,
   IconButton,
@@ -33,6 +34,30 @@ export function currentSearchData<T>(
   return normalizedSearchTerm(query) ? data : undefined;
 }
 
+/** TMDB serves at most 500 result pages. */
+const MAX_SEARCH_PAGE = 500;
+
+/** Joins loaded result pages, dropping titles TMDB repeats across pages. */
+export function mergeSearchPages(pages: readonly CatalogPage[]): CatalogPage {
+  const seen = new Set<string>();
+  const items: CatalogItem[] = [];
+  for (const page of pages) {
+    for (const item of page.items) {
+      const key = `${item.kind}:${item.tmdbId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      items.push(item);
+    }
+  }
+  const last = pages.at(-1);
+  return {
+    items,
+    page: last?.page ?? 1,
+    totalPages: last?.totalPages ?? 1,
+    totalItems: pages[0]?.totalItems,
+  };
+}
+
 export function SearchPage() {
   const { messages } = useUi();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -44,16 +69,24 @@ export function SearchPage() {
   const hasQuery = Boolean(normalizedSearchTerm(query));
   const hasDraft = Boolean(normalizedSearchTerm(draft));
 
-  const searchQuery = useQuery({
+  const searchQuery = useInfiniteQuery({
     queryKey: ["catalog", "search", cacheKey, kind],
-    queryFn: ({ signal }) =>
-      api.get("catalogSearch", {
-        query: {
-          query,
-          kind: kind === "all" ? undefined : kind,
-        },
-        signal,
-      }),
+    queryFn: async ({ pageParam, signal }) =>
+      catalogPage(
+        await api.get("catalogSearch", {
+          query: {
+            query,
+            kind: kind === "all" ? undefined : kind,
+            ...(pageParam > 1 ? { page: pageParam } : {}),
+          },
+          signal,
+        }),
+      ),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.page < Math.min(lastPage.totalPages, MAX_SEARCH_PAGE)
+        ? lastPage.page + 1
+        : undefined,
     enabled: hasQuery,
     staleTime: Number.POSITIVE_INFINITY,
     gcTime: Number.POSITIVE_INFINITY,
@@ -61,7 +94,9 @@ export function SearchPage() {
       previousQuery?.queryKey[3] === kind ? previousData : undefined,
   });
   const currentData = currentSearchData(draft, searchQuery.data);
-  const result = currentData ? catalogPage(currentData) : undefined;
+  const result = currentData ? mergeSearchPages(currentData.pages) : undefined;
+  // Previous results stay visible while a new query loads; mark them stale.
+  const refreshing = searchQuery.isPlaceholderData && searchQuery.isFetching;
 
   useEffect(() => {
     setDraft((current) =>
@@ -186,7 +221,10 @@ export function SearchPage() {
         />
       ) : null}
       {result?.items.length ? (
-        <section>
+        <section
+          className={refreshing ? "search-results is-refreshing" : undefined}
+          aria-busy={refreshing || undefined}
+        >
           <div className="section-heading">
             <div>
               <span className="eyebrow">{messages.search.results}</span>
@@ -198,6 +236,20 @@ export function SearchPage() {
             </div>
           </div>
           <MediaGrid items={result.items} onSelect={setSelected} />
+          {searchQuery.hasNextPage && !refreshing ? (
+            <div className="load-more-row">
+              <Button
+                type="button"
+                variant="secondary"
+                busy={searchQuery.isFetchingNextPage}
+                onClick={() => void searchQuery.fetchNextPage()}
+              >
+                {searchQuery.isFetchingNextPage
+                  ? messages.common.loadingEllipsis
+                  : messages.common.loadMore}
+              </Button>
+            </div>
+          ) : null}
         </section>
       ) : null}
       <MediaDetailDialog
