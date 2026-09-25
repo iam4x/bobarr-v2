@@ -8,7 +8,7 @@ import {
   LockKeyhole,
   ShieldCheck,
 } from "lucide-react";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router";
 import { z } from "zod";
@@ -208,12 +208,16 @@ export function SetupPage() {
     clearErrors,
     formState: { errors },
   } = useForm<SetupForm>();
+  const setupCompletedRef = useRef(false);
   const setupMutation = useMutation({
     mutationFn: ({ username, password: nextPassword }: SetupForm) =>
       api.post("setup", {
         body: { username, password: nextPassword },
       }),
     onSuccess: (session) => {
+      // Marking setup done below would otherwise trip the "already set up"
+      // redirect and send the new administrator to Discover via /login.
+      setupCompletedRef.current = true;
       queryClient.setQueryData(["auth", "session"], session);
       queryClient.setQueryData(["setup"], { setupRequired: false });
       navigate("/settings#connections", { replace: true });
@@ -222,6 +226,7 @@ export function SetupPage() {
   });
 
   useEffect(() => {
+    if (setupCompletedRef.current) return;
     if (statusQuery.data && !isSetupRequired(statusQuery.data))
       navigate("/login", { replace: true });
   }, [navigate, statusQuery.data]);
