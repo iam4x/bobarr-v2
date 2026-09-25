@@ -430,12 +430,14 @@ function AddDownloadDialog({
 
 function JobsList({
   jobs,
+  canManage,
   busyJobId,
   onOpen,
   onCancel,
   onRetry,
 }: {
   jobs: Job[];
+  canManage: boolean;
   busyJobId?: string;
   onOpen: (id: string) => void;
   onCancel: (id: string) => void;
@@ -485,7 +487,8 @@ function JobsList({
             </button>
             <div className="job-card__actions">
               <Badge tone={tone}>{statusLabel(job.state, messages)}</Badge>
-              {job.state === "failed" || job.state === "cancelled" ? (
+              {canManage &&
+              (job.state === "failed" || job.state === "cancelled") ? (
                 <Button
                   type="button"
                   size="sm"
@@ -496,7 +499,8 @@ function JobsList({
                   <RotateCcw size={15} /> {messages.activity.retry}
                 </Button>
               ) : null}
-              {job.state === "pending" || job.state === "running" ? (
+              {canManage &&
+              (job.state === "pending" || job.state === "running") ? (
                 <Button
                   type="button"
                   size="sm"
@@ -504,7 +508,7 @@ function JobsList({
                   busy={busyJobId === job.id}
                   onClick={() => onCancel(job.id)}
                 >
-                  {messages.common.cancel}
+                  {messages.activity.cancelJob}
                 </Button>
               ) : null}
             </div>
@@ -973,7 +977,8 @@ export function ActivityPage() {
             {
               value: "downloads",
               label: messages.activity.downloadsWithCount({
-                count: downloads.length,
+                count:
+                  downloadsQuery.data?.pages[0]?.page.total ?? downloads.length,
               }),
             },
             { value: "jobs", label: messages.activity.jobs },
@@ -1120,6 +1125,7 @@ export function ActivityPage() {
           >
             <JobsList
               jobs={collectionItems(jobsQuery.data)}
+              canManage={canManageSettings}
               busyJobId={
                 jobActionMutation.isPending
                   ? jobActionMutation.variables?.id

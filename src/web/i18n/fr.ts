@@ -859,6 +859,7 @@ export const fr = {
     pause: "Pause",
     resume: "Reprendre",
     retry: "Réessayer",
+    cancelJob: "Annuler la tâche",
     remove: "Retirer",
     chooseFiles: "Choisir les fichiers",
     priority: ({ value }: { value: string }) => `priorité ${value}`,

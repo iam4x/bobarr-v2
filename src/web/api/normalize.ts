@@ -161,6 +161,7 @@ function normalizeJob(value: UnknownRecord): UnknownRecord {
   const state = status === "queued" ? "pending" : status;
   const attempts =
     recordNumber(value, "attempts") ??
+    recordNumber(value, "attempt") ??
     recordNumber(errorDetails, "attempt") ??
     (recordString(value, "startedAt") ? 1 : 0);
   const maxAttempts =
@@ -178,9 +179,11 @@ function normalizeJob(value: UnknownRecord): UnknownRecord {
       recordString(value, "runAt") ??
       recordString(value, "startedAt") ??
       recordString(value, "createdAt"),
+    // `message` keeps the last failure after a retry succeeds; a completed
+    // job has nothing left to report.
     error:
       recordString(errorDetails, "message") ??
-      recordString(value, "message") ??
+      (state === "completed" ? undefined : recordString(value, "message")) ??
       null,
   };
 }

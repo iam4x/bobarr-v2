@@ -831,6 +831,7 @@ export const en = {
     pause: "Pause",
     resume: "Resume",
     retry: "Retry",
+    cancelJob: "Cancel job",
     remove: "Remove",
     chooseFiles: "Choose files",
     priority: ({ value }: { value: string }) => `${value} priority`,
