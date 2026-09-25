@@ -1,10 +1,18 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 
+// Catalog views show "Tracked" badges and hide owned titles, so library
+// changes (including another user's) refresh them as well. Search results
+// stay cached for the session to spare TMDB; Library actions refresh them.
+const libraryCatalogKeys = [
+  ["catalog", "discover"],
+  ["catalog", "detail"],
+];
+
 const eventQueryKeys: Record<string, string[][]> = {
-  "download.changed": [["downloads"], ["library"]],
+  "download.changed": [["downloads"], ["library"], ["calendar"]],
   "job.changed": [["jobs"]],
-  "library.changed": [["library"]],
+  "library.changed": [["library"], ["calendar"], ...libraryCatalogKeys],
   "activity.created": [["activity"]],
   "service.changed": [["system"]],
 };
