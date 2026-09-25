@@ -746,6 +746,12 @@ function QueryTabContent({
   return children;
 }
 
+function historyCategory(type: string, messages: Messages): string {
+  const categories: Record<string, string> = messages.activity.historyCategory;
+  const prefix = type.split(".")[0] ?? type;
+  return categories[prefix] ?? type.replaceAll(/[._-]+/g, " ");
+}
+
 function HistoryList({ events }: { events: ActivityEvent[] }) {
   const { messages, locale } = useUi();
   if (!events.length)
@@ -768,7 +774,7 @@ function HistoryList({ events }: { events: ActivityEvent[] }) {
           <div>
             <strong>{event.message}</strong>
             <span>
-              {event.type.replaceAll("_", " ")} ·{" "}
+              {historyCategory(event.type, messages)} ·{" "}
               {formatRelativeDate(event.createdAt, locale)}
             </span>
           </div>

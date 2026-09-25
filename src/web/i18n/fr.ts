@@ -860,6 +860,13 @@ export const fr = {
     resume: "Reprendre",
     retry: "Réessayer",
     cancelJob: "Annuler la tâche",
+    historyCategory: {
+      library: "Bibliothèque",
+      acquisition: "Acquisition",
+      download: "Téléchargement",
+      backup: "Sauvegarde",
+      restore: "Restauration",
+    },
     remove: "Retirer",
     chooseFiles: "Choisir les fichiers",
     priority: ({ value }: { value: string }) => `priorité ${value}`,
