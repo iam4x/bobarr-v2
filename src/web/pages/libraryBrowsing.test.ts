@@ -6,6 +6,8 @@ import {
   libraryBrowseFromSearchParams,
   libraryBrowseIsDefault,
   libraryNeedsAttentionCount,
+  LIBRARY_SORT_OPTIONS,
+  libraryYearOptions,
   writeLibraryBrowseSearchParams,
 } from "./libraryBrowsing";
 
@@ -60,5 +62,24 @@ describe("library browsing helpers", () => {
 
   test("counts titles that need attention", () => {
     expect(libraryNeedsAttentionCount({ missing: 2, failed: 3 })).toBe(5);
+  });
+
+  test("offers every sort the URL accepts", () => {
+    expect(LIBRARY_SORT_OPTIONS).toContain("added_at.asc");
+  });
+
+  test("offers years from next year back to 1900", () => {
+    const years = libraryYearOptions("", new Date("2026-09-26T12:00:00Z"));
+    expect(years[0]).toBe(2027);
+    expect(years.at(-1)).toBe(1900);
+    expect(years).toContain(1994);
+  });
+
+  test("keeps an applied year that is outside the usual range", () => {
+    const years = libraryYearOptions("1895", new Date("2026-09-26T12:00:00Z"));
+    expect(years.at(-1)).toBe(1895);
+    expect(
+      libraryYearOptions("", new Date("2026-09-26T12:00:00Z")),
+    ).not.toContain(1895);
   });
 });

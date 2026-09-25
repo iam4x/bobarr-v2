@@ -48,6 +48,7 @@ import {
   LIBRARY_SORT_OPTIONS,
   libraryQualityLabel,
   libraryRatingLabel,
+  libraryYearOptions,
   librarySortLabel,
   libraryAvailabilityParam,
   libraryBrowseFromSearchParams,
@@ -2837,13 +2838,11 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
           onChange={(event) => updateBrowse({ year: event.target.value })}
         >
           <option value="">{messages.library.anyYear}</option>
-          {Array.from({ length: 30 }, (_, index) => 2026 - index).map(
-            (value) => (
-              <option key={value} value={String(value)}>
-                {value}
-              </option>
-            ),
-          )}
+          {libraryYearOptions(browse.year).map((value) => (
+            <option key={value} value={String(value)}>
+              {value}
+            </option>
+          ))}
         </SelectField>
         <SelectField
           label={messages.library.rating}

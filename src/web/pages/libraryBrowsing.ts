@@ -14,6 +14,7 @@ export interface LibraryBrowseFilters {
 
 export const LIBRARY_SORT_OPTIONS: LibrarySort[] = [
   "added_at.desc",
+  "added_at.asc",
   "updated_at.desc",
   "title.asc",
   "title.desc",
@@ -22,6 +23,34 @@ export const LIBRARY_SORT_OPTIONS: LibrarySort[] = [
   "rating.desc",
   "rating.asc",
 ];
+
+const OLDEST_LIBRARY_YEAR = 1900;
+
+/**
+ * Release years offered by the Year filter, newest first. The range follows
+ * the calendar (next year included for announced titles) and always keeps a
+ * year that is already applied, for example from a shared URL.
+ */
+export function libraryYearOptions(
+  selected: string,
+  now: Date = new Date(),
+): number[] {
+  const newest = now.getFullYear() + 1;
+  const years = Array.from(
+    { length: newest - OLDEST_LIBRARY_YEAR + 1 },
+    (_, index) => newest - index,
+  );
+  const selectedYear = Number(selected);
+  if (
+    selected !== "" &&
+    Number.isSafeInteger(selectedYear) &&
+    !years.includes(selectedYear)
+  ) {
+    years.push(selectedYear);
+    years.sort((left, right) => right - left);
+  }
+  return years;
+}
 
 export const LIBRARY_QUALITY_OPTIONS = ["", "2160p", "1080p", "720p", "480p"];
 
