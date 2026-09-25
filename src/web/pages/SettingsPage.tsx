@@ -52,10 +52,12 @@ import { formatBytes, formatDate } from "../lib/format";
 function ConnectionCard({
   integration,
   testing,
+  disabled,
   onTest,
 }: {
   integration?: IntegrationStatus;
   testing: boolean;
+  disabled: boolean;
   onTest: () => void;
 }) {
   const { messages } = useUi();
@@ -83,6 +85,8 @@ function ConnectionCard({
           size="sm"
           variant="secondary"
           busy={testing}
+          disabled={disabled}
+          title={disabled ? messages.settings.testSaveFirst : undefined}
           onClick={onTest}
         >
           {messages.common.test}
@@ -103,7 +107,13 @@ export function SettingsPage() {
   const { messages, locale } = useUi();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [notice, setNotice] = useState<string>();
+  const [notice, setNotice] = useState<{
+    tone: "success" | "error";
+    text: string;
+  }>();
+  const showSuccess = (text: string) => setNotice({ tone: "success", text });
+  const showError = (error: Error) =>
+    setNotice({ tone: "error", text: error.message });
   const [volumeStats, setVolumeStats] = useState<VolumeHealth[]>();
   const [restoreFile, setRestoreFile] = useState<File>();
   const [restoreConfirmation, setRestoreConfirmation] = useState("");
@@ -171,32 +181,40 @@ export function SettingsPage() {
     if (settingsQuery.data) reset(toForm(settingsQuery.data));
   }, [reset, settingsQuery.data]);
 
+  useEffect(() => {
+    if (isDirty) setNotice(undefined);
+  }, [isDirty]);
+
   const saveMutation = useMutation({
     mutationFn: (value: ParsedSettingsForm) =>
       api.patch("updateSettings", { body: fromForm(value) }),
     onSuccess: (settings) => {
       queryClient.setQueryData(["settings"], settings);
       reset(toForm(settings));
-      setNotice(messages.settings.savedSecurely);
+      showSuccess(messages.settings.savedSecurely);
       void queryClient.invalidateQueries({ queryKey: ["system"] });
       void queryClient.invalidateQueries({ queryKey: ["catalog"] });
     },
+    onError: showError,
   });
   const testMutation = useMutation({
     mutationFn: (key: IntegrationKey) =>
       api.post("testIntegration", { params: { key } }),
     onSuccess: (result) => {
-      setNotice(
-        messages.settings.connectionResult({
+      setNotice({
+        tone: result.healthy ? "success" : "error",
+        text: messages.settings.connectionResult({
           label: result.label,
           healthy: result.healthy,
         }),
-      );
+      });
       void statusQuery.refetch();
     },
+    onError: showError,
   });
   const validateStorageMutation = useMutation({
     mutationFn: () => {
+      clearErrors("volumes");
       const parsed = settingsSchema(messages).safeParse(getValues());
       if (!parsed.success) {
         for (const issue of parsed.error.issues) assignIssue(issue);
@@ -208,20 +226,24 @@ export function SettingsPage() {
     },
     onSuccess: (result) => {
       setVolumeStats(result.volumes);
-      setNotice(
-        result.message ||
+      setNotice({
+        tone: result.valid ? "success" : "error",
+        text:
+          result.message ||
           (result.valid
             ? messages.settings.storageAccessible
             : messages.settings.storageValidationFailed),
-      );
+      });
     },
+    onError: showError,
   });
   const backupMutation = useMutation({
     mutationFn: () => api.post("createBackup"),
     onSuccess: () => {
-      setNotice(messages.settings.backupCreated);
+      showSuccess(messages.settings.backupCreated);
       void backupsQuery.refetch();
     },
+    onError: showError,
   });
   const organizeStorageMutation = useMutation({
     mutationFn: () => api.post("organizeStorage"),
@@ -236,7 +258,7 @@ export function SettingsPage() {
         headers: { "x-bobarr-restore-confirmation": "stage-restore" },
       }),
     onSuccess: () => {
-      setNotice(messages.settings.restoreStaged);
+      showSuccess(messages.settings.restoreStaged);
       setRestoreDialogOpen(false);
       setRestoreConfirmation("");
       setRestoreFile(undefined);
@@ -252,7 +274,8 @@ export function SettingsPage() {
   });
   const resetLoginLockMutation = useMutation({
     mutationFn: () => api.post("resetLoginLock"),
-    onSuccess: () => setNotice(messages.settings.loginLockReset),
+    onSuccess: () => showSuccess(messages.settings.loginLockReset),
+    onError: showError,
   });
 
   const integration = (key: IntegrationKey) =>
@@ -355,18 +378,6 @@ export function SettingsPage() {
         </nav>
 
         <div className="settings-content">
-          {notice ? (
-            <div className="notice notice--success" role="status">
-              <CheckCircle2 size={17} />
-              {notice}
-            </div>
-          ) : null}
-          {saveMutation.isError ? (
-            <div className="notice notice--error" role="alert">
-              {saveMutation.error.message}
-            </div>
-          ) : null}
-
           <section className="settings-section" id="connections">
             <header>
               <span className="settings-section__icon">
@@ -392,6 +403,7 @@ export function SettingsPage() {
                   testing={
                     testMutation.isPending && testMutation.variables === key
                   }
+                  disabled={isDirty}
                   onTest={() => testMutation.mutate(key)}
                 />
               ))}
@@ -713,21 +725,30 @@ export function SettingsPage() {
                 </Button>
               </div>
             </div>
-            {resetLoginLockMutation.isError ? (
-              <p className="field__error">
-                {resetLoginLockMutation.error.message}
-              </p>
-            ) : null}
           </section>
 
-          <PeopleSection setNotice={setNotice} />
+          <PeopleSection onNotice={showSuccess} onError={showError} />
 
           <div className="settings-savebar">
-            <span>
-              {isDirty
-                ? messages.settings.unsavedChanges
-                : messages.settings.settingsUpToDate}
-            </span>
+            {notice ? (
+              <span
+                className={`settings-savebar__notice settings-savebar__notice--${notice.tone}`}
+                role={notice.tone === "error" ? "alert" : "status"}
+              >
+                {notice.tone === "error" ? (
+                  <AlertTriangle size={16} />
+                ) : (
+                  <CheckCircle2 size={16} />
+                )}
+                {notice.text}
+              </span>
+            ) : (
+              <span>
+                {isDirty
+                  ? messages.settings.unsavedChanges
+                  : messages.settings.settingsUpToDate}
+              </span>
+            )}
             <Button
               type="button"
               busy={saveMutation.isPending}

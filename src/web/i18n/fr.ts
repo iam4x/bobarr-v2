@@ -953,6 +953,7 @@ export const fr = {
     organizeVolumes: "Organiser les volumes",
     organizeVolumesHint:
       "Répartissez les fichiers de la bibliothèque et leurs données en partage entre vos volumes enregistrés en arrière-plan. Les dossiers de films et les saisons restent groupés. Leur taille peut empêcher une répartition exacte à 50/50.",
+    testSaveFirst: "Enregistrez vos réglages avant de tester les connexions.",
     organizeSaveFirst:
       "Enregistrez les paramètres avant d’organiser les volumes.",
     viewOrganizationJob: "Voir la tâche dans Activité",
@@ -1070,6 +1071,15 @@ export const fr = {
     inviteSomeone: "Inviter quelqu’un",
     copyInvite: "Copier le lien d’invitation",
     openInvite: "Invitation ouverte",
+    inviteLink: "Lien d’invitation",
+    inviteLinkHint: "Envoyez ce lien à la personne que vous invitez.",
+    inviteCopied: "Lien d’invitation copié.",
+    copyInviteManually:
+      "La copie n’est pas disponible ici. Le lien est sélectionné ; copiez-le manuellement.",
+    deleteTitle: ({ username }: { username: string }) =>
+      `Supprimer ${username} ?`,
+    deleteDescription:
+      "Cette personne est déconnectée et ne peut plus se connecter à Bobarr.",
     makeAdmin: "Rendre admin",
     makeUser: "Rendre utilisateur",
     expires: ({ date }: { date: string }) => `Expire le ${date}`,

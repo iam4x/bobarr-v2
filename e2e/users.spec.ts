@@ -22,15 +22,15 @@ test("an invited user can join and cannot open Settings", async ({
   await page.getByRole("button", { name: "Invite someone" }).click();
   const created = (await (await inviteResponse).json()) as { token: string };
   expect(created.token.length).toBeGreaterThan(20);
-  const inviteCard = page.locator("li").filter({ hasText: "Open invite" });
   await expect(
-    inviteCard.getByRole("button", { name: "Copy invite link" }),
+    page.locator("li").filter({ hasText: "Open invite" }),
   ).toBeVisible();
+  await expect(page.getByLabel("Invite link")).toHaveValue(
+    new RegExp(`/invite\\?token=${created.token}$`),
+  );
   await expect(
-    page
-      .locator(".backup-actions")
-      .getByRole("button", { name: "Copy invite link" }),
-  ).toHaveCount(0);
+    page.getByRole("button", { name: "Copy invite link" }),
+  ).toBeVisible();
 
   const friendContext = await browser.newContext();
   const friendPage = await friendContext.newPage();
@@ -97,9 +97,10 @@ test("revoking an invite removes the copy-link control", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
 
   await page.getByRole("button", { name: "Invite someone" }).click();
-  const inviteCard = page
-    .locator("li")
-    .filter({ has: page.getByRole("button", { name: "Copy invite link" }) });
+  await expect(
+    page.getByRole("button", { name: "Copy invite link" }),
+  ).toBeVisible();
+  const inviteCard = page.locator("li").filter({ hasText: "Open invite" });
   await expect(inviteCard).toBeVisible();
 
   await inviteCard.getByRole("button", { name: "Revoke" }).click();

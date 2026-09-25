@@ -924,6 +924,7 @@ export const en = {
     organizeVolumes: "Organize volumes",
     organizeVolumesHint:
       "Balance library files and their seeding data across your saved volumes in the background. Movie folders and TV seasons stay together. Whole folders may prevent an exact 50/50 split.",
+    testSaveFirst: "Save your settings before testing connections.",
     organizeSaveFirst: "Save your settings before organizing volumes.",
     viewOrganizationJob: "View job in Activity",
     organizationStatus: {
@@ -1034,6 +1035,14 @@ export const en = {
     inviteSomeone: "Invite someone",
     copyInvite: "Copy invite link",
     openInvite: "Open invite",
+    inviteLink: "Invite link",
+    inviteLinkHint: "Send this link to the person you are inviting.",
+    inviteCopied: "Invite link copied.",
+    copyInviteManually:
+      "Copying is unavailable here. The link is selected; copy it manually.",
+    deleteTitle: ({ username }: { username: string }) => `Delete ${username}?`,
+    deleteDescription:
+      "They are signed out and can no longer sign in to Bobarr.",
     makeAdmin: "Make admin",
     makeUser: "Make user",
     expires: ({ date }: { date: string }) => `Expires ${date}`,
