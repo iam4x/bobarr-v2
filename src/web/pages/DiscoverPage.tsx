@@ -503,6 +503,13 @@ export function DiscoverPage() {
     directorName: routeDirector?.name ?? routeState.directorName ?? "",
   }));
   const [draft, setDraft] = useState<DiscoverFilters>(filters);
+  const routePeopleKey = [
+    routeActor?.tmdbId,
+    routeActor?.name,
+    routeDirector?.tmdbId,
+    routeDirector?.name,
+  ].join(":");
+  const appliedRoutePeopleRef = useRef(routePeopleKey);
   const filterAnchorRef = useRef<HTMLDivElement>(null);
   const filterMenuRef = useRef<HTMLElement>(null);
   const showForYou =
@@ -520,6 +527,11 @@ export function DiscoverPage() {
     !filters.runtimeMax &&
     !filters.ratingMin &&
     !filters.voteCountMin;
+
+  const goToPage = (next: number) => {
+    setPage(next);
+    window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+  };
 
   const genresQuery = useQuery({
     queryKey: ["catalog", "genres", kind],
@@ -578,27 +590,39 @@ export function DiscoverPage() {
     : undefined;
 
   useEffect(() => {
+    // The initial filters already include the route people. Only a later
+    // actor or director link should change filters or go back to page 1;
+    // otherwise ?page=N from a reload or Back would be lost.
+    if (appliedRoutePeopleRef.current === routePeopleKey) return;
+    appliedRoutePeopleRef.current = routePeopleKey;
     const actorId = routeActor?.tmdbId ?? null;
     const actorName = routeActor?.name ?? "";
     const directorId = routeDirector?.tmdbId ?? null;
     const directorName = routeDirector?.name ?? "";
-    const applyRoutePeople = (current: DiscoverFilters): DiscoverFilters =>
-      current.actorId === actorId &&
-      current.actorName === actorName &&
-      current.directorId === directorId &&
-      current.directorName === directorName
-        ? current
-        : { ...current, actorId, actorName, directorId, directorName };
+    const openingPerson = actorId !== null || directorId !== null;
+    const applyRoutePeople = (current: DiscoverFilters): DiscoverFilters => {
+      if (
+        current.actorId === actorId &&
+        current.actorName === actorName &&
+        current.directorId === directorId &&
+        current.directorName === directorName
+      ) {
+        return current;
+      }
+      // A person link means "their films": start from default filters
+      // wherever it was clicked, instead of mixing in earlier genre or year
+      // filters.
+      const base = openingPerson
+        ? { ...createDefaultDiscoverFilters(), hideOwned: current.hideOwned }
+        : current;
+      return { ...base, actorId, actorName, directorId, directorName };
+    };
     setFilters(applyRoutePeople);
     setDraft(applyRoutePeople);
-    if (routeActor || routeDirector) setKind("movie");
+    if (openingPerson) setKind("movie");
     setPage(1);
-  }, [
-    routeActor?.name,
-    routeActor?.tmdbId,
-    routeDirector?.name,
-    routeDirector?.tmdbId,
-  ]);
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [routeActor, routeDirector, routePeopleKey]);
 
   useEffect(() => {
     const genres = searchParams.get("genres");
@@ -1236,7 +1260,7 @@ export function DiscoverPage() {
           <IconButton
             label={messages.discover.previousPage}
             disabled={page <= 1}
-            onClick={() => setPage((value) => Math.max(1, value - 1))}
+            onClick={() => goToPage(Math.max(1, page - 1))}
           >
             <ChevronLeft size={20} />
           </IconButton>
@@ -1249,7 +1273,7 @@ export function DiscoverPage() {
           <IconButton
             label={messages.discover.nextPage}
             disabled={page >= Math.min(result.totalPages, 500)}
-            onClick={() => setPage((value) => value + 1)}
+            onClick={() => goToPage(page + 1)}
           >
             <ChevronRight size={20} />
           </IconButton>
