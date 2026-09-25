@@ -719,6 +719,8 @@ export const en = {
     moviesFolder: "movies",
     televisionFolder: "television",
     removeTorrent: "Remove torrent from Transmission",
+    removeTorrentRequired:
+      "Stops seeding. Required to remove the title; downloaded data stays unless you delete it below.",
     removeTorrentHint: "Stops seeding and removes its torrent record.",
     deleteOriginalData: "Delete original download data",
     cannotBeUndone: "This cannot be undone.",

@@ -744,6 +744,8 @@ export const fr = {
     moviesFolder: "films",
     televisionFolder: "séries",
     removeTorrent: "Retirer le torrent de Transmission",
+    removeTorrentRequired:
+      "Arrête le partage. Obligatoire pour retirer le titre ; les données téléchargées restent sauf si vous les supprimez ci-dessous.",
     removeTorrentHint:
       "Arrête le partage et supprime l’enregistrement du torrent.",
     deleteOriginalData: "Supprimer les données de téléchargement d’origine",
