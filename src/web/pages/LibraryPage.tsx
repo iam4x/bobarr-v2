@@ -2,6 +2,7 @@ import type {
   LibraryDownloadFile,
   MonitorMediaPatch,
 } from "../../contracts/api-routes";
+import type { UiLocale } from "../i18n/locale";
 import type {
   AcquisitionState,
   CatalogActor,
@@ -535,7 +536,7 @@ export function LibraryCard({
   onManage: (item: LibraryItem) => void;
   onGenreSelect?: (genreId: number) => void;
 }) {
-  const { messages } = useUi();
+  const { messages, locale } = useUi();
   const poster = imageUrl(item.posterPath, "w342");
   const rating =
     item.rating ??
@@ -732,7 +733,7 @@ export function LibraryCard({
           <p className="library-card__date">
             <CalendarClock size={13} aria-hidden="true" />
             {messages.library.nextEpisode({
-              date: formatDate(nextAirDate) ?? messages.dates.unknown,
+              date: formatDate(nextAirDate, locale) ?? messages.dates.unknown,
             })}
           </p>
         ) : null}
@@ -995,6 +996,7 @@ function episodeDateCopy(
   status: EpisodeDisplayStatus,
   now = Date.now(),
   messages: Messages = en,
+  locale?: UiLocale,
 ): string {
   if (status.state === "ready") return messages.library.fileReady;
   if (status.state === "searching") return messages.library.checkingIndexers;
@@ -1018,10 +1020,10 @@ function episodeDateCopy(
   if (releaseDay(episode) === utcDay(now)) return messages.library.airsToday;
   if (status.state === "upcoming")
     return messages.library.airsOn({
-      date: formatDate(episode.releaseDate!) ?? messages.dates.unknown,
+      date: formatDate(episode.releaseDate!, locale) ?? messages.dates.unknown,
     });
   return messages.library.airedMissingOn({
-    date: formatDate(episode.releaseDate!) ?? messages.dates.unknown,
+    date: formatDate(episode.releaseDate!, locale) ?? messages.dates.unknown,
   });
 }
 
@@ -1095,7 +1097,7 @@ export function TvSeriesManagement({
   onManualSearch: (target?: { season: number; episode: number | null }) => void;
   onRemove: () => void;
 }) {
-  const { messages } = useUi();
+  const { messages, locale } = useUi();
   const queryClient = useQueryClient();
   const displaySeasons = useMemo(
     () =>
@@ -1240,6 +1242,7 @@ export function TvSeriesManagement({
             episodeDisplayStatus(nextEpisode, Date.now(), messages),
             Date.now(),
             messages,
+            locale,
           ),
         })
       : messages.library.futureEpisodesAuto;
@@ -1470,6 +1473,7 @@ export function TvSeriesManagement({
                             status,
                             Date.now(),
                             messages,
+                            locale,
                           )}
                         </small>
                       </div>

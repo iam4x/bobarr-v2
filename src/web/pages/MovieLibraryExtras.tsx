@@ -83,11 +83,11 @@ function EpisodeShelfCard({
   series: LibraryItem;
   onSelect: (series: LibraryItem) => void;
 }) {
-  const { messages } = useUi();
+  const { messages, locale } = useUi();
   const poster = imageUrl(series.posterPath ?? episode.posterPath, "w342");
   const acquiredAt =
     typeof episode.updatedAt === "string" ? episode.updatedAt : episode.addedAt;
-  const relative = formatRelativeDate(acquiredAt);
+  const relative = formatRelativeDate(acquiredAt, locale);
   const code = episodeCode(episode, messages.library.episode);
   return (
     <button
