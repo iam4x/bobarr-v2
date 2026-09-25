@@ -1070,7 +1070,6 @@ export const en = {
     trailerFor: ({ title }: { title: string }) => `${title} trailer`,
     addToLibrary: "Add to library",
     openInLibrary: "Open in library",
-    keepBrowsing: "Keep browsing",
     chooseSeasons: "Choose seasons",
     chooseSeasonsHint: "Only selected seasons are searched automatically.",
     selectAll: "Select all",

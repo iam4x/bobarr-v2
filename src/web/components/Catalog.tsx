@@ -454,7 +454,16 @@ export function MediaDetailDialog({
                 includeFutureSeasons,
               },
       }),
-    onSuccess: (libraryItem, { acquisitionMode }) => {
+    onSuccess: (libraryItem, { item, acquisitionMode }) => {
+      void queryClient.invalidateQueries({ queryKey: ["library"] });
+      void queryClient.invalidateQueries({ queryKey: ["catalog"] });
+      // The dialog may already show another title when a slow add finishes.
+      if (
+        selectedRef.current?.kind !== item.kind ||
+        selectedRef.current.tmdbId !== item.tmdbId
+      ) {
+        return;
+      }
       if (seasonSelection.length > 0) {
         setSelectedSeason(Math.max(...seasonSelection));
       }
@@ -465,8 +474,6 @@ export function MediaDetailDialog({
       } else {
         setMessage(messages.catalog.addedAutomatic);
       }
-      void queryClient.invalidateQueries({ queryKey: ["library"] });
-      void queryClient.invalidateQueries({ queryKey: ["catalog"] });
     },
   });
 
@@ -490,7 +497,12 @@ export function MediaDetailDialog({
     return () => cancelAnimationFrame(frame);
   }, [showReleases]);
 
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const resetMonitorMutation = monitorMutation.reset;
+
   useEffect(() => {
+    resetMonitorMutation();
     setSelectedSeason(undefined);
     setSeasonSelection([]);
     setSeasonSelectionReady(false);
@@ -498,7 +510,7 @@ export function MediaDetailDialog({
     setShowReleases(false);
     setMessage(undefined);
     setAddedLibraryId(undefined);
-  }, [selected?.kind, selected?.tmdbId]);
+  }, [resetMonitorMutation, selected?.kind, selected?.tmdbId]);
 
   useEffect(() => {
     const seasonCount = detailQuery.data?.numberOfSeasons ?? 0;
@@ -698,30 +710,7 @@ export function MediaDetailDialog({
           {message ? (
             <div className="notice notice--success" role="status">
               <Check size={17} />
-              <div className="media-detail__added">
-                <p>{message}</p>
-                {libraryId ? (
-                  <div className="media-detail__added-actions">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        setMessage(undefined);
-                      }}
-                    >
-                      {messages.catalog.keepBrowsing}
-                    </Button>
-                    <Link
-                      className="button button--primary button--sm"
-                      to={libraryPath}
-                      onClick={onClose}
-                    >
-                      <Library size={15} /> {messages.catalog.openInLibrary}
-                    </Link>
-                  </div>
-                ) : null}
-              </div>
+              {message}
             </div>
           ) : null}
           {monitorMutation.isError ? (
