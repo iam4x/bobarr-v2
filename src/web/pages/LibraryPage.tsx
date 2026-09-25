@@ -1725,6 +1725,10 @@ export function TvSeriesManagement({
                   busy={saveBusy}
                   disabled={
                     !canConfigureMonitoring ||
+                    // Until the seasons load, the selection is empty and
+                    // saving would unmonitor every existing season.
+                    (policy === "selected" &&
+                      (seasonsLoading || seasonsError !== null)) ||
                     (policy === "selected" &&
                       selectedSeasons.length === 0 &&
                       !includeFutureSeasons)
