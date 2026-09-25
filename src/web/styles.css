@@ -3108,6 +3108,10 @@ textarea:focus-visible {
   align-items: center;
   gap: 6px;
 }
+.discover-foryou__header > .button {
+  flex: none;
+  white-space: nowrap;
+}
 .scan-review-panel {
   margin-bottom: 26px;
   padding: 18px;
