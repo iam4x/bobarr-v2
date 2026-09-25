@@ -2902,7 +2902,7 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
       {libraryQuery.data && items.length === 0 && browsingDefault ? (
         <LibraryEmptyGuidance
           kind={kind}
-          onScan={() => scanMutation.mutate()}
+          onScan={canManageSettings ? () => scanMutation.mutate() : undefined}
           scanBusy={scanMutation.isPending}
         />
       ) : null}

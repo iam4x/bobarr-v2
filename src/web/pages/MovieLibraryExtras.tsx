@@ -382,7 +382,8 @@ export function LibraryEmptyGuidance({
   scanBusy,
 }: {
   kind: "movie" | "series";
-  onScan: () => void;
+  /** Omit when the user cannot scan; scanning is admin-only. */
+  onScan?: () => void;
   scanBusy: boolean;
 }) {
   const { messages } = useUi();
@@ -397,12 +398,14 @@ export function LibraryEmptyGuidance({
       description={messages.library.emptyGuidance}
       action={
         <div className="library-empty-actions">
-          <Button type="button" busy={scanBusy} onClick={onScan}>
-            <ScanSearch size={16} />{" "}
-            {isMovies
-              ? messages.library.scanExistingMovies
-              : messages.library.scanExistingShows}
-          </Button>
+          {onScan ? (
+            <Button type="button" busy={scanBusy} onClick={onScan}>
+              <ScanSearch size={16} />{" "}
+              {isMovies
+                ? messages.library.scanExistingMovies
+                : messages.library.scanExistingShows}
+            </Button>
+          ) : null}
           <Link
             className="button button--secondary button--md"
             to="/suggestions"
@@ -410,7 +413,7 @@ export function LibraryEmptyGuidance({
             <Sparkles size={16} /> {messages.library.getSuggestions}
           </Link>
           <Link
-            className="button button--secondary button--md"
+            className={`button ${onScan ? "button--secondary" : "button--primary"} button--md`}
             to={isMovies ? "/discover" : "/discover?kind=series"}
           >
             {isMovies ? <Film size={16} /> : <Tv size={16} />}{" "}
