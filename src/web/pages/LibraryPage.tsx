@@ -2539,17 +2539,15 @@ function ManageLibraryDialog({
             setManualSearchTarget(undefined);
             setManualSearchOpen(true);
           }}
-          onActorSelect={(actor) => {
-            onClose();
-            navigate(actorDiscoverPath(actor));
-          }}
-          onDirectorSelect={(director) => {
-            onClose();
-            navigate(directorDiscoverPath(director));
-          }}
+          // These leave Library, which unmounts the dialog. Closing first
+          // would pop its history entry and race the navigation; keeping it
+          // lets Back return to this title.
+          onActorSelect={(actor) => navigate(actorDiscoverPath(actor))}
+          onDirectorSelect={(director) =>
+            navigate(directorDiscoverPath(director))
+          }
           onBrowseSimilar={() => {
             const genreId = item.genres?.[0]?.id;
-            onClose();
             if (genreId) {
               navigate(`/discover?kind=movie&genres=${genreId}&hideOwned=1`);
               return;
@@ -2581,6 +2579,10 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
   const [search, setSearch] = useState(routeBrowse.search ?? "");
   const [selected, setSelected] = useState<LibraryItem | null>(null);
   const dismissedItemIdRef = useRef<string | undefined>(undefined);
+  // True while the open dialog owns a history entry pushed from the grid.
+  const pushedItemEntryRef = useRef(false);
+  const previousFocusItemIdRef = useRef<string | undefined>(undefined);
+  const navigate = useNavigate();
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const normalizedSearch = search.trim();
   const availability = libraryAvailabilityParam(browse.filter);
@@ -2674,8 +2676,15 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
   });
 
   useEffect(() => {
+    const previousFocusItemId = previousFocusItemIdRef.current;
+    previousFocusItemIdRef.current = focusItemId;
     if (!focusItemId) {
       dismissedItemIdRef.current = undefined;
+      // Browser Back removed ?item=: close the dialog it belonged to.
+      if (previousFocusItemId && selected?.id === previousFocusItemId) {
+        pushedItemEntryRef.current = false;
+        setSelected(null);
+      }
       return;
     }
     if (dismissedItemIdRef.current !== focusItemId) {
@@ -2695,19 +2704,24 @@ export function LibraryPage({ kind }: { kind: "movie" | "series" }) {
   function openLibraryItem(item: LibraryItem): void {
     dismissedItemIdRef.current = undefined;
     setSelected(item);
-    setSearchParams(
-      (previous) => {
-        const next = new URLSearchParams(previous);
-        next.set("item", item.id);
-        return next;
-      },
-      { replace: true },
-    );
+    // Push, so the browser or Android Back button closes the dialog instead
+    // of leaving the library.
+    pushedItemEntryRef.current = true;
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set("item", item.id);
+      return next;
+    });
   }
 
   function closeLibraryItem(): void {
     dismissedItemIdRef.current = selected?.id;
     setSelected(null);
+    if (pushedItemEntryRef.current) {
+      pushedItemEntryRef.current = false;
+      navigate(-1);
+      return;
+    }
     setSearchParams(
       (previous) => {
         const next = new URLSearchParams(previous);
