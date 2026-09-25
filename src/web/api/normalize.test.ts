@@ -132,6 +132,27 @@ describe("API collection normalization", () => {
       4_000_000_000,
     );
   });
+
+  it("reports the real attempt and hides failures a later retry resolved", () => {
+    const job = {
+      id: "job-2",
+      kind: "media.acquire.v1",
+      status: "completed",
+      payload: {},
+      message: "Error: No storage volume has enough free space",
+      error: null,
+      attempt: 3,
+      maxAttempts: 5,
+      startedAt: "2026-08-03T20:00:00.000Z",
+      createdAt: "2026-08-03T20:00:00.000Z",
+    } as unknown as Job;
+
+    expect(collectionItems({ jobs: [job] })[0]).toMatchObject({
+      state: "completed",
+      attempts: 3,
+      error: null,
+    });
+  });
 });
 
 describe("catalog recommendation normalization", () => {
